@@ -38,6 +38,7 @@ import androidx.compose.material.icons.automirrored.rounded.RotateRight
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Flip
@@ -68,10 +69,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -82,14 +87,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toOffset
+import androidx.compose.ui.unit.toSize
+import androidx.core.graphics.withTranslation
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.R
 import app.focale.edit.Adjustment
 import app.focale.edit.ColorMatrices
 import app.focale.edit.CropAspect
+import app.focale.edit.DrawingRenderer
+import app.focale.edit.DrawingStroke
 import app.focale.edit.EditState
 import app.focale.edit.FilterPreset
+import app.focale.edit.ImageFrame
 import app.focale.edit.NormRect
 import app.focale.edit.SaveMode
 import app.focale.ui.components.Choice
@@ -113,6 +124,8 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val tool by viewModel.tool.collectAsStateWithLifecycle()
     val adjustment by viewModel.adjustment.collectAsStateWithLifecycle()
+    val drawing by viewModel.drawing.collectAsStateWithLifecycle()
+    val ink = drawing.ink.color()
     val saving by viewModel.saving.collectAsStateWithLifecycle()
     val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
     val canRedo by viewModel.canRedo.collectAsStateWithLifecycle()
@@ -174,18 +187,22 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                 .fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            val image = preview
-            if (image == null) {
+            val current = preview
+            if (current == null) {
                 LoadingIndicator()
             } else {
                 EditorCanvas(
-                    image = image,
+                    preview = current,
                     state = state,
-                    cropMode = tool == EditorTool.CROP,
+                    tool = tool,
                     showOriginal = showOriginal,
                     ratio = viewModel.cropRatio(),
+                    drawing = drawing,
+                    ink = ink,
                     onGestureStart = viewModel::beginGesture,
                     onCropChange = viewModel::dragCrop,
+                    onStroke = viewModel::addStroke,
+                    onErase = viewModel::eraseStroke,
                     onCompare = { showOriginal = it },
                 )
             }
@@ -205,7 +222,7 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
         ) { current ->
             when (current) {
                 EditorTool.CROP -> CropPanel(state, onRotate = viewModel::rotate, onFlip = viewModel::flip, onAspect = viewModel::setAspect)
-                EditorTool.FILTERS -> FiltersPanel(preview, state, onSelect = viewModel::setFilter)
+                EditorTool.FILTERS -> FiltersPanel(preview?.image, state, onSelect = viewModel::setFilter)
                 EditorTool.ADJUST -> AdjustPanel(
                     state = state,
                     selected = adjustment,
@@ -214,16 +231,26 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                     onValue = viewModel::setAdjustmentValue,
                     onReset = viewModel::resetAdjustment,
                 )
+                EditorTool.DRAW -> DrawingPanel(
+                    options = drawing,
+                    ink = ink,
+                    onTool = viewModel::selectDrawTool,
+                    onInk = viewModel::selectInk,
+                    onSize = viewModel::setDrawSize,
+                )
             }
         }
+        // Quatre outils : seul l'outil actif affiche son libellé.
         ConnectedChoiceGroup(
             choices = listOf(
                 Choice(EditorTool.CROP, stringResource(R.string.editor_crop), Icons.Outlined.Crop),
                 Choice(EditorTool.FILTERS, stringResource(R.string.editor_filters), Icons.Outlined.AutoFixHigh),
                 Choice(EditorTool.ADJUST, stringResource(R.string.editor_adjust), Icons.Outlined.Tune),
+                Choice(EditorTool.DRAW, stringResource(R.string.editor_draw), Icons.Outlined.Draw),
             ),
             selected = tool,
             onSelect = viewModel::selectTool,
+            compact = true,
             modifier = Modifier
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -290,21 +317,29 @@ private fun EditorTopBar(
 }
 
 /**
- * Aperçu : en mode recadrage, l'image entière et le cadre ; sinon la zone recadrée.
- * Un appui long affiche l'original (sans filtre ni réglage).
+ * Aperçu : en mode recadrage, l'image entière et le cadre ; sinon la zone recadrée. Les
+ * traits sont tracés par-dessus avec le rendu de l'export, et l'outil Dessin y pose sa
+ * couche de saisie. Un appui long affiche l'original (sans filtre, réglage ni dessin).
  */
 @Composable
 private fun EditorCanvas(
-    image: ImageBitmap,
+    preview: EditorPreview,
     state: EditState,
-    cropMode: Boolean,
+    tool: EditorTool,
     showOriginal: Boolean,
     ratio: Float?,
+    drawing: DrawingOptions,
+    ink: Color,
     onGestureStart: () -> Unit,
     onCropChange: (NormRect) -> Unit,
+    onStroke: (DrawingStroke) -> Unit,
+    onErase: (DrawingStroke) -> Unit,
     onCompare: (Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
+    val image = preview.image
+    val cropMode = tool == EditorTool.CROP
+    val drawMode = tool == EditorTool.DRAW
     val colorFilter = remember(state.filter, state.brightness, state.contrast, state.saturation, state.warmth, showOriginal) {
         val values = state.colorMatrix()
         if (showOriginal || values.contentEquals(ColorMatrices.identity)) null else ColorFilter.colorMatrix(ColorMatrix(values))
@@ -315,21 +350,28 @@ private fun EditorCanvas(
             .padding(20.dp),
     ) {
         val region = if (cropMode) NormRect.Full else state.crop
-        val regionWidth = region.width * image.width
-        val regionHeight = region.height * image.height
         val containerWidth = with(density) { maxWidth.toPx() }
         val containerHeight = with(density) { maxHeight.toPx() }
-        val scale = minOf(containerWidth / regionWidth, containerHeight / regionHeight)
-        val drawWidth = regionWidth * scale
-        val drawHeight = regionHeight * scale
-        val left = (containerWidth - drawWidth) / 2f
-        val top = (containerHeight - drawHeight) / 2f
+        // Image pivotée entière à l'écran, dont seule la zone [region] est visible, alignée
+        // sur les pixels où l'image est dessinée (le dessin y est découpé).
+        val frame = ImageFrame.fit(containerWidth, containerHeight, image.width, image.height, region)
+        val dstOffset = IntOffset(frame.screenX(region.left).roundToInt(), frame.screenY(region.top).roundToInt())
+        val dstSize = IntSize((region.width * frame.width).roundToInt(), (region.height * frame.height).roundToInt())
+        val visible = Rect(dstOffset.toOffset(), dstSize.toSize())
+        // Juste après une rotation, les traits ont déjà tourné : ils attendent l'aperçu pivoté
+        // plutôt que de s'afficher de travers sur l'ancien.
+        val strokes = if (showOriginal || !preview.matches(state)) emptyList() else state.strokes
+        // Chemins en cache, en pixels de l'aperçu : ils ne changent qu'avec les traits, et une
+        // simple mise à l'échelle suit la taille à l'écran (animée au changement d'outil).
+        val prepared = remember(strokes, image.width, image.height) {
+            strokes.map { DrawingRenderer.prepare(it, image.width.toFloat(), image.height.toFloat()) }
+        }
 
         Canvas(
             Modifier
                 .fillMaxSize()
                 .then(
-                    if (!cropMode) {
+                    if (!cropMode && !drawMode) {
                         Modifier.pointerInput(Unit) {
                             detectTapGestures(onPress = {
                                 onCompare(true)
@@ -345,20 +387,46 @@ private fun EditorCanvas(
             drawImage(
                 image = image,
                 srcOffset = IntOffset((region.left * image.width).roundToInt(), (region.top * image.height).roundToInt()),
-                srcSize = IntSize(regionWidth.roundToInt().coerceAtLeast(1), regionHeight.roundToInt().coerceAtLeast(1)),
-                dstOffset = IntOffset(left.roundToInt(), top.roundToInt()),
-                dstSize = IntSize(drawWidth.roundToInt(), drawHeight.roundToInt()),
+                srcSize = IntSize(
+                    (region.width * image.width).roundToInt().coerceAtLeast(1),
+                    (region.height * image.height).roundToInt().coerceAtLeast(1),
+                ),
+                dstOffset = dstOffset,
+                dstSize = dstSize,
                 colorFilter = colorFilter,
             )
+            if (prepared.isNotEmpty()) {
+                clipRect(visible.left, visible.top, visible.right, visible.bottom) {
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.withTranslation(frame.left, frame.top) {
+                            scale(frame.width / image.width, frame.height / image.height)
+                            prepared.forEach { it.draw(this) }
+                        }
+                    }
+                }
+            }
         }
         if (cropMode) {
             CropOverlay(
-                imageRect = Rect(left, top, left + drawWidth, top + drawHeight),
+                imageRect = visible,
                 crop = state.crop,
                 ratio = ratio,
                 accent = MaterialTheme.colorScheme.primary,
                 onGestureStart = onGestureStart,
                 onCropChange = onCropChange,
+            )
+        }
+        if (drawMode) {
+            DrawingOverlay(
+                frame = frame,
+                visible = visible,
+                strokes = strokes,
+                tool = drawing.tool,
+                color = ink,
+                size = drawing.strokeSize.dp,
+                onStroke = onStroke,
+                onEraseStart = onGestureStart,
+                onErase = onErase,
             )
         }
     }

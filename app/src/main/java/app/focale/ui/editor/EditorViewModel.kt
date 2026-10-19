@@ -17,6 +17,8 @@ import app.focale.data.OperationResult
 import app.focale.edit.Adjustment
 import app.focale.edit.CropAspect
 import app.focale.edit.CropMath
+import app.focale.edit.DrawTool
+import app.focale.edit.DrawingStroke
 import app.focale.edit.EditRenderer
 import app.focale.edit.EditState
 import app.focale.edit.FilterPreset
@@ -26,16 +28,24 @@ import app.focale.ui.navigation.EditorRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class EditorTool { CROP, FILTERS, ADJUST }
+enum class EditorTool { CROP, FILTERS, ADJUST, DRAW }
+
+/** Aperçu géométrique et l'orientation pour laquelle il a été rendu. */
+data class EditorPreview(val image: ImageBitmap, val quarterTurns: Int, val flipHorizontal: Boolean) {
+    /** Rendu en arrière-plan, l'aperçu suit l'état avec un léger retard après une rotation. */
+    fun matches(state: EditState): Boolean = quarterTurns == state.quarterTurns && flipHorizontal == state.flipHorizontal
+}
 
 /** Résultat d'un enregistrement, consommé par l'écran. */
 sealed interface EditorEvent {
@@ -57,9 +67,10 @@ class EditorViewModel @Inject constructor(
     private val _item = MutableStateFlow<MediaItem?>(null)
     val item: StateFlow<MediaItem?> = _item.asStateFlow()
 
-    /** Aperçu géométrique : rotation et miroir appliqués, sans recadrage ni couleur. */
-    private val _preview = MutableStateFlow<ImageBitmap?>(null)
-    val preview: StateFlow<ImageBitmap?> = _preview.asStateFlow()
+    /** Aperçu géométrique : rotation et miroir appliqués, sans recadrage, couleur ni dessin. */
+    private val _preview = MutableStateFlow<EditorPreview?>(null)
+    val preview: StateFlow<EditorPreview?> = _preview.asStateFlow()
+    private var previewJob: Job? = null
 
     /** Aperçu de l'original (comparaison avant / après). */
     private var base: Bitmap? = null
@@ -72,6 +83,9 @@ class EditorViewModel @Inject constructor(
 
     private val _adjustment = MutableStateFlow(Adjustment.BRIGHTNESS)
     val adjustment: StateFlow<Adjustment> = _adjustment.asStateFlow()
+
+    private val _drawing = MutableStateFlow(DrawingOptions())
+    val drawing: StateFlow<DrawingOptions> = _drawing.asStateFlow()
 
     private val _saving = MutableStateFlow(false)
     val saving: StateFlow<Boolean> = _saving.asStateFlow()
@@ -118,14 +132,25 @@ class EditorViewModel @Inject constructor(
         // Rotation et miroir ne commutent pas : avec miroir, un quart de tour horaire de
         // l'image affichée correspond à un quart de tour antihoraire de l'original.
         val turns = if (current.flipHorizontal) current.quarterTurns - 1 else current.quarterTurns + 1
-        val rotated = current.copy(quarterTurns = Math.floorMod(turns, 4), crop = CropMath.rotateClockwise(current.crop))
+        // Recadrage et traits, exprimés dans le repère affiché, tournent avec lui.
+        val rotated = current.copy(
+            quarterTurns = Math.floorMod(turns, 4),
+            crop = CropMath.rotateClockwise(current.crop),
+            strokes = current.strokes.map(DrawingStroke::rotateClockwise),
+        )
         commit(if (current.aspect == CropAspect.FREE) rotated else refit(rotated))
         refreshPreview()
     }
 
     fun flip() {
         val current = _state.value
-        commit(current.copy(flipHorizontal = !current.flipHorizontal, crop = CropMath.flipHorizontal(current.crop)))
+        commit(
+            current.copy(
+                flipHorizontal = !current.flipHorizontal,
+                crop = CropMath.flipHorizontal(current.crop),
+                strokes = current.strokes.map(DrawingStroke::flipHorizontal),
+            ),
+        )
         refreshPreview()
     }
 
@@ -147,6 +172,23 @@ class EditorViewModel @Inject constructor(
     }
 
     fun resetAdjustment(adjustment: Adjustment) = commit(_state.value.with(adjustment, 0f))
+
+    fun selectDrawTool(tool: DrawTool) = _drawing.update { it.copy(tool = tool) }
+
+    fun selectInk(ink: InkColor) = _drawing.update { it.copy(ink = ink) }
+
+    fun setDrawSize(size: Float) = _drawing.update { it.copy(size = size.coerceIn(DrawingOptions.MIN_SIZE, DrawingOptions.MAX_SIZE)) }
+
+    /** Chaque trait terminé forme une étape d'historique. */
+    fun addStroke(stroke: DrawingStroke) = commit(_state.value.copy(strokes = _state.value.strokes + stroke))
+
+    /**
+     * Gomme : comme pour un recadrage, l'étape d'historique est créée au début du geste
+     * ([beginGesture], au premier trait touché), qui peut en effacer plusieurs.
+     */
+    fun eraseStroke(stroke: DrawingStroke) {
+        _state.value = _state.value.copy(strokes = _state.value.strokes.filterNot { it === stroke })
+    }
 
     fun undo() {
         val previous = past.removeLastOrNull() ?: return
@@ -180,11 +222,11 @@ class EditorViewModel @Inject constructor(
     }
 
     /** Rapport largeur / hauteur (pixels) de l'image après rotation. */
-    fun previewRatio(): Float = _preview.value?.let { it.width.toFloat() / it.height } ?: 1f
+    fun previewRatio(): Float = _preview.value?.image?.let { it.width.toFloat() / it.height } ?: 1f
 
     /** Rapport normalisé imposé par le format courant, null si libre. */
     fun cropRatio(): Float? {
-        val preview = _preview.value ?: return null
+        val preview = _preview.value?.image ?: return null
         return CropMath.normalizedRatio(_state.value.aspect, preview.width, preview.height, preview.width.toFloat() / preview.height)
     }
 
@@ -225,10 +267,13 @@ class EditorViewModel @Inject constructor(
     private fun refreshPreview() {
         val source = base ?: return
         val state = _state.value
-        viewModelScope.launch {
-            _preview.value = withContext(dispatcher) {
-                EditRenderer.render(source, state, includeCrop = false, includeColor = false).asImageBitmap()
+        // Seul le dernier rendu lancé est publié, même si des rotations rapprochées se croisent.
+        previewJob?.cancel()
+        previewJob = viewModelScope.launch {
+            val image = withContext(dispatcher) {
+                EditRenderer.render(source, state, includeCrop = false, includeColor = false, includeDrawing = false).asImageBitmap()
             }
+            _preview.value = EditorPreview(image, state.quarterTurns, state.flipHorizontal)
         }
     }
 

@@ -6,6 +6,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import androidx.core.graphics.createBitmap
+import androidx.core.graphics.withMatrix
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -41,8 +42,17 @@ object EditRenderer {
         return matrix to (outWidth to outHeight)
     }
 
-    /** Applique géométrie, recadrage et couleurs ; [includeColor] = false pour l'aperçu géométrique. */
-    fun render(source: Bitmap, state: EditState, includeCrop: Boolean = true, includeColor: Boolean = true): Bitmap {
+    /**
+     * Applique géométrie, recadrage, couleurs puis dessin ; l'aperçu géométrique se passe du
+     * recadrage, des couleurs et du dessin (tracé en direct par l'écran).
+     */
+    fun render(
+        source: Bitmap,
+        state: EditState,
+        includeCrop: Boolean = true,
+        includeColor: Boolean = true,
+        includeDrawing: Boolean = true,
+    ): Bitmap {
         val (matrix, size) = geometry(source.width, source.height, state.quarterTurns, state.flipHorizontal)
         val (fullWidth, fullHeight) = size
         val crop = if (includeCrop) state.crop else NormRect.Full
@@ -54,7 +64,6 @@ object EditRenderer {
         val output = createBitmap(width, height)
         val canvas = Canvas(output)
         canvas.translate(-left.toFloat(), -top.toFloat())
-        canvas.concat(matrix)
         val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
         if (includeColor) {
             val values = state.colorMatrix()
@@ -62,7 +71,10 @@ object EditRenderer {
                 paint.colorFilter = ColorMatrixColorFilter(values)
             }
         }
-        canvas.drawBitmap(source, 0f, 0f, paint)
+        canvas.withMatrix(matrix) { drawBitmap(source, 0f, 0f, paint) }
+        // Les traits sont exprimés dans le repère pivoté : tracés hors de la matrice de
+        // géométrie, mais sous la translation du recadrage, et sans filtre de couleur.
+        if (includeDrawing) DrawingRenderer.draw(canvas, state.strokes, fullWidth.toFloat(), fullHeight.toFloat())
         return output
     }
 }

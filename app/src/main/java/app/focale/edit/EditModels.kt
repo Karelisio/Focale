@@ -32,7 +32,8 @@ enum class Adjustment { BRIGHTNESS, CONTRAST, SATURATION, WARMTH }
 
 /**
  * État complet d'une édition, appliqué dans cet ordre : rotation par quarts de tour,
- * miroir horizontal, recadrage, filtre puis réglages.
+ * miroir horizontal, recadrage, filtre puis réglages. Les traits de dessin ([strokes]),
+ * exprimés comme [crop] dans le repère pivoté, sont tracés par-dessus, sans filtre.
  */
 @Immutable
 data class EditState(
@@ -45,6 +46,7 @@ data class EditState(
     val contrast: Float = 0f,
     val saturation: Float = 0f,
     val warmth: Float = 0f,
+    val strokes: List<DrawingStroke> = emptyList(),
 ) {
     val isIdentity: Boolean get() = this == EditState(aspect = aspect)
 
