@@ -78,4 +78,33 @@ class SearchQueryParserTest {
     fun `requête vide`() {
         assertTrue(SearchQueryParser.isEmpty(SearchQueryParser.parse("  de la  ", today, zone)))
     }
+
+    private val people = mapOf(1L to "Hélène Dupont", 2L to "Marc", 3L to "Avril")
+
+    @Test
+    fun `le nom d'une personne trouve ses photos, sans accents ni casse`() {
+        val term = SearchQueryParser.parse("helene", today, zone, people).terms.single()
+        assertEquals(listOf(1L), term.personIds)
+        // Les autres voies restent possibles (nom de fichier, texte reconnu).
+        assertEquals("helene", term.text)
+        // Nom complet : chaque mot désigne la même personne, combinés par ET.
+        val full = SearchQueryParser.parse("Hélène Dupont plage", today, zone, people)
+        assertEquals(listOf(listOf(1L), listOf(1L), emptyList()), full.terms.map { it.personIds })
+    }
+
+    @Test
+    fun `un début de nom suffit, sans retenir une seule lettre`() {
+        assertEquals(listOf(2L), SearchQueryParser.parse("mar", today, zone, people).terms.single().personIds)
+        assertEquals(emptyList<Long>(), SearchQueryParser.matchPeople("m", people))
+        assertTrue(SearchQueryParser.parse("mar", today, zone).terms.single().personIds.isEmpty())
+    }
+
+    @Test
+    fun `un prénom l'emporte sur le mois homonyme`() {
+        val withPerson = SearchQueryParser.parse("avril", today, zone, people)
+        assertNull(withPerson.month)
+        assertEquals(listOf(3L), withPerson.terms.single().personIds)
+        // Sans personne de ce nom, « avril » reste le mois.
+        assertEquals(4, SearchQueryParser.parse("avril", today, zone).month)
+    }
 }

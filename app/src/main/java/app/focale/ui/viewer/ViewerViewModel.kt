@@ -16,6 +16,8 @@ import app.focale.data.FavoriteRepository
 import app.focale.data.MediaDetails
 import app.focale.data.MediaDetailsRepository
 import app.focale.data.MediaRepository
+import app.focale.people.PeopleRepository
+import app.focale.people.Person
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.navigation.RouteCodec
 import app.focale.ui.navigation.ViewerRoute
@@ -50,6 +52,7 @@ class ViewerViewModel @Inject constructor(
     private val seedExtractor: SeedColorExtractor,
     settingsRepository: SettingsRepository,
     private val analysisDao: AnalysisDao,
+    private val peopleRepository: PeopleRepository,
     val actions: MediaActions,
 ) : ViewModel() {
 
@@ -101,6 +104,12 @@ class ViewerViewModel @Inject constructor(
     val labels: StateFlow<List<String>> = _current
         .distinctUntilChangedBy { it?.id }
         .flatMapLatest { item -> item?.let { analysisDao.observeLabels(it.id) } ?: flowOf(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Personnes reconnues sur le média courant. */
+    val people: StateFlow<List<Person>> = _current
+        .distinctUntilChangedBy { it?.id }
+        .flatMapLatest { item -> item?.let { peopleRepository.observePeopleIn(it.id) } ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _details = MutableStateFlow<MediaDetails?>(null)

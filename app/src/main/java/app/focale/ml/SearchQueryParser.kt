@@ -13,7 +13,8 @@ import java.time.ZoneId
  *   « aujourd'hui », « hier » ;
  * - types : « vidéos », « captures », « gif », « photos », « favoris » ;
  * - autres mots : étiquettes ML Kit (dictionnaire FR/EN), lieux, pays, noms de
- *   fichiers ; chaque mot doit correspondre (ET), par l'une de ces voies (OU).
+ *   fichiers, noms des personnes ; chaque mot doit correspondre (ET), par l'une de ces
+ *   voies (OU).
  */
 object SearchQueryParser {
 
@@ -50,7 +51,13 @@ object SearchQueryParser {
     private val isoDate = Regex("""^(\d{4})-(\d{1,2})-(\d{1,2})$""")
     private val year = Regex("""^(19|20)\d{2}$""")
 
-    fun parse(text: String, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): MediaQuery {
+    /** @param people personnes nommées (identifiant → nom), reconnues par leur nom. */
+    fun parse(
+        text: String,
+        today: LocalDate = LocalDate.now(),
+        zone: ZoneId = ZoneId.systemDefault(),
+        people: Map<Long, String> = emptyMap(),
+    ): MediaQuery {
         var query = MediaQuery()
         var rawDates = text.trim().lowercase()
         // Les dates numériques sont reconnues avant la normalisation (qui supprime « / »).
@@ -84,10 +91,13 @@ object SearchQueryParser {
         var pendingMonth: Int? = null
         var pendingYear: Int? = null
         val remaining = mutableListOf<String>()
+        // Un prénom l'emporte sur un mois homonyme (« Avril », « June »).
+        val nameWords = people.values.flatMapTo(HashSet()) { LabelDictionary.normalize(it).split(' ') }
         for (word in words) {
             when {
                 word in todayWords -> query = query.withRange(today, today.plusDays(1), zone)
                 word in yesterdayWords -> query = query.withRange(today.minusDays(1), today, zone)
+                word in nameWords && word !in stopWords -> remaining += word
                 year.matches(word) -> pendingYear = word.toInt()
                 months.containsKey(word) -> pendingMonth = months.getValue(word)
                 word in favoriteWords -> query = query.copy(favoritesOnly = true)
@@ -114,10 +124,25 @@ object SearchQueryParser {
                 place = word.takeIf { it.length >= 2 },
                 countries = CountryResolver.resolve(word),
                 text = word,
+                personIds = matchPeople(word, people),
             )
         }
         return query.copy(terms = terms)
     }
+
+    /**
+     * Personnes dont un mot du nom commence par [word] (mot déjà normalisé) : « mar »
+     * trouve « Marie Dupont » et « Marc », sans tenir compte des accents ni de la casse.
+     */
+    fun matchPeople(word: String, people: Map<Long, String>): List<Long> {
+        if (word.length < MIN_NAME_PREFIX || people.isEmpty()) return emptyList()
+        return people
+            .filterValues { name -> LabelDictionary.normalize(name).split(' ').any { it.startsWith(word) } }
+            .keys
+            .sorted()
+    }
+
+    private const val MIN_NAME_PREFIX = 2
 
     /** Vrai si la requête ne filtre rien (champ vide ou mots vides seulement). */
     fun isEmpty(query: MediaQuery): Boolean =

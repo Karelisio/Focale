@@ -10,6 +10,8 @@ import app.focale.data.PlaceSuggestion
 import app.focale.data.SearchRepository
 import app.focale.data.ThingSuggestion
 import app.focale.ml.SearchQueryParser
+import app.focale.people.PeopleRepository
+import app.focale.people.Person
 import app.focale.work.AnalysisProgress
 import app.focale.work.AnalysisScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +28,7 @@ class SearchViewModel @Inject constructor(
     scheduler: AnalysisScheduler,
     private val settingsRepository: SettingsRepository,
     accessManager: MediaAccessManager,
+    peopleRepository: PeopleRepository,
 ) : ViewModel() {
 
     val access: StateFlow<MediaAccess> = accessManager.access
@@ -39,6 +42,15 @@ class SearchViewModel @Inject constructor(
     val recent: StateFlow<List<String>> = repository.observeRecent()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Personnes visibles (rangée « Personnes » et suggestions). */
+    val people: StateFlow<List<Person>> = peopleRepository.observePeople()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Personnes nommées, masquées comprises : leur nom est reconnu dans la saisie. */
+    private val named: StateFlow<Map<Long, String>> = peopleRepository.observeNamed()
+        .map { list -> list.mapNotNull { person -> person.name?.let { person.id to it } }.toMap() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
     val progress: StateFlow<AnalysisProgress?> = scheduler.progress
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -47,7 +59,7 @@ class SearchViewModel @Inject constructor(
 
     /** Analyse la saisie ; null si elle ne filtre rien. La recherche est mémorisée. */
     fun submit(text: String): MediaQuery? {
-        val query = repository.parse(text)
+        val query = repository.parse(text, named.value)
         if (SearchQueryParser.isEmpty(query)) return null
         viewModelScope.launch { repository.remember(text) }
         return query

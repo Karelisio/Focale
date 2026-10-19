@@ -19,3 +19,6 @@
 
 # osmdroid
 -dontwarn org.osmdroid.**
+
+# ONNX Runtime : classes manipulées par le code natif (JNI).
+-keep class ai.onnxruntime.** { *; }

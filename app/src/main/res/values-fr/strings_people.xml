@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Personnes : visages regroupés sur l'appareil -->
+    <string name="people_title">Personnes</string>
+    <string name="people_see_all">Tout afficher</string>
+    <string name="people_add_name">Ajouter un nom</string>
+    <string name="people_unnamed">Personne sans nom</string>
+    <string name="people_name_title">Qui est-ce ?</string>
+    <string name="people_name_label">Nom</string>
+    <string name="people_edit_name">Modifier le nom</string>
+    <string name="people_remove_name">Supprimer le nom</string>
+    <string name="people_choose_cover">Choisir la vignette</string>
+    <string name="people_cover_title">Choisir une vignette</string>
+    <string name="people_set_cover">Utiliser comme vignette</string>
+    <string name="people_cover_updated">Vignette mise à jour</string>
+    <string name="people_merge">Fusionner avec une autre personne</string>
+    <string name="people_merge_title">Même personne que…</string>
+    <string name="people_merge_confirm_title">Fusionner ces personnes ?</string>
+    <string name="people_merge_confirm_message">Les photos de %1$s rejoindront celles de %2$s.</string>
+    <string name="people_merge_action">Fusionner</string>
+    <string name="people_merge_empty">Aucune autre personne avec qui fusionner pour l\'instant.</string>
+    <string name="people_hide">Masquer de la liste</string>
+    <string name="people_unhide">Afficher dans la liste</string>
+    <string name="people_hidden_done">Personne masquée de la liste</string>
+    <string name="people_hidden_badge">Masquée</string>
+    <string name="people_show_hidden">Afficher les personnes masquées</string>
+    <string name="people_remove_from_person">Retirer de cette personne</string>
+    <plurals name="people_removed">
+        <item quantity="one">%d photo retirée de cette personne</item>
+        <item quantity="many">%,d photos retirées de cette personne</item>
+        <item quantity="other">%,d photos retirées de cette personne</item>
+    </plurals>
+    <plurals name="people_photo_count">
+        <item quantity="one">%d photo</item>
+        <item quantity="many">%,d photos</item>
+        <item quantity="other">%,d photos</item>
+    </plurals>
+    <string name="people_empty_title">Aucune personne pour l\'instant</string>
+    <string name="people_empty_message">Les visages sont regroupés sur cet appareil pendant l\'analyse de la bibliothèque. Une personne apparaît dès qu\'elle figure sur quelques photos.</string>
+    <string name="people_analysis_off_message">Activez l\'analyse sur l\'appareil pour regrouper les visages par personne.</string>
+    <string name="people_person_empty">Plus aucune photo de cette personne</string>
+    <string name="people_credits_title">Regroupement des visages</string>
+    <string name="people_credits_body">Détection : ML Kit (modèle embarqué) · Empreintes : SFace, OpenCV Zoo (Apache 2.0) · Exécution : ONNX Runtime (MIT). Les visages ne quittent jamais cet appareil.</string>
+</resources>

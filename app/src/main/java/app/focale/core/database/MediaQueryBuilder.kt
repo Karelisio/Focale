@@ -213,6 +213,9 @@ object MediaQueryBuilder {
             // Identifiants numériques insérés littéralement (limite de paramètres SQLite).
             alternatives += "m.id IN (${term.similarIds.joinToString(",")})"
         }
+        if (term.personIds.isNotEmpty()) {
+            alternatives += "m.id IN (SELECT media_id FROM face WHERE person_id IN (${term.personIds.joinToString(",")}))"
+        }
         return if (alternatives.isEmpty()) "0" else alternatives.joinToString(" OR ", "(", ")")
     }
 

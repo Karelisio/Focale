@@ -136,6 +136,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val place by viewModel.place.collectAsStateWithLifecycle()
     val labels by viewModel.labels.collectAsStateWithLifecycle()
+    val people by viewModel.people.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
@@ -282,6 +283,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                 if (country.isBlank()) name else "$name, ${CountryResolver.displayName(country, locale)}"
             },
             labels = labels.map { LabelDictionary.displayName(it, locale) },
+            people = people,
             onDismiss = {
                 showInfo = false
                 viewModel.clearDetails()
