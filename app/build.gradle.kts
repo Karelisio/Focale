@@ -29,7 +29,7 @@ val hasReleaseSigning = signingValue("STORE_FILE") != null
 val appVersionName: String = (System.getenv("FOCALE_VERSION")?.takeIf { it.isNotBlank() } ?: System.getenv("GITHUB_REF_NAME"))
     ?.removePrefix("v")
     ?.takeIf { Regex("""\d+\.\d+\.\d+""").matches(it) }
-    ?: "1.1.0"
+    ?: "1.3.0"
 val appVersionCode: Int = appVersionName.split('.').map(String::toInt)
     .let { (major, minor, patch) -> major * 1_000_000 + minor * 1_000 + patch }
 
