@@ -20,8 +20,13 @@ import androidx.room.RoomDatabase
         TrashItemEntity::class,
         VaultItemEntity::class,
         SearchHistoryEntity::class,
+        MediaTextEntity::class,
+        FaceScanEntity::class,
+        FaceEntity::class,
+        PersonEntity::class,
+        MediaEmbeddingEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class FocaleDatabase : RoomDatabase() {
@@ -32,6 +37,9 @@ abstract class FocaleDatabase : RoomDatabase() {
     abstract fun analysisDao(): AnalysisDao
     abstract fun searchHistoryDao(): SearchHistoryDao
     abstract fun vaultDao(): VaultDao
+    abstract fun textDao(): TextDao
+    abstract fun faceDao(): FaceDao
+    abstract fun embeddingDao(): EmbeddingDao
 
     companion object {
         const val NAME = "focale.db"

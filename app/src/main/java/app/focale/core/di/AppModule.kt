@@ -10,11 +10,15 @@ import androidx.room.Room
 import androidx.work.WorkManager
 import app.focale.core.database.AlbumDao
 import app.focale.core.database.AnalysisDao
+import app.focale.core.database.DatabaseMigrations
+import app.focale.core.database.EmbeddingDao
+import app.focale.core.database.FaceDao
 import app.focale.core.database.FavoriteDao
-import app.focale.core.database.TrashDao
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaDao
 import app.focale.core.database.SearchHistoryDao
+import app.focale.core.database.TextDao
+import app.focale.core.database.TrashDao
 import app.focale.core.database.VaultDao
 import dagger.Module
 import dagger.Provides
@@ -82,7 +86,9 @@ object AppModule {
     @Provides
     @Singleton
     fun database(@ApplicationContext context: Context): FocaleDatabase =
-        Room.databaseBuilder(context, FocaleDatabase::class.java, FocaleDatabase.NAME).build()
+        Room.databaseBuilder(context, FocaleDatabase::class.java, FocaleDatabase.NAME)
+            .addMigrations(*DatabaseMigrations.ALL)
+            .build()
 
     @Provides
     fun mediaDao(database: FocaleDatabase): MediaDao = database.mediaDao()
@@ -122,6 +128,15 @@ object AppModule {
 
     @Provides
     fun vaultDao(database: FocaleDatabase): VaultDao = database.vaultDao()
+
+    @Provides
+    fun textDao(database: FocaleDatabase): TextDao = database.textDao()
+
+    @Provides
+    fun faceDao(database: FocaleDatabase): FaceDao = database.faceDao()
+
+    @Provides
+    fun embeddingDao(database: FocaleDatabase): EmbeddingDao = database.embeddingDao()
 
     @Provides
     @Singleton

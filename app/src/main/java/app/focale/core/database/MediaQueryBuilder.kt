@@ -7,6 +7,7 @@ import app.focale.core.model.MediaQuery
 import app.focale.core.model.MediaSort
 import app.focale.core.model.SearchTerm
 import app.focale.core.model.SortField
+import app.focale.ml.LabelDictionary
 
 /**
  * Traduit une [MediaQuery] en SQL pour Room.
@@ -138,6 +139,10 @@ object MediaQueryBuilder {
         if (query.excludedBuckets.isNotEmpty()) {
             clauses += "m.bucket_id NOT IN (${query.excludedBuckets.joinToString(",")})"
         }
+        query.personId?.let {
+            clauses += "m.id IN (SELECT media_id FROM face WHERE person_id = ?)"
+            args += it
+        }
         query.albumId?.let {
             clauses += "m.id IN (SELECT media_id FROM album_media WHERE album_id = ?)"
             args += it
@@ -200,6 +205,13 @@ object MediaQueryBuilder {
         term.text?.takeIf { it.isNotBlank() }?.let { text ->
             alternatives += "m.display_name LIKE ? ESCAPE '\\'"
             args += likePattern(text)
+            // Texte reconnu dans la photo, comparé sous forme normalisée (sans accents).
+            alternatives += "m.id IN (SELECT media_id FROM media_text WHERE text_key LIKE ? ESCAPE '\\')"
+            args += likePattern(LabelDictionary.normalize(text))
+        }
+        if (term.similarIds.isNotEmpty()) {
+            // Identifiants numériques insérés littéralement (limite de paramètres SQLite).
+            alternatives += "m.id IN (${term.similarIds.joinToString(",")})"
         }
         return if (alternatives.isEmpty()) "0" else alternatives.joinToString(" OR ", "(", ")")
     }

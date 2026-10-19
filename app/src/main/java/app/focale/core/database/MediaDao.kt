@@ -89,4 +89,17 @@ interface MediaDao {
 
     @Query("DELETE FROM media_analysis WHERE media_id NOT IN (SELECT id FROM media)")
     suspend fun deleteOrphanAnalysis()
+
+    /** Résultats des étapes d'analyse complémentaires (texte, visages, empreintes). */
+    @Query("DELETE FROM media_text WHERE media_id NOT IN (SELECT id FROM media)")
+    suspend fun deleteOrphanTexts()
+
+    @Query("DELETE FROM face_scan WHERE media_id NOT IN (SELECT id FROM media)")
+    suspend fun deleteOrphanFaceScans()
+
+    @Query("DELETE FROM face WHERE media_id NOT IN (SELECT id FROM media)")
+    suspend fun deleteOrphanFaces()
+
+    @Query("DELETE FROM media_embedding WHERE media_id NOT IN (SELECT id FROM media)")
+    suspend fun deleteOrphanEmbeddings()
 }

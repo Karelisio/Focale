@@ -24,8 +24,9 @@ data class MediaSort(
 /**
  * Terme de recherche résolu : un mot saisi par l'utilisateur et ce à quoi il correspond.
  * Un média satisfait le terme s'il porte l'une des [labels], si son lieu contient
- * [place] (forme normalisée), s'il a été pris dans l'un des [countries] ou si son nom
- * de fichier contient [text].
+ * [place] (forme normalisée), s'il a été pris dans l'un des [countries], si son nom de
+ * fichier ou le texte reconnu dans la photo contient [text], ou s'il fait partie des
+ * [similarIds] (recherche en langage naturel).
  */
 @Serializable
 @Immutable
@@ -35,7 +36,10 @@ data class SearchTerm(
     /** Vrai : [place] doit être le nom exact du lieu (choix d'un lieu dans la liste). */
     val exactPlace: Boolean = false,
     val countries: List<String> = emptyList(),
+    /** Contenu du nom de fichier ou du texte reconnu dans la photo. */
     val text: String? = null,
+    /** Médias jugés proches du terme par la recherche en langage naturel. */
+    val similarIds: List<Long> = emptyList(),
 )
 
 /** Zone géographique en degrés, bornes incluses (regroupement de la carte). */
@@ -75,6 +79,8 @@ data class MediaQuery(
     val area: GeoArea? = null,
     /** Dossiers exclus (dossiers masqués de la timeline). */
     val excludedBuckets: List<Long> = emptyList(),
+    /** Médias où figure cette personne (regroupement de visages). */
+    val personId: Long? = null,
     val sort: MediaSort = MediaSort(),
 ) {
     companion object {

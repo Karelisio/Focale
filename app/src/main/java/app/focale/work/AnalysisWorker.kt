@@ -12,6 +12,7 @@ import app.focale.core.database.MediaAnalysisEntity
 import app.focale.core.database.MediaLabelEntity
 import app.focale.core.settings.SettingsRepository
 import app.focale.data.toModel
+import app.focale.ml.AnalysisStep
 import app.focale.ml.ImageAnalyzer
 import app.focale.ml.LabelDictionary
 import app.focale.ml.OfflineGeocoder
@@ -20,7 +21,9 @@ import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
 
 /**
- * Analyse en arrière-plan de la bibliothèque, par lots, les médias récents d'abord.
+ * Analyse en arrière-plan de la bibliothèque, par lots, les médias récents d'abord :
+ * analyse principale (étiquettes, doublons, netteté, lieux), puis étapes
+ * complémentaires ([AnalysisStep] : texte, visages, empreintes).
  *
  * Un passage dure au plus quelques minutes (limite de WorkManager pour les tâches
  * ordinaires) ; s'il reste du travail, le worker programme sa propre continuation.
@@ -34,6 +37,7 @@ class AnalysisWorker @AssistedInject constructor(
     private val geocoder: OfflineGeocoder,
     private val settings: SettingsRepository,
     private val scheduler: AnalysisScheduler,
+    private val steps: Set<@JvmSuppressWildcards AnalysisStep>,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -43,7 +47,7 @@ class AnalysisWorker @AssistedInject constructor(
         try {
             while (!isStopped) {
                 val batch = dao.pending(ImageAnalyzer.VERSION, BATCH_SIZE)
-                if (batch.isEmpty()) return Result.success()
+                if (batch.isEmpty()) break
 
                 val analyses = ArrayList<MediaAnalysisEntity>(batch.size)
                 val labels = ArrayList<MediaLabelEntity>()
@@ -83,9 +87,32 @@ class AnalysisWorker @AssistedInject constructor(
                     return Result.success()
                 }
             }
+            // Étapes complémentaires, une fois l'analyse principale à jour.
+            for (step in steps.sortedBy { it.order }) {
+                while (!isStopped) {
+                    val items = step.pending(STEP_BATCH_SIZE)
+                    if (items.isEmpty()) break
+                    try {
+                        step.process(items)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        // Échec global (modèle indisponible…) : on passe à l'étape suivante.
+                        Log.w(TAG, "Étape ${step.name} interrompue", error)
+                        break
+                    }
+                    processed += items.size
+                    setProgress(workDataOf(KEY_PROCESSED to processed))
+                    if (SystemClock.elapsedRealtime() > deadline) {
+                        scheduler.continueLater()
+                        return Result.success()
+                    }
+                }
+            }
             return Result.success()
         } finally {
             geocoder.release()
+            steps.forEach { it.release() }
         }
     }
 
@@ -93,6 +120,7 @@ class AnalysisWorker @AssistedInject constructor(
         private const val TAG = "AnalysisWorker"
         const val KEY_PROCESSED = "processed"
         private const val BATCH_SIZE = 24
+        private const val STEP_BATCH_SIZE = 16
         private const val MAX_RUN_MS = 6 * 60 * 1000L
     }
 }

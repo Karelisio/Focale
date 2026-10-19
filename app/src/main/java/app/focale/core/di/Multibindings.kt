@@ -2,6 +2,7 @@ package app.focale.core.di
 
 import android.app.Application
 import app.focale.core.image.ImageComponentContributor
+import app.focale.ml.AnalysisStep
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -21,4 +22,7 @@ abstract class MultibindingsModule {
 
     @Multibinds
     abstract fun imageComponentContributors(): Set<ImageComponentContributor>
+
+    @Multibinds
+    abstract fun analysisSteps(): Set<AnalysisStep>
 }

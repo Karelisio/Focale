@@ -49,7 +49,20 @@ class MediaQueryBuilderTest {
         assertTrue(where.contains("(' ' || place_key) LIKE ?"))
         assertTrue(where.contains("country IN (?)"))
         assertTrue(where.contains(" OR "))
-        assertEquals(listOf<Any?>("Dog", "Cat", "% paris%", "FR", "%IMG\\_1%"), args)
+        assertTrue(where.contains("SELECT media_id FROM media_text WHERE text_key LIKE ?"))
+        assertEquals(listOf<Any?>("Dog", "Cat", "% paris%", "FR", "%IMG\\_1%", "%img 1%"), args)
+    }
+
+    @Test
+    fun `personne et résultats sémantiques restreignent la sélection`() {
+        val args = mutableListOf<Any?>()
+        val where = MediaQueryBuilder.where(
+            MediaQuery(personId = 5L, terms = listOf(SearchTerm(similarIds = listOf(3L, 9L)))),
+            args,
+        )
+        assertTrue(where.contains("m.id IN (SELECT media_id FROM face WHERE person_id = ?)"))
+        assertTrue(where.contains("(m.id IN (3,9))"))
+        assertEquals(listOf<Any?>(5L), args)
     }
 
     @Test
