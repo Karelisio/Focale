@@ -31,6 +31,7 @@ abstract class FocaleDatabase : RoomDatabase() {
     abstract fun trashDao(): TrashDao
     abstract fun analysisDao(): AnalysisDao
     abstract fun searchHistoryDao(): SearchHistoryDao
+    abstract fun vaultDao(): VaultDao
 
     companion object {
         const val NAME = "focale.db"

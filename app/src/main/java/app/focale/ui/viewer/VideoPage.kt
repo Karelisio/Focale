@@ -1,5 +1,6 @@
 package app.focale.ui.viewer
 
+import android.content.Context
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -63,11 +64,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import androidx.media3.common.MediaItem as ExoMediaItem
 
-/**
- * Page vidéo de la visionneuse. Le lecteur n'est créé que pour la page courante et
- * libéré dès qu'elle ne l'est plus, pour ne jamais garder plusieurs décodeurs actifs.
- */
-@OptIn(UnstableApi::class)
+/** Page vidéo de la visionneuse pour un média de la galerie. */
 @Composable
 fun VideoPage(
     item: MediaItem,
@@ -77,8 +74,40 @@ fun VideoPage(
     controlsVisible: Boolean,
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
-    playerFactory: (android.content.Context) -> ExoPlayer = { ExoPlayer.Builder(it).build() },
-    mediaItemFactory: (MediaItem) -> ExoMediaItem = { ExoMediaItem.fromUri(it.uri) },
+) {
+    VideoPlayerPage(
+        key = item.id,
+        isCurrent = isCurrent,
+        autoplay = autoplay,
+        startMuted = startMuted,
+        controlsVisible = controlsVisible,
+        onTap = onTap,
+        mediaItem = { ExoMediaItem.fromUri(item.uri) },
+        poster = { VideoPoster(item) },
+        modifier = modifier,
+    )
+}
+
+/**
+ * Page vidéo générique. Le lecteur n'est créé que pour la page courante et libéré dès
+ * qu'elle ne l'est plus, pour ne jamais garder plusieurs décodeurs actifs.
+ *
+ * @param key identité de la vidéo (un nouveau lecteur est créé si elle change).
+ * @param playerFactory permet une source de données dédiée (vidéos chiffrées du coffre).
+ */
+@OptIn(UnstableApi::class)
+@Composable
+fun VideoPlayerPage(
+    key: Any,
+    isCurrent: Boolean,
+    autoplay: Boolean,
+    startMuted: Boolean,
+    controlsVisible: Boolean,
+    onTap: () -> Unit,
+    mediaItem: () -> ExoMediaItem,
+    poster: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    playerFactory: (Context) -> ExoPlayer = { ExoPlayer.Builder(it).build() },
 ) {
     val context = LocalContext.current
     Box(
@@ -88,13 +117,13 @@ fun VideoPage(
         contentAlignment = Alignment.Center,
     ) {
         if (!isCurrent) {
-            VideoPoster(item)
+            poster()
             PlayGlyph()
             return@Box
         }
-        val player = remember(item.id) {
+        val player = remember(key) {
             playerFactory(context).apply {
-                setMediaItem(mediaItemFactory(item))
+                setMediaItem(mediaItem())
                 repeatMode = Player.REPEAT_MODE_ONE
                 volume = if (startMuted) 0f else 1f
                 playWhenReady = autoplay
@@ -109,7 +138,7 @@ fun VideoPage(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit,
             keepContentOnReset = true,
-            shutter = { VideoPoster(item) },
+            shutter = poster,
         )
         AnimatedVisibility(
             visible = controlsVisible,

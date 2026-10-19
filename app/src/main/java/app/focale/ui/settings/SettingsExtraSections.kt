@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BatteryChargingFull
+import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,12 +23,51 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import app.focale.R
 import app.focale.core.settings.AppSettings
+import app.focale.ui.components.Choice
+import app.focale.ui.components.ConnectedChoiceGroup
 
 /** Sections ajoutées par les fonctionnalités (fichiers, vie privée, analyse, carte, coffre). */
 fun LazyListScope.settingsExtraSections(settings: AppSettings, viewModel: SettingsViewModel) {
+    item { PrivacySection(settings, viewModel) }
     item { AnalysisSection(settings, viewModel) }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         item { FilesSection() }
+    }
+}
+
+/** Partage sans métadonnées et verrouillage automatique du coffre. */
+@Composable
+private fun PrivacySection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val lockChoices = listOf(
+        Choice(0, stringResource(R.string.vault_auto_lock_immediately)),
+        Choice(60, stringResource(R.string.vault_auto_lock_minutes, 1)),
+        Choice(300, stringResource(R.string.vault_auto_lock_minutes, 5)),
+        Choice(900, stringResource(R.string.vault_auto_lock_minutes, 15)),
+    )
+    SettingsGroup(stringResource(R.string.settings_privacy)) {
+        item { shapes ->
+            SettingsSwitch(
+                title = stringResource(R.string.settings_strip_metadata),
+                subtitle = stringResource(R.string.settings_strip_metadata_summary),
+                icon = Icons.Outlined.LocationOff,
+                checked = settings.stripMetadataOnShare,
+                onCheckedChange = viewModel::setStripMetadata,
+                shapes = shapes,
+            )
+        }
+        item { shapes ->
+            SettingsCustom(
+                title = stringResource(R.string.vault_auto_lock),
+                subtitle = stringResource(R.string.vault_auto_lock_summary),
+                shapes = shapes,
+            ) {
+                ConnectedChoiceGroup(
+                    choices = lockChoices,
+                    selected = settings.vaultAutoLockSeconds,
+                    onSelect = viewModel::setVaultAutoLock,
+                )
+            }
+        }
     }
 }
 

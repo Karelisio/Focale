@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.LibraryAdd
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Share
@@ -56,6 +57,7 @@ fun SelectionActionsBar(
     onCopy: () -> Unit,
     onMove: () -> Unit,
     onRename: () -> Unit,
+    onMoveToVault: () -> Unit,
     onSelectAll: () -> Unit,
     modifier: Modifier = Modifier,
     extraActions: List<ExtraAction> = emptyList(),
@@ -94,6 +96,10 @@ fun SelectionActionsBar(
                             menuOpen = false
                             onRename()
                         }
+                    }
+                    MenuEntry(Icons.Outlined.Lock, stringResource(R.string.action_move_to_vault)) {
+                        menuOpen = false
+                        onMoveToVault()
                     }
                     extraActions.forEach { action ->
                         MenuEntry(action.icon, action.label) {

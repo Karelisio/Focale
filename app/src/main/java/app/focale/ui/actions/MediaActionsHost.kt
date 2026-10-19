@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -15,11 +16,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -27,6 +31,7 @@ import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,13 +54,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.R
 import app.focale.core.image.thumbnail
 import app.focale.core.model.Album
 import app.focale.core.model.FolderTarget
 import app.focale.core.model.MediaItem
+import app.focale.ui.navigation.LocalRootNavController
+import app.focale.ui.navigation.VaultRoute
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Affiche les dialogues et messages de [MediaActions] : choix d'album ou de dossier,
@@ -68,7 +78,9 @@ fun MediaActionsHost(
     onActionDone: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val rootNav = LocalRootNavController.current
     val dialog by actions.dialog.collectAsStateWithLifecycle()
+    val progress by actions.progress.collectAsStateWithLifecycle()
     val currentOnDone by rememberUpdatedState(onActionDone)
     val undoLabel = stringResource(R.string.action_undo)
 
@@ -77,7 +89,9 @@ fun MediaActionsHost(
             when (event) {
                 is ActionEvent.Share -> context.startActivity(event.intent)
                 is ActionEvent.Done -> currentOnDone()
-                is ActionEvent.Message -> {
+                // Snackbar dans sa propre coroutine : les événements suivants (fin de
+                // l'action…) ne doivent pas attendre sa disparition.
+                is ActionEvent.Message -> launch {
                     val result = snackbarHostState.showSnackbar(
                         message = event.text.resolve(context),
                         actionLabel = if (event.undo != null) undoLabel else null,
@@ -89,6 +103,8 @@ fun MediaActionsHost(
             }
         }
     }
+
+    progress?.let { ProgressDialog(it.label.asString()) }
 
     when (val current = dialog) {
         is ActionDialog.AddToAlbum -> AlbumPickerSheet(
@@ -115,9 +131,79 @@ fun MediaActionsHost(
             onConfirm = { actions.rename(current.item, it) },
             onDismiss = actions::dismissDialog,
         )
+        is ActionDialog.MoveToVault -> MoveToVaultDialog(
+            count = current.ids.size,
+            vaultConfigured = current.vaultConfigured,
+            onConfirm = {
+                if (current.vaultConfigured) {
+                    actions.moveToVault(current.ids)
+                } else {
+                    actions.dismissDialog()
+                    rootNav.navigate(VaultRoute)
+                }
+            },
+            onDismiss = actions::dismissDialog,
+        )
         null -> Unit
     }
 }
+
+@Composable
+private fun MoveToVaultDialog(count: Int, vaultConfigured: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+        title = {
+            Text(
+                if (vaultConfigured) {
+                    pluralStringResource(R.plurals.vault_move_title, count, count)
+                } else {
+                    stringResource(R.string.vault_setup_needed_title)
+                },
+            )
+        },
+        text = {
+            Text(stringResource(if (vaultConfigured) R.string.vault_move_message else R.string.vault_setup_needed_message))
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(if (vaultConfigured) R.string.action_move else R.string.action_set_up))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
+}
+
+/**
+ * Progression d'une opération longue, affichée seulement si elle dure : une opération
+ * rapide ne fait pas clignoter de dialogue.
+ */
+@Composable
+private fun ProgressDialog(label: String) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(PROGRESS_DELAY_MS)
+        visible = true
+    }
+    if (!visible) return
+    BasicAlertDialog(
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+    ) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                modifier = Modifier.padding(24.dp),
+            ) {
+                LoadingIndicator(modifier = Modifier.size(48.dp))
+                Text(label, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+}
+
+private const val PROGRESS_DELAY_MS = 350L
 
 @Composable
 private fun AlbumPickerSheet(

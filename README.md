@@ -20,6 +20,20 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   Google Sans Flex, formes et morphing Expressive, retours haptiques.
 - **Adaptatif** : barre de navigation sur téléphone, rail sur tablette et pliable,
   edge-to-edge, icône adaptative et thématique (Android 13+).
+- **Organisation** : albums par dossier et albums virtuels, favoris, corbeille
+  30 jours, sélection multiple (appui long + glisser), copier / déplacer / renommer /
+  supprimer / partager, tri et filtres (photos, vidéos, captures, GIF).
+- **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
+  (« plage », « chien »…, en français ou en anglais), dates, lieux (géocodage hors
+  ligne), écran de nettoyage des doublons et des photos floues.
+- **Édition** : recadrage libre ou au format, rotation, miroir, filtres, luminosité /
+  contraste / saturation / chaleur ; enregistrement en copie ou à la place de
+  l'original.
+- **Coffre-fort** : photos et vidéos chiffrées (Tink, clé dans l'Android Keystore),
+  retirées de MediaStore et des autres applications, déverrouillage par code ou
+  biométrie, reverrouillage automatique, captures d'écran interdites.
+- **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
+  sans recompression, vidéos remultiplexées).
 
 Le détail de l'architecture et du découpage est dans
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

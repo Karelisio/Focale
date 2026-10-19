@@ -203,19 +203,31 @@ Doublons : regroupement par dHash, distance de Hamming ≤ seuil, candidats obte
 par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).
 
 ### 6.6 Coffre-fort
-- Import : flux MediaStore → `StreamingAead` → `files/vault/<uuid>.bin` +
-  miniature chiffrée ; l'original est ensuite supprimé de MediaStore (consentement).
-- Lecture : images déchiffrées en flux par un `Fetcher` Coil ; vidéos lues par une
-  `DataSource` Media3 adossée au canal déchiffrant *seekable* de Tink (aucun
-  fichier en clair sur le disque).
-- Accès : biométrie forte / identifiants de l'appareil ou code PIN
-  (PBKDF2-HMAC-SHA256, sel aléatoire) ; reverrouillage à la mise en arrière-plan ;
-  `FLAG_SECURE` sur les écrans du coffre.
+- Import : flux MediaStore → `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo)
+  → `noBackupFilesDir/vault/<uuid>.bin` + miniature chiffrée `<uuid>.thumb`. La
+  copie est relue intégralement (chaque segment est authentifié) avant la
+  suppression de l'original (consentement MediaStore). Si un original n'a pas pu
+  être supprimé (refus, échec), sa copie est annulée : un média n'est jamais en
+  double ni perdu. L'opération n'est pas annulable une fois lancée.
+- Clés : jeu de clés Tink chiffré par une clé maîtresse non exportable de l'Android
+  Keystore ; le nom du fichier sert de donnée associée (pas de substitution).
+- Lecture : images déchiffrées en flux par un `Fetcher` Coil (clés de cache
+  `vault:…` purgées au verrouillage) ; vidéos lues par une `DataSource` Media3 sur
+  le canal déchiffrant *seekable* de Tink. Aucun fichier en clair sur le disque.
+- Accès : code de 4 à 12 chiffres (PBKDF2-HMAC-SHA256, 120 000 itérations, sel
+  aléatoire, blocage croissant après 5 erreurs) et biométrie forte (classe 3) en
+  option ; état déverrouillé en mémoire seulement, reverrouillage dès la mise en
+  arrière-plan ou après 1, 5 ou 15 min ; `FLAG_SECURE` sur les écrans du coffre.
 
 ### 6.7 Partage sans métadonnées
-Option « supprimer EXIF/GPS au partage » : copie temporaire dans le cache,
-nettoyage des balises via `ExifInterface` (JPEG/PNG/WebP), sinon ré-encodage ;
-partage via `FileProvider`, cache purgé régulièrement.
+Option « retirer les métadonnées au partage » : copies dans `cache/shared/`,
+exposées par un `FileProvider` et purgées au bout d'une heure.
+- JPEG : segments EXIF / XMP / IPTC / commentaires retirés sans recompression,
+  données après la fin d'image ignorées (vidéo de photo animée…), orientation
+  réécrite ;
+- autres images : ré-encodage (PNG si transparence, JPEG sinon) ;
+- vidéos MP4 / 3GP / WebM : remultiplexage des pistes audio et vidéo
+  (`MediaExtractor` → `MediaMuxer`), sans la localisation du conteneur.
 
 ---
 

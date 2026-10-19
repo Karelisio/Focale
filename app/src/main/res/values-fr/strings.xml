@@ -310,4 +310,84 @@
     <string name="adjust_contrast">Contraste</string>
     <string name="adjust_saturation">Saturation</string>
     <string name="adjust_warmth">Chaleur</string>
+
+    <!-- Coffre-fort -->
+    <string name="vault_title">Coffre-fort</string>
+    <string name="vault_subtitle">Chiffré et masqué</string>
+    <plurals name="vault_count">
+        <item quantity="one">%d élément chiffré</item>
+        <item quantity="many">%d éléments chiffrés</item>
+        <item quantity="other">%d éléments chiffrés</item>
+    </plurals>
+    <string name="vault_setup_title">Créez le code du coffre</string>
+    <string name="vault_setup_message">4 à 12 chiffres. Le contenu du coffre est chiffré sur cet appareil et masqué des autres applications.</string>
+    <string name="vault_confirm_title">Confirmez le code</string>
+    <string name="vault_confirm_message">Saisissez-le à nouveau</string>
+    <string name="vault_create">Créer le coffre</string>
+    <string name="vault_unlock_title">Coffre verrouillé</string>
+    <string name="vault_unlock_message">Saisissez votre code</string>
+    <string name="vault_unlock">Déverrouiller</string>
+    <string name="vault_current_pin_title">Code actuel</string>
+    <string name="vault_new_pin_title">Nouveau code</string>
+    <string name="vault_new_pin_message">4 à 12 chiffres</string>
+    <string name="vault_confirm_new_title">Confirmez le nouveau code</string>
+    <string name="vault_pin_mismatch">Les codes ne correspondent pas</string>
+    <string name="vault_pin_changed">Code modifié</string>
+    <plurals name="vault_pin_wrong">
+        <item quantity="one">Code incorrect. %d essai restant</item>
+        <item quantity="many">Code incorrect. %d essais restants</item>
+        <item quantity="other">Code incorrect. %d essais restants</item>
+    </plurals>
+    <string name="vault_locked_out">Trop d’essais. Réessayez dans %1$s</string>
+    <plurals name="vault_pin_entered">
+        <item quantity="one">%d chiffre saisi</item>
+        <item quantity="many">%d chiffres saisis</item>
+        <item quantity="other">%d chiffres saisis</item>
+    </plurals>
+    <string name="vault_backspace">Effacer un chiffre</string>
+    <string name="vault_use_biometric">Utiliser la biométrie</string>
+    <string name="vault_biometric_title">Déverrouiller le coffre</string>
+    <string name="vault_biometric_negative">Utiliser le code</string>
+    <string name="vault_enable_biometric_title">Déverrouiller par biométrie ?</string>
+    <string name="vault_enable_biometric_message">Ouvrez le coffre avec votre empreinte ou votre visage. Votre code reste utilisable.</string>
+    <string name="vault_biometric">Déverrouillage biométrique</string>
+    <string name="vault_biometric_unavailable">Aucune biométrie configurée sur cet appareil</string>
+    <string name="vault_change_pin">Modifier le code</string>
+    <string name="vault_add">Ajouter</string>
+    <string name="vault_empty_title">Le coffre est vide</string>
+    <string name="vault_empty_message">Déplacez-y des photos et des vidéos pour les chiffrer et les masquer de la galerie.</string>
+    <string name="vault_delete_message">Les fichiers chiffrés sont effacés et ne pourront pas être récupérés.</string>
+    <string name="vault_picker_title">Choisir des éléments</string>
+    <plurals name="vault_move_title">
+        <item quantity="one">Déplacer %d élément vers le coffre ?</item>
+        <item quantity="many">Déplacer %d éléments vers le coffre ?</item>
+        <item quantity="other">Déplacer %d éléments vers le coffre ?</item>
+    </plurals>
+    <string name="vault_move_message">Les éléments sont chiffrés sur cet appareil, puis retirés de la galerie et des autres applications. Vous pourrez les restaurer à tout moment.</string>
+    <string name="vault_setup_needed_title">Configurer le coffre-fort</string>
+    <string name="vault_setup_needed_message">Créez d’abord un code pour protéger le coffre, puis déplacez-y vos photos et vidéos.</string>
+    <string name="vault_progress">Chiffrement… %1$d / %2$d</string>
+    <plurals name="message_moved_to_vault">
+        <item quantity="one">%d élément déplacé vers le coffre</item>
+        <item quantity="many">%d éléments déplacés vers le coffre</item>
+        <item quantity="other">%d éléments déplacés vers le coffre</item>
+    </plurals>
+    <string name="vault_auto_lock">Verrouillage automatique du coffre</string>
+    <string name="vault_auto_lock_summary">Après avoir quitté l’application</string>
+    <string name="vault_auto_lock_immediately">Aussitôt</string>
+    <string name="vault_auto_lock_minutes">%d min</string>
+    <string name="action_move_to_vault">Déplacer vers le coffre</string>
+    <string name="action_lock">Verrouiller</string>
+    <string name="action_move">Déplacer</string>
+    <string name="action_set_up">Configurer</string>
+    <string name="action_continue">Continuer</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="action_enable">Activer</string>
+    <string name="action_not_now">Plus tard</string>
+
+    <!-- Réglages : vie privée -->
+    <string name="settings_privacy">Vie privée</string>
+    <string name="settings_strip_metadata">Retirer les métadonnées au partage</string>
+    <string name="settings_strip_metadata_summary">Photos partagées sans données EXIF ni localisation ; la localisation est aussi retirée des vidéos MP4 et WebM</string>
+    <string name="share_preparing">Préparation du partage…</string>
 </resources>

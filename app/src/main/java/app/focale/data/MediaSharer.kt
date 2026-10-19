@@ -3,7 +3,6 @@ package app.focale.data
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import app.focale.core.di.IoDispatcher
 import app.focale.core.model.MediaItem
 import app.focale.core.settings.SettingsRepository
@@ -27,12 +26,15 @@ class MediaSharer @Inject constructor(
 
     suspend fun shareIntent(items: List<MediaItem>): Intent? = withContext(io) {
         if (items.isEmpty()) return@withContext null
-        val uris: List<Uri> = if (settings.current.value.stripMetadataOnShare) {
-            metadataStripper.prepareForSharing(items)
+        val (uris, types) = if (settings.current.value.stripMetadataOnShare) {
+            // Les copies nettoyées peuvent changer de format (HEIF réencodé en JPEG…).
+            val cleaned = metadataStripper.prepareForSharing(items)
+            cleaned to cleaned.map { context.contentResolver.getType(it) ?: "*/*" }
         } else {
-            items.map { it.uri }
+            items.map { it.uri } to items.map { it.mimeType.ifBlank { if (it.isVideo) "video/*" else "image/*" } }
         }
-        val mimeType = commonMimeType(items)
+        if (uris.isEmpty()) return@withContext null
+        val mimeType = commonMimeType(types)
         val send = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris.first())
         } else {
@@ -47,8 +49,8 @@ class MediaSharer @Inject constructor(
         Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
-    private fun commonMimeType(items: List<MediaItem>): String {
-        val types = items.map { it.mimeType.ifBlank { if (it.isVideo) "video/*" else "image/*" } }.distinct()
+    private fun commonMimeType(mimeTypes: List<String>): String {
+        val types = mimeTypes.distinct()
         if (types.size == 1) return types.first()
         val families = types.map { it.substringBefore('/') }.distinct()
         return if (families.size == 1) "${families.first()}/*" else "*/*"

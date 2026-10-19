@@ -15,6 +15,7 @@ import app.focale.core.database.TrashDao
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaDao
 import app.focale.core.database.SearchHistoryDao
+import app.focale.core.database.VaultDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -46,6 +47,11 @@ annotation class ApplicationScope
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class SettingsStore
+
+/** DataStore du coffre-fort (empreinte du code, préférences d'accès). */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class VaultStore
 
 /** DataStore de l'état technique (synchronisation, versions MediaStore). */
 @Qualifier
@@ -107,6 +113,15 @@ object AppModule {
     @StateStore
     fun stateDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
         PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("state") }
+
+    @Provides
+    @Singleton
+    @VaultStore
+    fun vaultDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("vault") }
+
+    @Provides
+    fun vaultDao(database: FocaleDatabase): VaultDao = database.vaultDao()
 
     @Provides
     @Singleton

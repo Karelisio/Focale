@@ -495,7 +495,7 @@ private fun startChooser(context: Context, action: String, item: MediaItem) {
 
 /** Masque les barres système en mode immersif et force des icônes claires. */
 @Composable
-private fun ImmersiveSystemBars(visible: Boolean) {
+internal fun ImmersiveSystemBars(visible: Boolean) {
     val view = LocalView.current
     val window = view.context.findActivity()?.window ?: return
     val controller = remember(window, view) { WindowCompat.getInsetsController(window, view) }

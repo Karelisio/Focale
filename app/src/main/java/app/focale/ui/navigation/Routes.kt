@@ -18,6 +18,18 @@ data class ViewerRoute(val query: String, val mediaId: Long)
 @Serializable
 data class EditorRoute(val mediaId: Long)
 
+/** Coffre-fort : création du code, déverrouillage et contenu chiffré. */
+@Serializable
+data object VaultRoute
+
+/** Visionneuse du coffre, ouverte sur l'élément [itemId]. */
+@Serializable
+data class VaultViewerRoute(val itemId: Long)
+
+/** Choix des médias de la galerie à déplacer dans le coffre. */
+@Serializable
+data object VaultPickerRoute
+
 // ── Destinations des onglets ─────────────────────────────────────────────────────
 
 @Serializable

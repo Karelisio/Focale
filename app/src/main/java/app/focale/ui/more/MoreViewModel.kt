@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.stateIn
 data class MoreCounts(
     val favorites: Int = 0,
     val trash: Int = 0,
-    val vault: Int = 0,
 )
 
 @HiltViewModel

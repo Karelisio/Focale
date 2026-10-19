@@ -13,6 +13,8 @@ import app.focale.data.MediaOperations
 import app.focale.data.MediaRepository
 import app.focale.data.MediaSharer
 import app.focale.data.OperationResult
+import app.focale.vault.VaultPinStore
+import app.focale.vault.VaultRepository
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
@@ -31,7 +34,14 @@ sealed interface ActionDialog {
     data class CopyTo(val ids: List<Long>) : ActionDialog
     data class MoveTo(val ids: List<Long>) : ActionDialog
     data class Rename(val item: MediaItem) : ActionDialog
+
+    /** Confirmation du déplacement vers le coffre, ou invitation à le configurer d'abord. */
+    data class MoveToVault(val ids: List<Long>, val vaultConfigured: Boolean) : ActionDialog
 }
+
+/** Opération longue en cours (chiffrement vers le coffre…). */
+@Immutable
+data class ActionProgress(val label: UiText)
 
 /** Événement ponctuel à traiter par l'interface. */
 sealed interface ActionEvent {
@@ -44,7 +54,7 @@ sealed interface ActionEvent {
 
 /**
  * Actions communes à toutes les grilles et à la visionneuse : partager, favoris,
- * albums, corbeille, copier, déplacer, renommer.
+ * albums, corbeille, copier, déplacer, renommer, coffre-fort.
  *
  * Instance propre à chaque ViewModel (non singleton) : elle s'exécute dans la portée
  * du ViewModel passée à [bind].
@@ -55,6 +65,8 @@ class MediaActions @Inject constructor(
     private val favorites: FavoriteRepository,
     private val media: MediaRepository,
     private val sharer: MediaSharer,
+    private val vault: VaultRepository,
+    private val vaultPins: VaultPinStore,
 ) {
     private lateinit var scope: CoroutineScope
 
@@ -63,6 +75,9 @@ class MediaActions @Inject constructor(
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    private val _progress = MutableStateFlow<ActionProgress?>(null)
+    val progress: StateFlow<ActionProgress?> = _progress.asStateFlow()
 
     private val channel = Channel<ActionEvent>(Channel.BUFFERED)
     val events: Flow<ActionEvent> = channel.receiveAsFlow()
@@ -78,8 +93,14 @@ class MediaActions @Inject constructor(
         _dialog.value = null
     }
 
+    /** Le retrait des métadonnées peut prendre un moment (vidéos) : progression affichée. */
     fun share(ids: Collection<Long>) = run {
-        sharer.shareIntent(media.getByIds(ids))?.let { channel.send(ActionEvent.Share(it)) }
+        _progress.value = ActionProgress(UiText.Res(R.string.share_preparing))
+        try {
+            sharer.shareIntent(media.getByIds(ids))?.let { channel.send(ActionEvent.Share(it)) }
+        } finally {
+            _progress.value = null
+        }
     }
 
     /** Ajoute aux favoris, ou retire si tous le sont déjà. */
@@ -154,6 +175,25 @@ class MediaActions @Inject constructor(
             }
             OperationResult.Cancelled -> Unit
             else -> channel.send(ActionEvent.Message(UiText.Res(R.string.message_operation_failed)))
+        }
+    }
+
+    fun requestMoveToVault(ids: Collection<Long>) = run {
+        _dialog.value = ActionDialog.MoveToVault(ids.toList(), vaultConfigured = vaultPins.hasPin.first())
+    }
+
+    /** Chiffre les médias dans le coffre puis retire les originaux de la galerie. */
+    fun moveToVault(ids: List<Long>) = run(busy = true) {
+        _dialog.value = null
+        val items = media.getByIds(ids)
+        _progress.value = ActionProgress(UiText.Res(R.string.vault_progress, listOf(0, items.size)))
+        try {
+            val result = vault.import(items) { done, total ->
+                _progress.value = ActionProgress(UiText.Res(R.string.vault_progress, listOf(done, total)))
+            }
+            report(result, R.plurals.message_moved_to_vault)
+        } finally {
+            _progress.value = null
         }
     }
 

@@ -140,6 +140,7 @@ fun MediaGridScaffold(
                 onCopy = { actions.requestCopy(selection) },
                 onMove = { actions.requestMove(selection) },
                 onRename = { selection.firstOrNull()?.let(actions::requestRename) },
+                onMoveToVault = { actions.requestMoveToVault(selection) },
                 onSelectAll = onSelectAll,
                 extraActions = extraSelectionActions,
                 modifier = Modifier.align(Alignment.BottomCenter),
