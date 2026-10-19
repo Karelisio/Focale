@@ -137,6 +137,14 @@ Index : `date_taken`, `bucket_id`, `media_type`.
 | `trash_item` | corbeille applicative (API 29 uniquement) |
 | `vault_item` | entrées du coffre (fichiers chiffrés) |
 | `search_history` | recherches récentes |
+| `media_text` | texte reconnu dans les photos (et sa forme normalisée pour la recherche) |
+| `face_scan` / `face` / `person` | visages détectés, empreintes et personnes |
+| `media_embedding` | empreinte sémantique des photos (recherche en langage naturel) |
+
+Les tables d'analyse ne référencent pas `media` par clé étrangère (l'index est
+reconstruisible) : leurs lignes orphelines sont purgées après synchronisation. Les
+migrations (`DatabaseMigrations`) reprennent le SQL exporté par Room dans
+`app/schemas` et sont testées contre ce schéma.
 
 ### 5.3 `MediaQuery` : une requête pour tout
 
@@ -201,6 +209,11 @@ dictionnaire FR/EN des 447 étiquettes (avec synonymes et hyperonymes :
 
 Doublons : regroupement par dHash, distance de Hamming ≤ seuil, candidats obtenus
 par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).
+
+Étapes complémentaires : une fois l'analyse principale à jour, le même worker
+exécute les `AnalysisStep` fournies par multiliaison (texte, visages, empreintes).
+Chacune tient son avancement dans sa table (version et `date_modified` analysés) :
+elle reprend où elle s'était arrêtée et recalcule après une évolution ou une édition.
 
 ### 6.6 Coffre-fort
 - Import : flux MediaStore → `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo)

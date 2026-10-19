@@ -14,7 +14,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   rapide avec bulle de date.
 - **Visionneuse** plein écran : swipe, zoom et double appui (sous-échantillonnage des
   très grandes images), glisser vers le bas pour fermer, transition partagée depuis la
-  grille, vidéos (Media3), GIF animés, panneau d'infos EXIF / localisation.
+  grille, vidéos (Media3), GIF animés, photos Ultra HDR affichées en HDR (Android 14+),
+  panneau d'infos EXIF / localisation.
 - **Material You** : couleurs du fond d'écran (Android 12+), thème clair / sombre /
   système, noir pur AMOLED, palette « couleur depuis la photo », police variable
   Google Sans Flex, formes et morphing Expressive, retours haptiques.
@@ -22,10 +23,12 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   edge-to-edge, icône adaptative et thématique (Android 13+).
 - **Organisation** : albums par dossier et albums virtuels, favoris, corbeille
   30 jours, sélection multiple (appui long + glisser), copier / déplacer / renommer /
-  supprimer / partager, tri et filtres (photos, vidéos, captures, GIF).
+  supprimer / partager, tri et filtres (photos, vidéos, captures, GIF), dossiers
+  masqués de Photos (WhatsApp, mèmes…) mais toujours dans Albums.
 - **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
   (« plage », « chien »…, en français ou en anglais), dates, lieux (géocodage hors
-  ligne), écran de nettoyage des doublons et des photos floues.
+  ligne), écran de nettoyage : doublons, photos floues, captures d'écran et grosses
+  vidéos.
 - **Édition** : recadrage libre ou au format, rotation, miroir, filtres, luminosité /
   contraste / saturation / chaleur ; enregistrement en copie ou à la place de
   l'original.
@@ -43,6 +46,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   n'importe quel album.
 - **Widget** « Souvenir » (Glance, couleurs Material You) : une photo du jour, renouvelée
   toutes les quatre heures, qui s'ouvre dans la visionneuse.
+- **Nouveautés** présentées au premier lancement après chaque mise à jour, tirées de
+  [`CHANGELOG.md`](CHANGELOG.md).
 
 Le détail de l'architecture et du découpage est dans
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -73,6 +78,21 @@ architecture (`arm64-v8a` pour la plupart des téléphones récents) plus un APK
 |---|---|
 | `standard` | `INTERNET` pour le fond de carte OpenStreetMap (**désactivé par défaut**) et les mises à jour intégrées (recherche quotidienne sur GitHub, désactivable) |
 | `strict` | Aucune permission `INTERNET` : carte hors ligne, mises à jour manuelles |
+
+### Publier une version
+
+1. Ajouter en tête de [`CHANGELOG.md`](CHANGELOG.md) une section `## X.Y.Z` (puces
+   courtes, en français) : l'application l'affiche après la mise à jour et la CI la
+   reprend comme description de la version GitHub.
+2. Sur GitHub : Releases → Draft a new release → tag `vX.Y.Z` → Publish. La CI y
+   ajoute les APK signés.
+
+### Tests
+
+`./gradlew testStandardDebugUnitTest` exécute les tests JVM (Robolectric), dont des
+captures d'interface comparées aux références de `app/src/test/screenshots` quand
+`-Proborazzi.test.verify=true` est passé (c'est le cas en CI). Après un changement
+d'interface voulu : `./gradlew recordRoborazziStandardDebug`.
 
 ### Mises à jour intégrées
 
