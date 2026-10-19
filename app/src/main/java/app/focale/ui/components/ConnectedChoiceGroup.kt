@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
@@ -54,6 +55,8 @@ fun <T> ConnectedChoiceGroup(
                     haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     onSelect(choice.value)
                 },
+                // Fond des options non cochées un ton au-dessus des segments de réglages.
+                colors = ToggleButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHighest),
                 shapes = when (index) {
                     0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                     choices.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()

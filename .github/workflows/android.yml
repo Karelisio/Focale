@@ -34,8 +34,9 @@ jobs:
       - name: Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      # Les captures d'interface sont comparées aux références de app/src/test/screenshots.
       - name: Tests unitaires
-        run: ./gradlew testStandardDebugUnitTest --stacktrace
+        run: ./gradlew testStandardDebugUnitTest -Proborazzi.test.verify=true --stacktrace
 
       - name: Lint
         run: ./gradlew lintStandardDebug

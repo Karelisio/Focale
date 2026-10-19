@@ -1,0 +1,32 @@
+# Profil de référence (« baseline profile ») écrit à la main : Android compile à
+# l'installation le code du démarrage, de la timeline et de la visionneuse, au lieu
+# d'attendre que l'usage le révèle. Les bibliothèques (Compose, Room, Coil, Media3…)
+# fournissent leurs propres profils, fusionnés par le plugin Android.
+#
+# Syntaxe : H (chaud), S (démarrage), P (après démarrage), L (classe) ; ** couvre les
+# sous-paquets. Les noms d'origine sont réécrits par R8 dans la build release.
+
+# Démarrage : application, activité, injection, thème et navigation.
+HSPLapp/focale/FocaleApplication;->**(**)**
+HSPLapp/focale/MainActivity;->**(**)**
+HSPLapp/focale/Hilt_**;->**(**)**
+HSPLapp/focale/core/**;->**(**)**
+HSPLapp/focale/ui/theme/**;->**(**)**
+HSPLapp/focale/ui/navigation/**;->**(**)**
+
+# Timeline : grille, en-têtes, défilement rapide, souvenirs, sélection.
+HSPLapp/focale/data/**;->**(**)**
+HSPLapp/focale/ui/timeline/**;->**(**)**
+HSPLapp/focale/ui/components/**;->**(**)**
+HSPLapp/focale/ui/actions/**;->**(**)**
+
+# Visionneuse : pages photo et vidéo, barres, informations.
+HPLapp/focale/ui/viewer/**;->**(**)**
+
+# Onglets secondaires, utilisés après le démarrage.
+HPLapp/focale/ui/albums/**;->**(**)**
+HPLapp/focale/ui/search/**;->**(**)**
+HPLapp/focale/ui/more/**;->**(**)**
+HPLapp/focale/ui/collection/**;->**(**)**
+
+Lapp/focale/**;

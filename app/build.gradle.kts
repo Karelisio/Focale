@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.room)
+    alias(libs.plugins.roborazzi)
 }
 
 // Signature release : variables d'environnement FOCALE_* (CI) ou keystore.properties local.
@@ -167,6 +168,12 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
+// Captures de référence des tests d'interface (Roborazzi), versionnées avec le code :
+// recordRoborazziStandardDebug les régénère, la CI les compare (roborazzi.test.verify).
+roborazzi {
+    outputDir.set(file("src/test/screenshots"))
+}
+
 ksp {
     arg("room.generateKotlin", "true")
 }
@@ -239,6 +246,11 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.androidx.test.junit)
     testImplementation(libs.room.testing)
     testImplementation(libs.paging.testing)

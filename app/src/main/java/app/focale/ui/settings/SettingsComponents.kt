@@ -60,6 +60,10 @@ fun SettingsGroup(
     }
 }
 
+/** Fond des segments : distinct de la page, sinon écarts et coins arrondis disparaissent. */
+@Composable
+private fun segmentColors() = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+
 @Composable
 fun SettingsSwitch(
     title: String,
@@ -79,6 +83,7 @@ fun SettingsSwitch(
             onCheckedChange(value)
         },
         shapes = shapes,
+        colors = segmentColors(),
         enabled = enabled,
         leadingContent = icon?.let { { Icon(it, contentDescription = null) } },
         supportingContent = subtitle?.let { { Text(it) } },
@@ -113,6 +118,7 @@ fun SettingsAction(
     SegmentedListItem(
         onClick = onClick,
         shapes = shapes,
+        colors = segmentColors(),
         leadingContent = icon?.let { { Icon(it, contentDescription = null) } },
         supportingContent = subtitle?.let { { Text(it) } },
         trailingContent = trailing,
@@ -133,6 +139,7 @@ fun SettingsCustom(
 ) {
     SegmentedListItem(
         shapes = shapes,
+        colors = segmentColors(),
         supportingContent = {
             Column {
                 subtitle?.let { Text(it) }
