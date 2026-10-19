@@ -3,7 +3,6 @@ package app.focale.ui.search
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
@@ -55,16 +55,19 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.SearchBarValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSearchBarState
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -121,6 +124,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
     val recent by viewModel.recent.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     val analysisEnabled by viewModel.analysisEnabled.collectAsStateWithLifecycle()
+    val searching by viewModel.searching.collectAsStateWithLifecycle()
     val locale = LocalConfiguration.current.locales[0]
 
     val searchBarState = rememberSearchBarState()
@@ -138,9 +142,20 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
         tabsNav.navigate(PersonRoute(person.id)) { launchSingleTop = true }
     }
 
-    fun submit(text: String) {
-        val query = viewModel.submit(text) ?: return
-        open(text.trim(), query)
+    fun submit(text: String) = viewModel.submit(text)
+
+    // Requêtes validées, complétées par la recherche par le sens.
+    LaunchedEffect(viewModel) {
+        viewModel.results.collect { result -> open(result.title, result.query) }
+    }
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.cancelPending() }
+    }
+    LaunchedEffect(textFieldState) {
+        snapshotFlow { textFieldState.text.toString() }.collect(viewModel::onTextChange)
+    }
+    LaunchedEffect(searchBarState.currentValue) {
+        if (searchBarState.currentValue == SearchBarValue.Expanded) viewModel.warmUp()
     }
 
     val inputField = @Composable {
@@ -150,7 +165,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
             onSearch = ::submit,
             placeholder = { Text(stringResource(R.string.search_placeholder)) },
             leadingIcon = {
-                if (searchBarState.currentValue == androidx.compose.material3.SearchBarValue.Expanded) {
+                if (searchBarState.currentValue == SearchBarValue.Expanded) {
                     IconButton(onClick = { scope.launch { searchBarState.animateToCollapsed() } }, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
@@ -256,6 +271,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
         val text by remember { snapshotFlow { textFieldState.text.toString() } }.collectAsState(initial = "")
         SearchSuggestions(
             text = text,
+            searching = searching,
             recent = recent,
             things = things,
             places = places,
@@ -284,6 +300,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
 @Composable
 private fun SearchSuggestions(
     text: String,
+    searching: Boolean,
     recent: List<String>,
     things: List<ThingSuggestion>,
     places: List<PlaceSuggestion>,
@@ -308,6 +325,9 @@ private fun SearchSuggestions(
     }.take(6)
 
     LazyColumn(Modifier.fillMaxSize()) {
+        if (searching) {
+            item(key = "searching") { LinearWavyProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) }
+        }
         if (text.isBlank()) {
             items(recent, key = { "recent-$it" }) { entry ->
                 ListItem(
@@ -325,12 +345,18 @@ private fun SearchSuggestions(
                 ) { Text(entry) }
             }
             item(key = "hint") {
-                Text(
-                    text = stringResource(R.string.search_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(24.dp),
-                )
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(R.string.search_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = stringResource(R.string.search_semantic_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         } else {
             item(key = "search-text") {

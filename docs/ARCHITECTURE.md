@@ -33,7 +33,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Vidéo | Media3 ExoPlayer + `media3-ui-compose` (contrôles M3 maison) |
 | Couleurs depuis photo | MaterialKolor (quantification + score Material Color Utilities) |
 | Formes | `MaterialShapes` + androidx.graphics.shapes (`Morph`) |
-| ML sur l'appareil | ML Kit Image Labeling, Text Recognition v2 (alphabet latin) et Face Detection, modèles **embarqués**, pas de téléchargement ; SFace (OpenCV Zoo) via ONNX Runtime |
+| ML sur l'appareil | ML Kit Image Labeling, Text Recognition v2 (alphabet latin) et Face Detection, modèles **embarqués**, pas de téléchargement ; SFace (OpenCV Zoo) et TinyCLIP quantifié (recherche en langage naturel), exécutés par ONNX Runtime |
 | Arrière-plan | WorkManager |
 | Carte | osmdroid + fond vectoriel hors ligne (Natural Earth, domaine public) |
 | Géocodage inverse | Hors ligne : base GeoNames (CC BY 4.0) embarquée, index spatial en grille |
@@ -134,14 +134,13 @@ Index : `date_taken`, `bucket_id`, `media_type`.
 | `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `country` |
 | `media_label` | (media, étiquette ML Kit canonique, confiance) |
 | `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée |
+| `media_embedding` | empreinte TinyCLIP de chaque photo (512 flottants, norme 1) |
 | `favorite` | médias favoris |
 | `album` / `album_media` | albums virtuels et leur contenu |
 | `trash_item` | corbeille applicative (API 29 uniquement) |
 | `vault_item` | entrées du coffre (fichiers chiffrés) |
 | `search_history` | recherches récentes |
-| `media_text` | texte reconnu dans les photos (et sa forme normalisée pour la recherche) |
-| `face_scan` / `face` / `person` | visages détectés, empreintes et personnes |
-| `media_embedding` | empreinte sémantique des photos (recherche en langage naturel) |
+| `face_scan` / `face` / `person` | visages détectés, empreintes SFace et personnes |
 
 Les tables d'analyse ne référencent pas `media` par clé étrangère (l'index est
 reconstruisible) : leurs lignes orphelines sont purgées après synchronisation. Les
@@ -213,6 +212,17 @@ dictionnaire FR/EN des 447 étiquettes (avec synonymes et hyperonymes :
 « chien » couvre aussi les races détectées), aux lieux, aux dates
 (« 2023 », « juillet 2022 », « 14/07/2021 »), aux noms de fichiers et au texte reconnu
 dans les photos (« wifi » trouve aussi « Wi-Fi »).
+
+Recherche en langage naturel : l'étape d'analyse « empreintes » (`EmbeddingStep`) calcule
+l'empreinte TinyCLIP de chaque photo (miniature MediaStore, prétraitement CLIP, modèle
+ONNX quantifié sur 8 bits, `tools/clip/`). Les mots libres de la requête sont traduits en
+anglais hors ligne (`QueryTranslator` : dictionnaire et règles simples, « chien sur la
+plage » → « a photo of a dog on the beach »), encodés par le modèle de texte et comparés à
+toutes les empreintes, gardées en mémoire (8 bits par valeur, rechargées quand la table
+change). Les photos au-dessus d'un seuil calibré, absolu et relatif au meilleur score,
+s'ajoutent aux correspondances exactes de chaque terme (`SearchTerm.similarIds`) ; un mot
+désignant un lieu de la bibliothèque reste une contrainte. La préparation commence
+pendant la frappe (anti-rebond, annulation de la saisie précédente).
 
 Doublons : regroupement par dHash, distance de Hamming ≤ seuil, candidats obtenus
 par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).

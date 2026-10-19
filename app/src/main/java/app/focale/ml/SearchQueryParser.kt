@@ -15,6 +15,9 @@ import java.time.ZoneId
  * - autres mots : étiquettes ML Kit (dictionnaire FR/EN), lieux, pays, noms de
  *   fichiers, noms des personnes ; chaque mot doit correspondre (ET), par l'une de ces
  *   voies (OU).
+ *
+ * Les mots libres ([freeWords]) servent aussi à la recherche par le sens, dont les
+ * résultats s'ajoutent à chaque terme (`SearchRepository.resolve`).
  */
 object SearchQueryParser {
 
@@ -57,7 +60,20 @@ object SearchQueryParser {
         today: LocalDate = LocalDate.now(),
         zone: ZoneId = ZoneId.systemDefault(),
         people: Map<Long, String> = emptyMap(),
-    ): MediaQuery {
+    ): MediaQuery = analyze(text, today, zone, people).first
+
+    /**
+     * Mots libres de la requête, dans l'ordre et mots vides compris (« chien sur la plage »),
+     * sans les dates, types, favoris ni noms de personnes : le texte à rechercher par le sens.
+     */
+    fun freeWords(
+        text: String,
+        today: LocalDate = LocalDate.now(),
+        zone: ZoneId = ZoneId.systemDefault(),
+        people: Map<Long, String> = emptyMap(),
+    ): List<String> = analyze(text, today, zone, people).second
+
+    private fun analyze(text: String, today: LocalDate, zone: ZoneId, people: Map<Long, String>): Pair<MediaQuery, List<String>> {
         var query = MediaQuery()
         var rawDates = text.trim().lowercase()
         // Les dates numériques sont reconnues avant la normalisation (qui supprime « / »).
@@ -93,6 +109,7 @@ object SearchQueryParser {
         val remaining = mutableListOf<String>()
         // Un prénom l'emporte sur un mois homonyme (« Avril », « June »).
         val nameWords = people.values.flatMapTo(HashSet()) { LabelDictionary.normalize(it).split(' ') }
+        val free = mutableListOf<String>()
         for (word in words) {
             when {
                 word in todayWords -> query = query.withRange(today, today.plusDays(1), zone)
@@ -102,8 +119,11 @@ object SearchQueryParser {
                 months.containsKey(word) -> pendingMonth = months.getValue(word)
                 word in favoriteWords -> query = query.copy(favoritesOnly = true)
                 typeWords.containsKey(word) -> query = query.copy(filter = typeWords.getValue(word))
-                word in stopWords -> Unit
-                else -> remaining += word
+                word in stopWords -> free += word
+                else -> {
+                    remaining += word
+                    free += word
+                }
             }
         }
         query = when {
@@ -127,7 +147,7 @@ object SearchQueryParser {
                 personIds = matchPeople(word, people),
             )
         }
-        return query.copy(terms = terms)
+        return query.copy(terms = terms) to free
     }
 
     /**

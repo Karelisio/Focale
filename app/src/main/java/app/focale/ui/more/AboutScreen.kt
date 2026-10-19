@@ -87,7 +87,10 @@ fun AboutScreen(onBack: () -> Unit, whatsNew: WhatsNewViewModel = hiltViewModel(
                 Text(stringResource(R.string.whatsnew_title))
             }
             AboutCard(stringResource(R.string.about_offline_title), stringResource(R.string.about_offline_body))
-            AboutCard(stringResource(R.string.about_credits_title), stringResource(R.string.about_credits_body))
+            AboutCard(
+                stringResource(R.string.about_credits_title),
+                stringResource(R.string.about_credits_body) + "\n\n" + stringResource(R.string.about_credits_semantic),
+            )
             AboutCard(stringResource(R.string.people_credits_title), stringResource(R.string.people_credits_body))
         }
     }

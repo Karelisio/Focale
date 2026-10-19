@@ -4,8 +4,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 **Material 3 Expressive** et de couleurs Material You.
 
 > Aucune donnée ne quitte l'appareil : pas de compte, pas de statistiques, pas de cloud.
-> L'étiquetage des photos et la lecture de leur texte (ML Kit), le regroupement des visages, la détection de doublons
-> et le géocodage tournent localement.
+> L'étiquetage des photos et la lecture de leur texte (ML Kit), le regroupement des visages,
+> la recherche en langage naturel, la détection de doublons et le géocodage tournent
+> localement.
 
 ## Fonctionnalités
 
@@ -31,6 +32,10 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   (« plage », « chien »…, en français ou en anglais), texte des photos et des captures
   d'écran (« facture », « wifi »…), dates, lieux (géocodage hors ligne), écran de
   nettoyage : doublons, photos floues, captures d'écran et grosses vidéos.
+- **Recherche en langage naturel** : « chien sur la plage », « voiture rouge dans la
+  neige »… Un modèle CLIP compact (TinyCLIP, 23 Mo, ONNX Runtime) calcule l'empreinte de
+  chaque photo en arrière-plan ; la requête, traduite en anglais hors ligne, est comparée
+  à toutes les empreintes et les photos les plus proches s'ajoutent aux résultats.
 - **Personnes** : visages détectés (ML Kit) et regroupés sur l'appareil (empreintes SFace
   exécutées par ONNX Runtime) ; section dans l'onglet Albums, nom, vignette, masquage,
   fusion, retrait d'une photo ; recherche par nom et personnes listées dans les infos.
@@ -156,8 +161,13 @@ ML Kit (modèles embarqués) · ONNX Runtime · osmdroid · Tink · Glance.
 - Empreintes de visages : modèle **SFace** d'OpenCV Zoo (`face_recognition_sface_2021dec_int8`),
   licence Apache 2.0 (`app/src/main/assets/licenses/sface_APACHE-2.0.txt`), redistribué sans
   modification dans `app/src/main/assets/models/sface_int8.onnx`.
-- Exécution du modèle : **ONNX Runtime**, licence MIT (`app/src/main/assets/licenses/onnxruntime_MIT.txt`) ;
+- Recherche en langage naturel : modèle **TinyCLIP** (Microsoft, licence MIT,
+  <https://github.com/microsoft/Cream>), converti et quantifié par
+  `tools/clip/export_clip.py` ; tokeniseur et vocabulaire BPE de **CLIP** (OpenAI,
+  licence MIT, <https://github.com/openai/CLIP>).
+- Exécution des modèles : **ONNX Runtime**, licence MIT (`app/src/main/assets/licenses/onnxruntime_MIT.txt`) ;
   sa télémétrie Android est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
 
 Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
-carte) à partir des données sources ; ils ne sont pas nécessaires à la compilation.
+carte, modèles de la recherche en langage naturel) à partir des données sources ; ils ne
+sont pas nécessaires à la compilation.
