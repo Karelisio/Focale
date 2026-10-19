@@ -1,0 +1,230 @@
+import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.room)
+}
+
+// Signature release : variables d'environnement FOCALE_* (CI) ou keystore.properties local.
+// Sans configuration, l'APK release est signé avec la clé de debug pour rester installable.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun signingValue(key: String): String? =
+    System.getenv("FOCALE_$key")?.takeIf { it.isNotBlank() } ?: keystoreProperties.getProperty(key)
+
+val hasReleaseSigning = signingValue("STORE_FILE") != null
+
+android {
+    namespace = "app.focale"
+    compileSdk = 37
+
+    defaultConfig {
+        applicationId = "app.focale"
+        minSdk = 29
+        targetSdk = 37
+        versionCode = 1
+        versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(signingValue("STORE_FILE")!!)
+                storePassword = signingValue("STORE_PASSWORD")
+                keyAlias = signingValue("KEY_ALIAS")
+                keyPassword = signingValue("KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+    }
+
+    // « standard » : fond de carte OpenStreetMap activable (seul usage réseau, désactivé par défaut).
+    // « strict »   : aucune permission INTERNET, la carte n'utilise que le fond hors ligne.
+    flavorDimensions += "network"
+    productFlavors {
+        create("standard") {
+            dimension = "network"
+            isDefault = true
+            buildConfigField("boolean", "ONLINE_MAP_AVAILABLE", "true")
+        }
+        create("strict") {
+            dimension = "network"
+            applicationIdSuffix = ".strict"
+            versionNameSuffix = "-strict"
+            buildConfigField("boolean", "ONLINE_MAP_AVAILABLE", "false")
+        }
+    }
+
+    // Un APK par architecture (ML Kit embarque ~10 Mo de code natif par ABI) + un universel.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    androidResources {
+        // Génère locales_config.xml (FR/EN) pour le choix de langue par application (Android 13+).
+        generateLocaleConfig = true
+    }
+
+    packaging {
+        resources.excludes += setOf(
+            "/META-INF/{AL2.0,LGPL2.1}",
+            "/META-INF/LICENSE*",
+            "/META-INF/NOTICE*",
+        )
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.isReturnDefaultValues = true
+    }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+        warningsAsErrors = false
+        disable += setOf("MissingTranslation", "ObsoleteLintCustomCheck", "GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+        optIn.addAll(
+            "androidx.compose.material3.ExperimentalMaterial3Api",
+            "androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
+            "androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi",
+            "androidx.compose.foundation.ExperimentalFoundationApi",
+            "androidx.compose.foundation.layout.ExperimentalLayoutApi",
+            "androidx.compose.animation.ExperimentalSharedTransitionApi",
+            "androidx.compose.animation.ExperimentalAnimationApi",
+            "androidx.compose.ui.ExperimentalComposeUiApi",
+            "kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "kotlinx.coroutines.FlowPreview",
+            "me.saket.telephoto.ExperimentalTelephotoApi",
+        )
+    }
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
+ksp {
+    arg("room.generateKotlin", "true")
+}
+
+dependencies {
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.navigation.compose)
+
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.graphics)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.animation)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.material3.navigation.suite)
+    implementation(libs.compose.material3.window.size)
+    implementation(libs.compose.material3.adaptive)
+    implementation(libs.compose.material3.adaptive.layout)
+    implementation(libs.compose.material.icons.extended)
+    implementation(libs.androidx.graphics.shapes)
+    debugImplementation(libs.compose.ui.tooling)
+
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.viewmodel.compose)
+    implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
+
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    implementation(libs.room.paging)
+    ksp(libs.room.compiler)
+    implementation(libs.paging.runtime)
+    implementation(libs.paging.compose)
+    implementation(libs.work.runtime)
+    implementation(libs.datastore.preferences)
+
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui.compose)
+    implementation(libs.media3.common)
+    implementation(libs.media3.datasource)
+
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
+    implementation(libs.biometric)
+    implementation(libs.exifinterface)
+    implementation(libs.profileinstaller)
+
+    implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
+    implementation(libs.coil.video)
+    implementation(libs.telephoto.zoomable.image.coil3)
+    implementation(libs.telephoto.flick)
+    implementation(libs.materialkolor)
+    implementation(libs.osmdroid)
+    implementation(libs.tink.android)
+    implementation(libs.mlkit.image.labeling)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.android)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.junit)
+    testImplementation(libs.room.testing)
+    testImplementation(libs.paging.testing)
+}

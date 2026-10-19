@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Onglets -->
+    <string name="tab_photos">Photos</string>
+    <string name="tab_albums">Albums</string>
+    <string name="tab_search">Recherche</string>
+    <string name="tab_more">Plus</string>
+
+    <!-- Actions -->
+    <string name="action_back">Retour</string>
+    <string name="action_clear_selection">Annuler la sélection</string>
+    <string name="action_select">Sélectionner</string>
+    <string name="action_share">Partager</string>
+    <string name="action_favorite">Ajouter aux favoris</string>
+    <string name="action_unfavorite">Retirer des favoris</string>
+    <string name="action_info">Infos</string>
+    <string name="action_play">Lecture</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_mute">Couper le son</string>
+    <string name="action_unmute">Activer le son</string>
+
+    <!-- Dates -->
+    <string name="date_today">Aujourd\'hui</string>
+    <string name="date_yesterday">Hier</string>
+
+    <!-- Grille -->
+    <string name="badge_gif">GIF</string>
+    <plurals name="media_count">
+        <item quantity="one">%d élément</item>
+        <item quantity="many">%,d éléments</item>
+        <item quantity="other">%,d éléments</item>
+    </plurals>
+    <plurals name="selection_count">
+        <item quantity="one">%d sélectionné</item>
+        <item quantity="many">%d sélectionnés</item>
+        <item quantity="other">%d sélectionnés</item>
+    </plurals>
+    <string name="filter_all">Tout</string>
+    <string name="filter_photos">Photos</string>
+    <string name="filter_videos">Vidéos</string>
+    <string name="filter_screenshots">Captures</string>
+    <string name="filter_gifs">GIF</string>
+    <string name="filter_empty_title">Aucun élément pour ce filtre</string>
+    <string name="indexing_message">Indexation de votre bibliothèque…\nCela n\'a lieu qu\'une seule fois.</string>
+    <string name="timeline_empty_title">Aucune photo pour l\'instant</string>
+    <string name="timeline_empty_message">Les photos et vidéos de cet appareil apparaîtront ici.</string>
+    <string name="timeline_empty_partial">Focale ne voit que les photos que vous avez sélectionnées. Touchez « Gérer » pour en ajouter.</string>
+
+    <!-- Permissions -->
+    <string name="permission_title">Vos photos, sur votre appareil</string>
+    <string name="permission_message">Focale a besoin d\'accéder à vos photos et vidéos pour les afficher. Rien ne quitte jamais votre appareil.</string>
+    <string name="permission_grant">Autoriser l\'accès</string>
+    <string name="permission_open_settings">Ouvrir les paramètres</string>
+    <string name="permission_partial">Focale ne voit que les photos sélectionnées.</string>
+    <string name="permission_partial_manage">Gérer</string>
+
+    <!-- Visionneuse -->
+    <string name="info_title">Infos</string>
+    <string name="info_camera">Appareil photo</string>
+    <string name="info_location">Lieu</string>
+
+    <!-- Réglages -->
+    <string name="settings_title">Réglages</string>
+    <string name="settings_appearance">Apparence</string>
+    <string name="settings_theme">Thème</string>
+    <string name="settings_theme_system">Système</string>
+    <string name="settings_theme_light">Clair</string>
+    <string name="settings_theme_dark">Sombre</string>
+    <string name="settings_amoled">Noir pur</string>
+    <string name="settings_amoled_summary">Surfaces noires en thème sombre, idéal pour les écrans OLED</string>
+    <string name="settings_dynamic_color">Couleurs du fond d\'écran</string>
+    <string name="settings_dynamic_color_summary">Couleurs Material You issues de votre fond d\'écran</string>
+    <string name="settings_dynamic_color_unavailable">Nécessite Android 12 ou version ultérieure</string>
+    <string name="settings_photo_color">Couleurs depuis la photo</string>
+    <string name="settings_photo_color_summary">La visionneuse et les albums adoptent la palette de l\'image</string>
+    <string name="settings_grid">Grille</string>
+    <string name="settings_grouping">Regrouper par date</string>
+    <string name="settings_grouping_summary">« Auto » suit le niveau de zoom par pincement</string>
+    <string name="settings_grouping_auto">Auto</string>
+    <string name="settings_grouping_day">Jour</string>
+    <string name="settings_grouping_month">Mois</string>
+    <string name="settings_grouping_year">Année</string>
+    <string name="settings_memories">Souvenirs</string>
+    <string name="settings_memories_summary">Afficher les souvenirs « il y a X ans » dans l\'onglet Photos</string>
+    <string name="settings_videos">Vidéos</string>
+    <string name="settings_autoplay">Lire les vidéos automatiquement</string>
+    <string name="settings_mute">Démarrer les vidéos sans le son</string>
+    <string name="settings_language">Langue</string>
+    <string name="settings_language_app">Langue de l\'application</string>
+    <string name="settings_language_summary">Français ou anglais, indépendamment du système</string>
+
+    <!-- À propos -->
+    <string name="about_title">À propos</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_offline_title" formatted="false">100 % hors ligne</string>
+    <string name="about_offline_body">Focale n\'a ni compte, ni statistiques, ni cloud. Vos photos, étiquettes et lieux sont traités uniquement sur cet appareil. Le fond de carte OpenStreetMap, facultatif et désactivé par défaut, est le seul usage du réseau.</string>
+    <string name="about_credits_title">Crédits</string>
+    <string name="about_credits_body">Google Sans Flex (SIL Open Font License) · Noms de lieux : GeoNames (CC BY 4.0) · Carte hors ligne : Natural Earth (domaine public) · Tuiles : © contributeurs OpenStreetMap (ODbL) · Étiquetage sur l\'appareil : ML Kit · AndroidX, Coil, telephoto, MaterialKolor, osmdroid, Tink (Apache 2.0).</string>
+</resources>

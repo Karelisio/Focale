@@ -1,0 +1,184 @@
+package app.focale.core.database
+
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.PrimaryKey
+
+/**
+ * Miroir d'une ligne MediaStore (images et vidéos).
+ *
+ * La clé primaire est le `_ID` MediaStore : il est unique pour toute la table `Files`
+ * du volume externe, images et vidéos confondues.
+ */
+@Entity(
+    tableName = "media",
+    indices = [
+        Index("date_taken"),
+        Index("bucket_id"),
+        Index("media_type"),
+        Index("is_trashed"),
+    ],
+)
+data class MediaEntity(
+    @PrimaryKey val id: Long,
+    /** Valeur MediaStore : 1 = image, 3 = vidéo. */
+    @ColumnInfo(name = "media_type") val mediaType: Int,
+    @ColumnInfo(name = "mime_type") val mimeType: String,
+    @ColumnInfo(name = "display_name") val displayName: String,
+    @ColumnInfo(name = "relative_path") val relativePath: String,
+    @ColumnInfo(name = "bucket_id") val bucketId: Long,
+    @ColumnInfo(name = "bucket_name") val bucketName: String,
+    /** Date de tri (ms) : DATE_TAKEN, sinon DATE_MODIFIED, sinon DATE_ADDED. */
+    @ColumnInfo(name = "date_taken") val dateTaken: Long,
+    @ColumnInfo(name = "date_added") val dateAdded: Long,
+    @ColumnInfo(name = "date_modified") val dateModified: Long,
+    /** GENERATION_MODIFIED (API 30+), 0 sinon. */
+    val generation: Long,
+    val size: Long,
+    val width: Int,
+    val height: Int,
+    val orientation: Int,
+    val duration: Long,
+    @ColumnInfo(name = "volume_name") val volumeName: String,
+    @ColumnInfo(name = "is_screenshot") val isScreenshot: Boolean,
+    @ColumnInfo(name = "is_gif") val isGif: Boolean,
+    /** Média dans la corbeille système (API 30+). */
+    @ColumnInfo(name = "is_trashed") val isTrashed: Boolean,
+    /** Date de suppression définitive programmée par le système (ms), 0 si aucune. */
+    @ColumnInfo(name = "date_expires") val dateExpires: Long,
+)
+
+/** Projection légère utilisée pour la synchronisation incrémentale. */
+data class MediaSyncKey(
+    val id: Long,
+    @ColumnInfo(name = "date_modified") val dateModified: Long,
+    val generation: Long,
+    @ColumnInfo(name = "is_trashed") val isTrashed: Boolean,
+)
+
+/** Ligne d'histogramme : une période et le nombre de médias qu'elle contient. */
+data class DateBucketRow(
+    @ColumnInfo(name = "period_start") val periodStart: Long,
+    val count: Int,
+)
+
+/** Album dossier agrégé depuis l'index. */
+data class BucketRow(
+    @ColumnInfo(name = "bucket_id") val bucketId: Long,
+    @ColumnInfo(name = "bucket_name") val bucketName: String,
+    @ColumnInfo(name = "relative_path") val relativePath: String,
+    val count: Int,
+    @ColumnInfo(name = "latest") val latest: Long,
+    @ColumnInfo(name = "cover_id") val coverId: Long,
+)
+
+@Entity(tableName = "favorite")
+data class FavoriteEntity(
+    @PrimaryKey @ColumnInfo(name = "media_id") val mediaId: Long,
+    @ColumnInfo(name = "added_at") val addedAt: Long,
+)
+
+/** Album virtuel créé par l'utilisateur. */
+@Entity(tableName = "album")
+data class AlbumEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "cover_media_id") val coverMediaId: Long? = null,
+)
+
+@Entity(
+    tableName = "album_media",
+    primaryKeys = ["album_id", "media_id"],
+    indices = [Index("media_id")],
+    foreignKeys = [
+        ForeignKey(
+            entity = AlbumEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["album_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class AlbumMediaEntity(
+    @ColumnInfo(name = "album_id") val albumId: Long,
+    @ColumnInfo(name = "media_id") val mediaId: Long,
+    @ColumnInfo(name = "added_at") val addedAt: Long,
+)
+
+/** Résultat de l'analyse d'un média (ML, empreinte, netteté, GPS). */
+@Entity(tableName = "media_analysis", indices = [Index("place"), Index("country")])
+data class MediaAnalysisEntity(
+    @PrimaryKey @ColumnInfo(name = "media_id") val mediaId: Long,
+    /** `date_modified` du média au moment de l'analyse : une édition relance l'analyse. */
+    @ColumnInfo(name = "analyzed_modified") val analyzedModified: Long,
+    /** Version de l'algorithme d'analyse, pour pouvoir tout recalculer après une évolution. */
+    val version: Int,
+    /** dHash 64 bits, null si non calculable. */
+    val phash: Long?,
+    /** Variance du Laplacien (plus c'est bas, plus c'est flou). */
+    @ColumnInfo(name = "blur_score") val blurScore: Float?,
+    val latitude: Double?,
+    val longitude: Double?,
+    /** Ville la plus proche (géocodage hors ligne). */
+    val place: String?,
+    /** Code pays ISO 3166-1 alpha-2. */
+    val country: String?,
+)
+
+/** Étiquette ML Kit (libellé anglais canonique) attachée à un média. */
+@Entity(
+    tableName = "media_label",
+    primaryKeys = ["media_id", "label"],
+    indices = [Index("label")],
+)
+data class MediaLabelEntity(
+    @ColumnInfo(name = "media_id") val mediaId: Long,
+    val label: String,
+    val confidence: Float,
+)
+
+/** Élément de la corbeille applicative (Android 10 uniquement). */
+@Entity(tableName = "trash_item")
+data class TrashItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "display_name") val displayName: String,
+    @ColumnInfo(name = "relative_path") val relativePath: String,
+    @ColumnInfo(name = "mime_type") val mimeType: String,
+    @ColumnInfo(name = "media_type") val mediaType: Int,
+    @ColumnInfo(name = "date_taken") val dateTaken: Long,
+    val size: Long,
+    val width: Int,
+    val height: Int,
+    val duration: Long,
+    /** Nom du fichier dans le stockage privé de l'application. */
+    @ColumnInfo(name = "file_name") val fileName: String,
+    @ColumnInfo(name = "was_favorite") val wasFavorite: Boolean,
+    @ColumnInfo(name = "trashed_at") val trashedAt: Long,
+)
+
+/** Média déplacé dans le coffre-fort (fichier chiffré dans le stockage privé). */
+@Entity(tableName = "vault_item")
+data class VaultItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "display_name") val displayName: String,
+    @ColumnInfo(name = "mime_type") val mimeType: String,
+    @ColumnInfo(name = "media_type") val mediaType: Int,
+    @ColumnInfo(name = "original_path") val originalPath: String,
+    @ColumnInfo(name = "date_taken") val dateTaken: Long,
+    val size: Long,
+    val width: Int,
+    val height: Int,
+    val duration: Long,
+    @ColumnInfo(name = "file_name") val fileName: String,
+    @ColumnInfo(name = "thumb_file_name") val thumbFileName: String?,
+    @ColumnInfo(name = "added_at") val addedAt: Long,
+)
+
+@Entity(tableName = "search_history")
+data class SearchHistoryEntity(
+    @PrimaryKey val query: String,
+    @ColumnInfo(name = "searched_at") val searchedAt: Long,
+)

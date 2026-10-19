@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Focale</string>
+
+    <!-- Onglets -->
+    <string name="tab_photos">Photos</string>
+    <string name="tab_albums">Albums</string>
+    <string name="tab_search">Search</string>
+    <string name="tab_more">More</string>
+
+    <!-- Actions -->
+    <string name="action_back">Back</string>
+    <string name="action_clear_selection">Clear selection</string>
+    <string name="action_select">Select</string>
+    <string name="action_share">Share</string>
+    <string name="action_favorite">Add to favorites</string>
+    <string name="action_unfavorite">Remove from favorites</string>
+    <string name="action_info">Details</string>
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_mute">Mute</string>
+    <string name="action_unmute">Unmute</string>
+
+    <!-- Dates -->
+    <string name="date_today">Today</string>
+    <string name="date_yesterday">Yesterday</string>
+
+    <!-- Grille -->
+    <string name="badge_gif">GIF</string>
+    <plurals name="media_count">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%,d items</item>
+    </plurals>
+    <plurals name="selection_count">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <string name="filter_all">All</string>
+    <string name="filter_photos">Photos</string>
+    <string name="filter_videos">Videos</string>
+    <string name="filter_screenshots">Screenshots</string>
+    <string name="filter_gifs">GIFs</string>
+    <string name="filter_empty_title">Nothing matches this filter</string>
+    <string name="indexing_message">Indexing your library…\nThis only happens once.</string>
+    <string name="timeline_empty_title">No photos yet</string>
+    <string name="timeline_empty_message">Photos and videos on this device will appear here.</string>
+    <string name="timeline_empty_partial">Focale only sees the photos you selected. Tap “Manage” to add more.</string>
+
+    <!-- Permissions -->
+    <string name="permission_title">Your photos, on your device</string>
+    <string name="permission_message">Focale needs access to your photos and videos to display them. Nothing ever leaves your device.</string>
+    <string name="permission_grant">Allow access</string>
+    <string name="permission_open_settings">Open settings</string>
+    <string name="permission_partial">Focale can only see the photos you selected.</string>
+    <string name="permission_partial_manage">Manage</string>
+
+    <!-- Visionneuse -->
+    <string name="info_title">Details</string>
+    <string name="info_camera">Camera</string>
+    <string name="info_location">Location</string>
+
+    <!-- Réglages -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_amoled">Pure black</string>
+    <string name="settings_amoled_summary">True black surfaces in dark theme, ideal for OLED screens</string>
+    <string name="settings_dynamic_color">Wallpaper colors</string>
+    <string name="settings_dynamic_color_summary">Material You colors from your wallpaper</string>
+    <string name="settings_dynamic_color_unavailable">Requires Android 12 or later</string>
+    <string name="settings_photo_color">Colors from the photo</string>
+    <string name="settings_photo_color_summary">The viewer and albums adapt their palette to the image</string>
+    <string name="settings_grid">Grid</string>
+    <string name="settings_grouping">Group by date</string>
+    <string name="settings_grouping_summary">“Auto” follows the pinch zoom level</string>
+    <string name="settings_grouping_auto">Auto</string>
+    <string name="settings_grouping_day">Day</string>
+    <string name="settings_grouping_month">Month</string>
+    <string name="settings_grouping_year">Year</string>
+    <string name="settings_memories">Memories</string>
+    <string name="settings_memories_summary">Show “years ago” memories on the Photos tab</string>
+    <string name="settings_videos">Videos</string>
+    <string name="settings_autoplay">Play videos automatically</string>
+    <string name="settings_mute">Start videos muted</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_app">App language</string>
+    <string name="settings_language_summary">English or French, independently of the system</string>
+
+    <!-- À propos -->
+    <string name="about_title">About</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_offline_title" formatted="false">100% offline</string>
+    <string name="about_offline_body">Focale has no account, no analytics and no cloud. Your photos, labels and locations are processed on this device only. The optional OpenStreetMap map background is the only network use, and it is off by default.</string>
+    <string name="about_credits_title">Credits</string>
+    <string name="about_credits_body">Google Sans Flex (SIL Open Font License) · Place names: GeoNames (CC BY 4.0) · Offline map: Natural Earth (public domain) · Map tiles: © OpenStreetMap contributors (ODbL) · On-device labeling: ML Kit · AndroidX, Coil, telephoto, MaterialKolor, osmdroid, Tink (Apache 2.0).</string>
+</resources>
