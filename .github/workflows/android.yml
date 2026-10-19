@@ -5,6 +5,9 @@ on:
     branches: ["**"]
     tags: ["v*"]
   pull_request:
+  # Version créée depuis le site GitHub : les APK signés y sont ajoutés.
+  release:
+    types: [published]
   workflow_dispatch:
 
 concurrency:
@@ -95,9 +98,14 @@ jobs:
         with:
           name: focale-apk-${{ github.sha }}
           path: apk
-      - name: Création de la version
+      # Version déjà créée (depuis le site GitHub) : on y ajoute les APK ; sinon on la crée.
+      - name: Publication des APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          find apk -path "*release*" -name "*.apk" -print0 | xargs -0 \
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes
+          mapfile -d '' apks < <(find apk -path "*release*" -name "*.apk" -print0)
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${apks[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${apks[@]}" --repo "$GITHUB_REPOSITORY" --generate-notes
+          fi
