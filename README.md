@@ -14,8 +14,10 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   rapide avec bulle de date.
 - **Visionneuse** plein écran : swipe, zoom et double appui (sous-échantillonnage des
   très grandes images), glisser vers le bas pour fermer, transition partagée depuis la
-  grille, vidéos (Media3), GIF animés, photos Ultra HDR affichées en HDR (Android 14+),
-  panneau d'infos EXIF / localisation, texte de la photo sélectionnable et copiable.
+  grille, vidéos (Media3) aux commandes Material You, photos animées (Motion Photos
+  Google et Samsung, appui long pour les lire), GIF animés, photos Ultra HDR affichées
+  en HDR (Android 14+), panneau d'infos EXIF / localisation, texte de la photo
+  sélectionnable et copiable.
 - **Material You** : couleurs du fond d'écran (Android 12+), thème clair / sombre /
   système, noir pur AMOLED, palette « couleur depuis la photo », police variable
   Google Sans Flex, formes et morphing Expressive, retours haptiques.
@@ -33,11 +35,14 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   exécutées par ONNX Runtime) ; section dans l'onglet Albums, nom, vignette, masquage,
   fusion, retrait d'une photo ; recherche par nom et personnes listées dans les infos.
 - **Édition** : recadrage libre ou au format, rotation, miroir, filtres, luminosité /
-  contraste / saturation / chaleur ; enregistrement en copie ou à la place de
-  l'original.
+  contraste / saturation / chaleur, dessin (stylo, surligneur, ligne, flèche, rectangle,
+  ellipse, gomme) ; enregistrement en copie ou à la place de l'original. Vidéos :
+  coupe du début et de la fin, son coupé, enregistrées en copie (Media3 Transformer).
 - **Coffre-fort** : photos et vidéos chiffrées (Tink, clé dans l'Android Keystore),
   retirées de MediaStore et des autres applications, déverrouillage par code ou
-  biométrie, reverrouillage automatique, captures d'écran interdites.
+  biométrie, reverrouillage automatique, captures d'écran interdites ; sauvegarde
+  chiffrée par mot de passe (`.fvault`, PBKDF2 + AES-256-GCM en flux) à restaurer sur un
+  autre téléphone.
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir

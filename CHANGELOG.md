@@ -7,10 +7,16 @@ description de la version GitHub.
 
 ## 1.3.0
 
-- Nouveautés présentées après chaque mise à jour.
+- Personnes : les visages sont regroupés sur le téléphone ; nommez, fusionnez ou masquez
+  des personnes depuis Albums, et cherchez-les par leur nom.
 - Texte des photos : recherche (« facture », « wifi »…) et copie depuis la visionneuse.
 - Dessin dans l'éditeur : stylo, surligneur, ligne, flèche, rectangle, ellipse et gomme.
-- Transitions de retour plus naturelles (glissement et fondu, sans réduction de l'écran).
+- Montage vidéo : coupe du début et de la fin, son coupé, enregistré en copie.
+- Photos animées : lecture par appui long ou par la puce « Animée », badge dans la grille.
+- Coffre-fort : sauvegarde chiffrée par mot de passe, à restaurer sur un autre téléphone.
+- Commandes vidéo aux couleurs Material You ; la rotation ne relance plus la vidéo.
+- Transitions de retour plus naturelles, sans réduction de l'écran.
+- Nouveautés présentées après chaque mise à jour.
 
 ## 1.2.0
 
