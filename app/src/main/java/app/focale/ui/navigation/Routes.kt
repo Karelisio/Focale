@@ -1,5 +1,6 @@
 package app.focale.ui.navigation
 
+import androidx.annotation.Keep
 import app.focale.core.model.MediaQuery
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -26,6 +27,26 @@ data object SearchRoute
 
 @Serializable
 data object MoreRoute
+
+/** Nature d'une collection affichée par l'écran générique de grille. */
+@Keep
+@Serializable
+enum class CollectionKind { QUERY, FOLDER, USER_ALBUM, FAVORITES }
+
+/**
+ * Grille générique (album, favoris, catégorie, résultats…).
+ * @param query [MediaQuery] encodée en JSON.
+ */
+@Serializable
+data class CollectionRoute(
+    val title: String,
+    val query: String,
+    val kind: CollectionKind = CollectionKind.QUERY,
+    val albumId: Long? = null,
+)
+
+@Serializable
+data object TrashRoute
 
 @Serializable
 data object SettingsRoute

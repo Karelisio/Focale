@@ -46,8 +46,16 @@ class MediaRepository @Inject constructor(
     fun observeList(query: MediaQuery): Flow<List<MediaItem>> =
         dao.observeList(MediaQueryBuilder.select(query)).map { rows -> rows.map(MediaEntity::toModel) }
 
-    suspend fun list(query: MediaQuery): List<MediaItem> = withContext(io) {
-        dao.list(MediaQueryBuilder.select(query)).map(MediaEntity::toModel)
+    suspend fun list(query: MediaQuery, limit: Int? = null): List<MediaItem> = withContext(io) {
+        dao.list(MediaQueryBuilder.select(query, limit)).map(MediaEntity::toModel)
+    }
+
+    /** Premier média de [query] (couverture), observé. */
+    fun observeFirst(query: MediaQuery): Flow<MediaItem?> =
+        dao.observeList(MediaQueryBuilder.select(query, limit = 1)).map { it.firstOrNull()?.toModel() }
+
+    suspend fun ids(query: MediaQuery): List<Long> = withContext(io) {
+        dao.ids(MediaQueryBuilder.ids(query))
     }
 
     fun observeHistogram(query: MediaQuery, level: GroupLevel): Flow<List<DateBucket>> =

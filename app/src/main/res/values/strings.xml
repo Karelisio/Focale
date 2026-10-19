@@ -96,4 +96,120 @@
     <string name="about_offline_body">Focale has no account, no analytics and no cloud. Your photos, labels and locations are processed on this device only. The optional OpenStreetMap map background is the only network use, and it is off by default.</string>
     <string name="about_credits_title">Credits</string>
     <string name="about_credits_body">Google Sans Flex (SIL Open Font License) · Place names: GeoNames (CC BY 4.0) · Offline map: Natural Earth (public domain) · Map tiles: © OpenStreetMap contributors (ODbL) · On-device labeling: ML Kit · AndroidX, Coil, telephoto, MaterialKolor, osmdroid, Tink (Apache 2.0).</string>
+
+    <!-- Organisation -->
+    <string name="action_add_to_album">Add to album</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_copy_to">Copy to…</string>
+    <string name="action_create">Create</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_more">More</string>
+    <string name="action_move_to">Move to…</string>
+    <string name="action_open_with">Open with</string>
+    <string name="action_remove_from_album">Remove from album</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_restore">Restore</string>
+    <string name="action_select_all">Select all</string>
+    <string name="action_set_as">Set as…</string>
+    <string name="action_set_cover">Use as album cover</string>
+    <string name="action_trash">Move to trash</string>
+    <string name="action_undo">Undo</string>
+    <string name="rename_label">New name</string>
+
+    <string name="albums_mine">My albums</string>
+    <string name="albums_device">On this device</string>
+    <string name="albums_empty_hint">Create albums to gather photos without moving the files.</string>
+    <string name="album_new">New album</string>
+    <string name="album_name">Album name</string>
+    <string name="album_rename">Rename album</string>
+    <string name="album_delete_title">Delete album</string>
+    <string name="album_delete_message">The album will be deleted. Its photos and videos stay on your device.</string>
+    <string name="album_empty_title">This album is empty</string>
+    <string name="album_empty_message">In Photos, long-press items then choose “Add to album”.</string>
+    <string name="collection_favorites">Favorites</string>
+    <string name="collection_trash">Trash</string>
+    <string name="collection_empty_title">Nothing here yet</string>
+    <string name="folder_new">New folder</string>
+    <string name="folder_name">Folder name</string>
+
+    <string name="sort_title">Sort and filter</string>
+    <string name="sort_date_taken">Date taken</string>
+    <string name="sort_date_modified">Date modified</string>
+    <string name="sort_name">Name</string>
+    <string name="sort_size">Size</string>
+    <string name="sort_descending">Descending</string>
+    <string name="sort_ascending">Ascending</string>
+    <string name="filter_title">Show</string>
+
+    <string name="trash_subtitle">Items are deleted forever after 30 days</string>
+    <string name="trash_empty_action">Empty</string>
+    <string name="trash_empty_title">Trash is empty</string>
+    <string name="trash_empty_message">Deleted items stay here for 30 days before being removed for good.</string>
+    <string name="trash_empty_confirm">Empty the trash?</string>
+    <string name="trash_delete_message">These items will be permanently deleted from your device. This cannot be undone.</string>
+    <plurals name="trash_delete_confirm">
+        <item quantity="one">Delete %d item forever?</item>
+        <item quantity="other">Delete %d items forever?</item>
+    </plurals>
+    <plurals name="trash_days_left">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+
+    <plurals name="title_add_to_album">
+        <item quantity="one">Add %d item to…</item>
+        <item quantity="other">Add %d items to…</item>
+    </plurals>
+    <plurals name="title_copy_to">
+        <item quantity="one">Copy %d item to…</item>
+        <item quantity="other">Copy %d items to…</item>
+    </plurals>
+    <plurals name="title_move_to">
+        <item quantity="one">Move %d item to…</item>
+        <item quantity="other">Move %d items to…</item>
+    </plurals>
+
+    <plurals name="message_trashed">
+        <item quantity="one">%d item moved to trash</item>
+        <item quantity="other">%d items moved to trash</item>
+    </plurals>
+    <plurals name="message_restored">
+        <item quantity="one">%d item restored</item>
+        <item quantity="other">%d items restored</item>
+    </plurals>
+    <plurals name="message_deleted">
+        <item quantity="one">%d item deleted</item>
+        <item quantity="other">%d items deleted</item>
+    </plurals>
+    <plurals name="message_favorited">
+        <item quantity="one">Added to favorites</item>
+        <item quantity="other">%d items added to favorites</item>
+    </plurals>
+    <plurals name="message_unfavorited">
+        <item quantity="one">Removed from favorites</item>
+        <item quantity="other">%d items removed from favorites</item>
+    </plurals>
+    <plurals name="message_added_to_album">
+        <item quantity="one">%1$d item added to “%2$s”</item>
+        <item quantity="other">%1$d items added to “%2$s”</item>
+    </plurals>
+    <plurals name="message_removed_from_album">
+        <item quantity="one">%d item removed from the album</item>
+        <item quantity="other">%d items removed from the album</item>
+    </plurals>
+    <plurals name="message_copied">
+        <item quantity="one">%1$d item copied to %2$s</item>
+        <item quantity="other">%1$d items copied to %2$s</item>
+    </plurals>
+    <plurals name="message_moved">
+        <item quantity="one">%1$d item moved to %2$s</item>
+        <item quantity="other">%1$d items moved to %2$s</item>
+    </plurals>
+    <string name="message_renamed">Renamed</string>
+    <string name="message_partial">Processed: %1$d / %2$d</string>
+    <string name="message_operation_failed">The operation could not be completed</string>
+    <string name="settings_files">Files</string>
+    <string name="settings_manage_media">Media management</string>
+    <string name="settings_manage_media_on">Allowed: no confirmation is asked when moving or deleting</string>
+    <string name="settings_manage_media_off">Allow Focale to move and delete media without asking every time</string>
 </resources>

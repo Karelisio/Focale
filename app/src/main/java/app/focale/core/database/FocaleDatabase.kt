@@ -27,6 +27,8 @@ import androidx.room.RoomDatabase
 abstract class FocaleDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
     abstract fun favoriteDao(): FavoriteDao
+    abstract fun albumDao(): AlbumDao
+    abstract fun trashDao(): TrashDao
 
     companion object {
         const val NAME = "focale.db"

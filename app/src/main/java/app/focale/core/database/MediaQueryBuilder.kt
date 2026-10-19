@@ -18,10 +18,21 @@ import app.focale.core.model.SortField
 object MediaQueryBuilder {
 
     /** Sélection complète, triée, utilisable comme PagingSource. */
-    fun select(query: MediaQuery): SimpleSQLiteQuery {
+    fun select(query: MediaQuery, limit: Int? = null): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
         val where = where(query, args)
-        return SimpleSQLiteQuery("SELECT m.* FROM media m WHERE $where ORDER BY ${orderBy(query.sort)}", args.toTypedArray())
+        val limitClause = limit?.let { " LIMIT $it" }.orEmpty()
+        return SimpleSQLiteQuery(
+            "SELECT m.* FROM media m WHERE $where ORDER BY ${orderBy(query.sort)}$limitClause",
+            args.toTypedArray(),
+        )
+    }
+
+    /** Identifiants seuls, dans l'ordre de tri (« tout sélectionner »). */
+    fun ids(query: MediaQuery): SimpleSQLiteQuery {
+        val args = mutableListOf<Any?>()
+        val where = where(query, args)
+        return SimpleSQLiteQuery("SELECT m.id FROM media m WHERE $where ORDER BY ${orderBy(query.sort)}", args.toTypedArray())
     }
 
     fun count(query: MediaQuery): SimpleSQLiteQuery {

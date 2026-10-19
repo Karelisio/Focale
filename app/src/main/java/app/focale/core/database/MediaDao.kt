@@ -29,6 +29,9 @@ interface MediaDao {
     suspend fun list(query: SupportSQLiteQuery): List<MediaEntity>
 
     @RawQuery
+    suspend fun ids(query: SupportSQLiteQuery): List<Long>
+
+    @RawQuery
     suspend fun count(query: SupportSQLiteQuery): Int
 
     @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class])

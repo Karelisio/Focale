@@ -25,10 +25,20 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.LibraryAdd
+import androidx.compose.material.icons.outlined.Wallpaper
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -36,6 +46,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -51,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -72,6 +85,7 @@ import app.focale.core.image.ThumbnailSizes
 import app.focale.core.image.thumbnail
 import app.focale.core.model.MediaItem
 import app.focale.core.util.Formatters
+import app.focale.ui.actions.MediaActionsHost
 import app.focale.ui.components.isNavTransitionRunning
 import app.focale.ui.components.sharedMedia
 import app.focale.ui.navigation.LocalMainChrome
@@ -109,6 +123,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val details by viewModel.details.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
 
+    val snackbarHostState = remember { SnackbarHostState() }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
     var showInfo by rememberSaveable { mutableStateOf(false) }
     var zoomed by remember { mutableStateOf(false) }
@@ -181,7 +196,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
         ) {
             ViewerToolbar(
                 isFavorite = isFavorite,
-                onShare = { item?.let { shareMedia(context, it) } },
+                onShare = { viewModel.onCurrent { share(it) } },
                 onToggleFavorite = {
                     haptics.performHapticFeedback(if (isFavorite) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
                     viewModel.toggleFavorite()
@@ -190,9 +205,48 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     showInfo = true
                     viewModel.loadDetails()
                 },
+                onTrash = { viewModel.onCurrent { trash(it) } },
+                menu = { dismiss ->
+                    ViewerMenuItem(Icons.Outlined.LibraryAdd, stringResource(R.string.action_add_to_album)) {
+                        dismiss()
+                        viewModel.onCurrent { requestAddToAlbum(it) }
+                    }
+                    ViewerMenuItem(Icons.Outlined.ContentCopy, stringResource(R.string.action_copy_to)) {
+                        dismiss()
+                        viewModel.onCurrent { requestCopy(it) }
+                    }
+                    ViewerMenuItem(Icons.AutoMirrored.Outlined.DriveFileMove, stringResource(R.string.action_move_to)) {
+                        dismiss()
+                        viewModel.onCurrent { requestMove(it) }
+                    }
+                    ViewerMenuItem(Icons.Outlined.DriveFileRenameOutline, stringResource(R.string.action_rename)) {
+                        dismiss()
+                        viewModel.onCurrent { ids -> requestRename(ids.first()) }
+                    }
+                    if (item?.isVideo == false) {
+                        ViewerMenuItem(Icons.Outlined.Wallpaper, stringResource(R.string.action_set_as)) {
+                            dismiss()
+                            item.let { startChooser(context, Intent.ACTION_ATTACH_DATA, it) }
+                        }
+                    }
+                    ViewerMenuItem(Icons.AutoMirrored.Outlined.OpenInNew, stringResource(R.string.action_open_with)) {
+                        dismiss()
+                        item?.let { startChooser(context, Intent.ACTION_VIEW, it) }
+                    }
+                    ViewerExtraMenuItems(viewModel, item, dismiss)
+                },
             )
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 88.dp),
+        )
     }
+    MediaActionsHost(actions = viewModel.actions, snackbarHostState = snackbarHostState)
 
     val infoItem = current
     if (showInfo && infoItem != null) {
@@ -354,8 +408,10 @@ private fun ViewerToolbar(
     onShare: () -> Unit,
     onToggleFavorite: () -> Unit,
     onInfo: () -> Unit,
-    extraActions: @Composable () -> Unit = {},
+    onTrash: () -> Unit,
+    menu: @Composable (dismiss: () -> Unit) -> Unit,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     HorizontalFloatingToolbar(
         expanded = true,
         colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
@@ -379,7 +435,38 @@ private fun ViewerToolbar(
         IconButton(onClick = onInfo, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.action_info))
         }
-        extraActions()
+        IconButton(onClick = onTrash, shapes = IconButtonDefaults.shapes()) {
+            Icon(Icons.Outlined.DeleteOutline, contentDescription = stringResource(R.string.action_trash))
+        }
+        Box {
+            IconButton(onClick = { menuOpen = true }, shapes = IconButtonDefaults.shapes()) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                menu { menuOpen = false }
+            }
+        }
+    }
+}
+
+@Composable
+fun ViewerMenuItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label) },
+        leadingIcon = { Icon(icon, contentDescription = null) },
+        onClick = onClick,
+    )
+}
+
+/** « Définir comme » / « Ouvrir avec » : délègue à une autre application. */
+private fun startChooser(context: Context, action: String, item: MediaItem) {
+    val intent = Intent(action).apply {
+        setDataAndType(item.uri, item.mimeType.ifBlank { if (item.isVideo) "video/*" else "image/*" })
+        putExtra("mimeType", item.mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    runCatching {
+        context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
 
@@ -418,14 +505,4 @@ fun Context.findActivity(): Activity? {
         current = current.baseContext
     }
     return null
-}
-
-/** Partage simple d'un média (la suppression des métadonnées est gérée par MediaActions). */
-private fun shareMedia(context: Context, item: MediaItem) {
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = item.mimeType.ifBlank { if (item.isVideo) "video/*" else "image/*" }
-        putExtra(Intent.EXTRA_STREAM, item.uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }

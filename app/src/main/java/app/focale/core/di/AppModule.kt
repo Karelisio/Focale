@@ -8,7 +8,9 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.room.Room
 import androidx.work.WorkManager
+import app.focale.core.database.AlbumDao
 import app.focale.core.database.FavoriteDao
+import app.focale.core.database.TrashDao
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaDao
 import dagger.Module
@@ -79,6 +81,12 @@ object AppModule {
 
     @Provides
     fun favoriteDao(database: FocaleDatabase): FavoriteDao = database.favoriteDao()
+
+    @Provides
+    fun albumDao(database: FocaleDatabase): AlbumDao = database.albumDao()
+
+    @Provides
+    fun trashDao(database: FocaleDatabase): TrashDao = database.trashDao()
 
     @Provides
     @Singleton

@@ -26,6 +26,16 @@ fun NavHostController.openViewer(query: MediaQuery, item: MediaItem) {
     navigate(ViewerRoute(RouteCodec.encode(query), item.id)) { launchSingleTop = true }
 }
 
+/** Ouvre une grille générique (album, favoris, catégorie…). */
+fun NavHostController.openCollection(
+    title: String,
+    query: MediaQuery,
+    kind: CollectionKind = CollectionKind.QUERY,
+    albumId: Long? = null,
+) {
+    navigate(CollectionRoute(title, RouteCodec.encode(query), kind, albumId)) { launchSingleTop = true }
+}
+
 /**
  * Permet à un écran de masquer la barre de navigation (mode sélection) et à la
  * visionneuse d'indiquer le dernier média consulté (pour y ramener la grille).

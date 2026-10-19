@@ -96,4 +96,134 @@
     <string name="about_offline_body">Focale n\'a ni compte, ni statistiques, ni cloud. Vos photos, étiquettes et lieux sont traités uniquement sur cet appareil. Le fond de carte OpenStreetMap, facultatif et désactivé par défaut, est le seul usage du réseau.</string>
     <string name="about_credits_title">Crédits</string>
     <string name="about_credits_body">Google Sans Flex (SIL Open Font License) · Noms de lieux : GeoNames (CC BY 4.0) · Carte hors ligne : Natural Earth (domaine public) · Tuiles : © contributeurs OpenStreetMap (ODbL) · Étiquetage sur l\'appareil : ML Kit · AndroidX, Coil, telephoto, MaterialKolor, osmdroid, Tink (Apache 2.0).</string>
+
+    <!-- Organisation -->
+    <string name="action_add_to_album">Ajouter à un album</string>
+    <string name="action_cancel">Annuler</string>
+    <string name="action_copy_to">Copier vers…</string>
+    <string name="action_create">Créer</string>
+    <string name="action_delete">Supprimer</string>
+    <string name="action_more">Plus</string>
+    <string name="action_move_to">Déplacer vers…</string>
+    <string name="action_open_with">Ouvrir avec</string>
+    <string name="action_remove_from_album">Retirer de l\'album</string>
+    <string name="action_rename">Renommer</string>
+    <string name="action_restore">Restaurer</string>
+    <string name="action_select_all">Tout sélectionner</string>
+    <string name="action_set_as">Définir comme…</string>
+    <string name="action_set_cover">Utiliser comme couverture</string>
+    <string name="action_trash">Mettre à la corbeille</string>
+    <string name="action_undo">Annuler</string>
+    <string name="rename_label">Nouveau nom</string>
+
+    <string name="albums_mine">Mes albums</string>
+    <string name="albums_device">Sur l\'appareil</string>
+    <string name="albums_empty_hint">Créez des albums pour regrouper des photos sans déplacer les fichiers.</string>
+    <string name="album_new">Nouvel album</string>
+    <string name="album_name">Nom de l\'album</string>
+    <string name="album_rename">Renommer l\'album</string>
+    <string name="album_delete_title">Supprimer l\'album</string>
+    <string name="album_delete_message">L\'album sera supprimé. Ses photos et vidéos restent sur votre appareil.</string>
+    <string name="album_empty_title">Cet album est vide</string>
+    <string name="album_empty_message">Dans Photos, appuyez longuement sur des éléments puis choisissez « Ajouter à un album ».</string>
+    <string name="collection_favorites">Favoris</string>
+    <string name="collection_trash">Corbeille</string>
+    <string name="collection_empty_title">Rien ici pour l\'instant</string>
+    <string name="folder_new">Nouveau dossier</string>
+    <string name="folder_name">Nom du dossier</string>
+
+    <string name="sort_title">Tri et filtres</string>
+    <string name="sort_date_taken">Date de prise de vue</string>
+    <string name="sort_date_modified">Date de modification</string>
+    <string name="sort_name">Nom</string>
+    <string name="sort_size">Taille</string>
+    <string name="sort_descending">Décroissant</string>
+    <string name="sort_ascending">Croissant</string>
+    <string name="filter_title">Afficher</string>
+
+    <string name="trash_subtitle">Les éléments sont supprimés définitivement après 30 jours</string>
+    <string name="trash_empty_action">Vider</string>
+    <string name="trash_empty_title">La corbeille est vide</string>
+    <string name="trash_empty_message">Les éléments supprimés restent ici 30 jours avant d\'être effacés définitivement.</string>
+    <string name="trash_empty_confirm">Vider la corbeille ?</string>
+    <string name="trash_delete_message">Ces éléments seront définitivement supprimés de votre appareil. Cette action est irréversible.</string>
+    <plurals name="trash_delete_confirm">
+        <item quantity="one">Supprimer définitivement %d élément ?</item>
+        <item quantity="many">Supprimer définitivement %d éléments ?</item>
+        <item quantity="other">Supprimer définitivement %d éléments ?</item>
+    </plurals>
+    <plurals name="trash_days_left">
+        <item quantity="one">%d jour</item>
+        <item quantity="many">%d jours</item>
+        <item quantity="other">%d jours</item>
+    </plurals>
+
+    <plurals name="title_add_to_album">
+        <item quantity="one">Ajouter %d élément à…</item>
+        <item quantity="many">Ajouter %d éléments à…</item>
+        <item quantity="other">Ajouter %d éléments à…</item>
+    </plurals>
+    <plurals name="title_copy_to">
+        <item quantity="one">Copier %d élément vers…</item>
+        <item quantity="many">Copier %d éléments vers…</item>
+        <item quantity="other">Copier %d éléments vers…</item>
+    </plurals>
+    <plurals name="title_move_to">
+        <item quantity="one">Déplacer %d élément vers…</item>
+        <item quantity="many">Déplacer %d éléments vers…</item>
+        <item quantity="other">Déplacer %d éléments vers…</item>
+    </plurals>
+
+    <plurals name="message_trashed">
+        <item quantity="one">%d élément mis à la corbeille</item>
+        <item quantity="many">%d éléments mis à la corbeille</item>
+        <item quantity="other">%d éléments mis à la corbeille</item>
+    </plurals>
+    <plurals name="message_restored">
+        <item quantity="one">%d élément restauré</item>
+        <item quantity="many">%d éléments restaurés</item>
+        <item quantity="other">%d éléments restaurés</item>
+    </plurals>
+    <plurals name="message_deleted">
+        <item quantity="one">%d élément supprimé</item>
+        <item quantity="many">%d éléments supprimés</item>
+        <item quantity="other">%d éléments supprimés</item>
+    </plurals>
+    <plurals name="message_favorited">
+        <item quantity="one">%d élément ajouté aux favoris</item>
+        <item quantity="many">%d éléments ajoutés aux favoris</item>
+        <item quantity="other">%d éléments ajoutés aux favoris</item>
+    </plurals>
+    <plurals name="message_unfavorited">
+        <item quantity="one">%d élément retiré des favoris</item>
+        <item quantity="many">%d éléments retirés des favoris</item>
+        <item quantity="other">%d éléments retirés des favoris</item>
+    </plurals>
+    <plurals name="message_added_to_album">
+        <item quantity="one">%1$d élément ajouté à « %2$s »</item>
+        <item quantity="many">%1$d éléments ajoutés à « %2$s »</item>
+        <item quantity="other">%1$d éléments ajoutés à « %2$s »</item>
+    </plurals>
+    <plurals name="message_removed_from_album">
+        <item quantity="one">%d élément retiré de l\'album</item>
+        <item quantity="many">%d éléments retirés de l\'album</item>
+        <item quantity="other">%d éléments retirés de l\'album</item>
+    </plurals>
+    <plurals name="message_copied">
+        <item quantity="one">%1$d élément copié dans %2$s</item>
+        <item quantity="many">%1$d éléments copiés dans %2$s</item>
+        <item quantity="other">%1$d éléments copiés dans %2$s</item>
+    </plurals>
+    <plurals name="message_moved">
+        <item quantity="one">%1$d élément déplacé dans %2$s</item>
+        <item quantity="many">%1$d éléments déplacés dans %2$s</item>
+        <item quantity="other">%1$d éléments déplacés dans %2$s</item>
+    </plurals>
+    <string name="message_renamed">Renommé</string>
+    <string name="message_partial">Traités : %1$d / %2$d</string>
+    <string name="message_operation_failed">L\'opération n\'a pas pu aboutir</string>
+    <string name="settings_files">Fichiers</string>
+    <string name="settings_manage_media">Gestion des médias</string>
+    <string name="settings_manage_media_on">Autorisée : aucune confirmation pour déplacer ou supprimer</string>
+    <string name="settings_manage_media_off">Autoriser Focale à déplacer et supprimer des médias sans confirmation à chaque fois</string>
 </resources>

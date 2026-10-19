@@ -15,6 +15,7 @@ import app.focale.data.FavoriteRepository
 import app.focale.data.MediaDetails
 import app.focale.data.MediaDetailsRepository
 import app.focale.data.MediaRepository
+import app.focale.ui.actions.MediaActions
 import app.focale.ui.navigation.RouteCodec
 import app.focale.ui.navigation.ViewerRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,7 +47,12 @@ class ViewerViewModel @Inject constructor(
     private val detailsRepository: MediaDetailsRepository,
     private val seedExtractor: SeedColorExtractor,
     settingsRepository: SettingsRepository,
+    val actions: MediaActions,
 ) : ViewModel() {
+
+    init {
+        actions.bind(viewModelScope)
+    }
 
     private val route = savedStateHandle.toRoute<ViewerRoute>()
     val query = RouteCodec.decode(route.query)
@@ -104,6 +110,12 @@ class ViewerViewModel @Inject constructor(
         viewModelScope.launch {
             favoriteRepository.setFavorite(listOf(item.id), !isFavorite.value)
         }
+    }
+
+    /** Applique une action de [MediaActions] au média courant. */
+    fun onCurrent(action: MediaActions.(List<Long>) -> Unit) {
+        val item = _current.value ?: return
+        actions.action(listOf(item.id))
     }
 
     fun loadDetails() {

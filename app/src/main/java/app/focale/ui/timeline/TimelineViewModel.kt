@@ -11,12 +11,15 @@ import app.focale.core.model.GridItem
 import app.focale.core.model.GroupLevel
 import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaQuery
+import app.focale.core.model.MediaSort
 import app.focale.core.permissions.MediaAccess
 import app.focale.core.permissions.MediaAccessManager
 import app.focale.core.settings.SettingsRepository
 import app.focale.data.DateGrouping
 import app.focale.data.MediaRepository
 import app.focale.data.toGridItems
+import app.focale.ui.actions.MediaActions
+import app.focale.ui.components.GridSelection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
@@ -38,7 +41,12 @@ class TimelineViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val accessManager: MediaAccessManager,
     private val syncManager: MediaSyncManager,
+    val actions: MediaActions,
 ) : ViewModel() {
+
+    init {
+        actions.bind(viewModelScope)
+    }
 
     val access: StateFlow<MediaAccess> = accessManager.access
     val syncState: StateFlow<SyncState> = syncManager.state
@@ -46,8 +54,10 @@ class TimelineViewModel @Inject constructor(
     private val _filter = MutableStateFlow(MediaFilter.ALL)
     val filter: StateFlow<MediaFilter> = _filter.asStateFlow()
 
-    val query: StateFlow<MediaQuery> = _filter
-        .map { MediaQuery(filter = it) }
+    private val _sort = MutableStateFlow(MediaSort())
+    val sort: StateFlow<MediaSort> = _sort.asStateFlow()
+
+    val query: StateFlow<MediaQuery> = combine(_filter, _sort) { filter, sort -> MediaQuery(filter = filter, sort = sort) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, MediaQuery())
 
     val columns: StateFlow<Int> = settingsRepository.settings
@@ -58,7 +68,8 @@ class TimelineViewModel @Inject constructor(
     private val groupLevel: StateFlow<GroupLevel?> = combine(
         settingsRepository.settings.map { it.groupMode },
         columns,
-    ) { mode, cols -> DateGrouping.resolve(mode, cols) }
+        _sort,
+    ) { mode, cols, sort -> if (sort.isChronological) DateGrouping.resolve(mode, cols) else null }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
@@ -79,25 +90,27 @@ class TimelineViewModel @Inject constructor(
         .flatMapLatest { mediaRepository.observeHistogram(it, GroupLevel.MONTH) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val _selection = MutableStateFlow<Set<Long>>(emptySet())
-    val selection: StateFlow<Set<Long>> = _selection.asStateFlow()
+    private val gridSelection = GridSelection(viewModelScope, mediaRepository)
+    val selection: StateFlow<Set<Long>> = gridSelection.selected
 
     fun setFilter(filter: MediaFilter) {
         _filter.value = filter
-        _selection.value = emptySet()
+        gridSelection.clear()
+    }
+
+    fun setSort(sort: MediaSort) {
+        _sort.value = sort
     }
 
     fun setColumns(columns: Int) {
         viewModelScope.launch { settingsRepository.setGridColumns(columns) }
     }
 
-    fun setSelection(ids: Set<Long>) {
-        _selection.value = ids
-    }
+    fun setSelection(ids: Set<Long>) = gridSelection.set(ids)
 
-    fun clearSelection() {
-        _selection.value = emptySet()
-    }
+    fun clearSelection() = gridSelection.clear()
+
+    fun selectAll() = gridSelection.selectAll(query.value)
 
     fun refreshAccess() {
         accessManager.refresh()
