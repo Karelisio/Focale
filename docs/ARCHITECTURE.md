@@ -1,0 +1,287 @@
+# Focale — Plan d'architecture
+
+Focale est une galerie photo Android 100 % hors ligne, construite en Kotlin avec
+Jetpack Compose et Material 3 Expressive. Ce document décrit l'architecture
+cible, les choix techniques structurants et le découpage du développement.
+
+---
+
+## 1. Principes directeurs
+
+| Principe | Conséquence concrète |
+|---|---|
+| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. La seule connexion réseau possible est le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement ; la variante `strict` retire même la permission `INTERNET`. |
+| **Fluide avec 50 000+ médias** | MediaStore est indexé dans Room ; toutes les listes passent par Paging 3 (placeholders + sauts) ; les miniatures viennent du cache système de MediaStore (`loadThumbnail`) via un `Fetcher` Coil dédié. |
+| **MediaStore reste la source de vérité** | Room n'est qu'un miroir (index) + les métadonnées propres à l'app (favoris, albums virtuels, étiquettes ML, empreintes, coffre). |
+| **Material You partout** | Couleurs dynamiques du fond d'écran, palette maison en repli, thème « couleur depuis la photo » dans la visionneuse et les albums. |
+| **Adaptatif** | `NavigationSuiteScaffold` (barre/rail), grille dont le nombre de colonnes dépend de la largeur, panneaux latéraux sur grand écran. |
+
+---
+
+## 2. Stack
+
+| Domaine | Choix |
+|---|---|
+| Langage / build | Kotlin 2.4, AGP 9 (Kotlin intégré), Gradle 9, catalogue de versions, KSP |
+| UI | Jetpack Compose (BOM), **Material 3 1.5** (composants Expressive), material3-adaptive, navigation-suite |
+| Architecture | MVVM + UDF : `ViewModel` → `StateFlow<UiState>`, événements ponctuels via `Channel` |
+| Injection | Hilt (+ hilt-work, hilt-navigation-compose) |
+| Asynchrone | Coroutines, Flow |
+| Persistance | Room (index + métadonnées), DataStore Preferences (réglages) |
+| Pagination | Paging 3 (`PagingSource` Room via `@RawQuery`) |
+| Images | Coil 3 (miniatures MediaStore, GIF animés, frames vidéo), telephoto (zoom + sous-échantillonnage, glisser pour fermer) |
+| Vidéo | Media3 ExoPlayer + `media3-ui-compose` (contrôles M3 maison) |
+| Couleurs depuis photo | MaterialKolor (quantification + score Material Color Utilities) |
+| Formes | `MaterialShapes` + androidx.graphics.shapes (`Morph`) |
+| ML sur l'appareil | ML Kit Image Labeling (modèle **embarqué**, pas de téléchargement) |
+| Arrière-plan | WorkManager |
+| Carte | osmdroid + fond vectoriel hors ligne (Natural Earth, domaine public) |
+| Géocodage inverse | Hors ligne : base GeoNames (CC BY 4.0) embarquée, index spatial en grille |
+| Chiffrement | Tink `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo), keyset protégé par Android Keystore |
+| Authentification | androidx.biometric (biométrie forte ou identifiants de l'appareil) + code PIN (PBKDF2) |
+| Widget | Glance (`GlanceTheme` = couleurs dynamiques du système) |
+| CI | GitHub Actions : tests unitaires, lint, APK debug + release |
+
+---
+
+## 3. Vue d'ensemble des couches
+
+```
+┌────────────────────────────── UI (Compose) ──────────────────────────────┐
+│  Écrans + ViewModels : timeline, visionneuse, albums, recherche, plus,   │
+│  favoris, corbeille, nettoyage, éditeur, coffre, carte, diaporama        │
+│  Composants : grille zoomable, défilement rapide, sélection glissée,     │
+│  miniatures morphées, thème photo, barres flottantes Expressive          │
+└───────────────▲──────────────────────────────────────────▲───────────────┘
+                │ StateFlow / PagingData                   │ actions
+┌───────────────┴──────────────── Données ─────────────────┴───────────────┐
+│ Repositories : Media, Album, Favorite, Trash, Search, Cleanup, Vault,    │
+│ Memories, Settings, MediaOperations (copier/déplacer/renommer/partager)  │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Sources : Room (FocaleDatabase) · MediaStore (scanner + observer) ·      │
+│ DataStore · Fichiers privés (coffre, corbeille API 29) · ML Kit          │
+└───────────────▲──────────────────────────────────────────────────────────┘
+                │
+┌───────────────┴───────────── Arrière-plan ───────────────────────────────┐
+│ WorkManager : synchro MediaStore, analyse (étiquettes, pHash, flou,      │
+│ GPS, lieu), purge corbeille, rafraîchissement du widget                  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+Règles :
+- l'UI ne parle qu'aux ViewModels ; les ViewModels ne parlent qu'aux repositories ;
+- aucune classe Android de l'UI (Activity) n'est connue des repositories, sauf via
+  l'abstraction `ConsentRequester` (voir § 6) ;
+- tout accès disque/ContentResolver passe par `Dispatchers.IO` injecté.
+
+---
+
+## 4. Organisation des sources (module `app`)
+
+Un seul module Gradle pour garder un build simple et rapide ; le découpage se fait
+par packages, chacun pouvant devenir un module plus tard.
+
+```
+app/src/main/java/app/focale/
+├── FocaleApplication.kt        Hilt, WorkManager, ImageLoader Coil
+├── MainActivity.kt             edge-to-edge, thème, permissions, consentements
+├── core/
+│   ├── di/                     modules Hilt (DB, dispatchers, ML…)
+│   ├── model/                  modèles métier (MediaItem, MediaQuery, Album…)
+│   ├── database/               Room : entités, DAO, requêtes brutes
+│   ├── mediastore/             scanner, synchro incrémentale, observer, consentements
+│   ├── settings/               DataStore → AppSettings
+│   ├── image/                  Fetchers Coil (miniatures, fichiers chiffrés)
+│   ├── permissions/            état des permissions (complet / partiel / refusé)
+│   └── util/                   dates, formats, haptique, extensions
+├── data/                       repositories
+├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur
+├── work/                       workers
+├── vault/                      crypto, stockage, verrouillage
+├── widget/                     widget Glance
+└── ui/
+    ├── theme/                  couleurs, typo (Google Sans Flex), formes, mouvement
+    ├── components/             composants réutilisables
+    ├── navigation/             routes typées, NavHost, barre adaptative
+    ├── timeline/  viewer/  albums/  search/  more/  favorites/  trash/
+    ├── cleanup/   editor/  vault/   map/     slideshow/  memories/  settings/
+```
+
+---
+
+## 5. Modèle de données
+
+### 5.1 Index MediaStore (table `media`)
+
+Clé = `_ID` MediaStore (unique pour images et vidéos dans la table `Files`).
+
+| Colonne | Rôle |
+|---|---|
+| `id`, `media_type`, `mime_type` | identité, URI reconstruite à la volée |
+| `display_name`, `relative_path`, `bucket_id`, `bucket_name` | albums dossiers |
+| `date_taken` | date de tri (repli sur `DATE_MODIFIED`/`DATE_ADDED`) |
+| `date_added`, `date_modified`, `generation` | synchro incrémentale |
+| `size`, `width`, `height`, `orientation`, `duration` | infos et mise en page |
+| `is_screenshot`, `is_gif` | filtres rapides (dérivés à l'indexation) |
+
+Index : `date_taken`, `bucket_id`, `media_type`.
+
+### 5.2 Métadonnées de l'app
+
+| Table | Contenu |
+|---|---|
+| `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `country` |
+| `media_label` | (media, étiquette ML Kit canonique, confiance) |
+| `favorite` | médias favoris |
+| `album` / `album_media` | albums virtuels et leur contenu |
+| `trash_item` | corbeille applicative (API 29 uniquement) |
+| `vault_item` | entrées du coffre (fichiers chiffrés) |
+| `search_history` | recherches récentes |
+
+### 5.3 `MediaQuery` : une requête pour tout
+
+Toutes les grilles (timeline, album, favoris, résultats de recherche…) sont décrites
+par un objet sérialisable `MediaQuery` (filtres de type, dossier, album virtuel,
+favoris, étiquettes, période, lieu, texte, tri). Un `MediaQueryBuilder` le traduit
+en SQL ; Room fournit la `PagingSource`.
+
+Bénéfice clé : la visionneuse reçoit **la même** `MediaQuery` que la grille d'où
+l'on vient, calcule la position de départ par un `COUNT(*)` et ouvre une
+`PagingSource` démarrant à cet index (`initialKey`). Le swipe parcourt donc
+exactement les mêmes éléments, dans le même ordre, même sur 50 000 médias.
+
+---
+
+## 6. Flux clés
+
+### 6.1 Synchronisation MediaStore → Room
+1. Au démarrage (et à chaque changement détecté par `ContentObserver`, avec
+   anti-rebond), `MediaSyncManager` compare MediaStore et l'index.
+2. API 30+ : synchro incrémentale par `GENERATION_MODIFIED` + détection des
+   suppressions par la liste des `_ID` ; sinon comparaison complète
+   (`id` + `date_modified`).
+3. Écritures par lots de 500 dans des transactions ; Room invalide les
+   `PagingSource` → l'UI se met à jour seule.
+
+### 6.2 Miniatures
+`MediaThumbnail(uri, type, dateModified)` → `ThumbnailFetcher` Coil →
+`ContentResolver.loadThumbnail()` (cache de miniatures du système, très rapide,
+y compris pour les vidéos). Cache mémoire Coil ; la clé inclut `date_modified`
+pour invalider après édition.
+
+### 6.3 Opérations nécessitant le consentement de l'utilisateur
+Supprimer, mettre à la corbeille, déplacer, renommer ou remplacer un média d'une
+autre app exige une confirmation système :
+- API 30+ : `MediaStore.createTrashRequest / createDeleteRequest / createWriteRequest` (par lot) ;
+- API 29 : `RecoverableSecurityException` (élément par élément).
+
+`ConsentRequester` (singleton) expose `suspend fun request(IntentSender): Boolean`.
+`MainActivity` collecte les demandes et lance l'`IntentSender` ; le code métier
+reste linéaire (`if (!consent.request(...)) return Cancelled`).
+
+### 6.4 Corbeille (30 jours)
+- API 30+ : corbeille **système** MediaStore (`IS_TRASHED`, expiration 30 jours gérée par Android).
+- API 29 : corbeille applicative (fichier déplacé dans le stockage privé, entrée
+  `trash_item`, restauration par réinsertion MediaStore, purge par WorkManager).
+
+### 6.5 Analyse intelligente (WorkManager)
+`AnalysisWorker` traite par lots les médias non analysés (contraintes : batterie
+non faible, option « en charge uniquement »), se replanifie tant qu'il reste du
+travail :
+1. miniature 512 px via MediaStore ;
+2. ML Kit Image Labeling (confiance ≥ 0,6) → étiquettes canoniques anglaises ;
+3. dHash 64 bits (doublons) ;
+4. variance du Laplacien (flou) ;
+5. GPS EXIF (avec `ACCESS_MEDIA_LOCATION`) → ville/pays via géocodeur hors ligne.
+
+Recherche : la requête est normalisée (minuscules, sans accents), confrontée au
+dictionnaire FR/EN des 447 étiquettes (avec synonymes et hyperonymes :
+« chien » couvre aussi les races détectées), aux lieux, aux dates
+(« 2023 », « juillet 2022 », « 14/07/2021 ») et aux noms de fichiers.
+
+Doublons : regroupement par dHash, distance de Hamming ≤ seuil, candidats obtenus
+par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).
+
+### 6.6 Coffre-fort
+- Import : flux MediaStore → `StreamingAead` → `files/vault/<uuid>.bin` +
+  miniature chiffrée ; l'original est ensuite supprimé de MediaStore (consentement).
+- Lecture : images déchiffrées en flux par un `Fetcher` Coil ; vidéos lues par une
+  `DataSource` Media3 adossée au canal déchiffrant *seekable* de Tink (aucun
+  fichier en clair sur le disque).
+- Accès : biométrie forte / identifiants de l'appareil ou code PIN
+  (PBKDF2-HMAC-SHA256, sel aléatoire) ; reverrouillage à la mise en arrière-plan ;
+  `FLAG_SECURE` sur les écrans du coffre.
+
+### 6.7 Partage sans métadonnées
+Option « supprimer EXIF/GPS au partage » : copie temporaire dans le cache,
+nettoyage des balises via `ExifInterface` (JPEG/PNG/WebP), sinon ré-encodage ;
+partage via `FileProvider`, cache purgé régulièrement.
+
+---
+
+## 7. Interface
+
+### 7.1 Navigation
+```
+NavHost racine
+├── Main  ── NavigationSuiteScaffold (barre en compact, rail sinon)
+│           └── NavHost des onglets : Photos · Albums · Recherche · Plus
+│               (+ détail d'album, favoris, corbeille, nettoyage, carte,
+│                coffre, réglages, à propos…)
+├── Viewer(query, mediaId)       plein écran, au-dessus des onglets
+├── Editor(mediaId)
+├── Slideshow(query, mediaId)
+└── VaultViewer(itemId)
+```
+Le `NavHost` racine est enveloppé dans un `SharedTransitionLayout` : la miniature
+de la grille et l'image de la visionneuse partagent la même clé
+(`media-<id>`), d'où une transition fluide grille → visionneuse et retour.
+
+### 7.2 Thème
+- `MaterialExpressiveTheme` + `MotionScheme.expressive()` (ressorts).
+- Couleurs : `dynamicLight/DarkColorScheme` (Android 12+), sinon schéma généré
+  depuis la couleur de marque. Modes clair / sombre / système + AMOLED (surfaces noires).
+- « Couleur depuis la photo » : couleur dominante (MaterialKolor) d'une miniature
+  de 112 px, mise en cache, schéma animé via `DynamicMaterialTheme`.
+- Typographie : Google Sans Flex (police variable embarquée, axe `ROND`
+  arrondi) ; Display/Headline pour les dates de la timeline.
+- Formes généreuses (jusqu'à 36 dp), miniatures arrondies, morphing
+  (`MaterialShapes` → cercle) de l'indicateur de sélection et des boutons.
+
+### 7.3 Grille
+- `LazyVerticalGrid` + Paging 3, en-têtes de date pleine largeur insérés par
+  `insertSeparators` (jour / mois / année, ou automatique selon le zoom).
+- Pincement : 2 à 7 colonnes (décalées sur tablette), ancrage sur l'élément visé.
+- Défilement rapide : poignée + bulle de date calculée depuis un histogramme
+  mensuel (`GROUP BY` mois) — exact et sans charger les pages.
+- Sélection : appui long puis glissement (calcul de l'élément sous le doigt +
+  défilement automatique en bord d'écran), retour haptique à chaque ajout.
+
+---
+
+## 8. Découpage du développement
+
+| Étape | Contenu |
+|---|---|
+| **1. Cœur** | Build, thème, permissions (dont accès partiel Android 14+), index Room, synchro, timeline paginée zoomable + défilement rapide, visionneuse (zoom, swipe, glisser pour fermer, vidéo, GIF, infos EXIF), navigation adaptative, CI |
+| **2. Organisation** | Albums dossiers + virtuels, favoris, corbeille, sélection multiple glissée, copier / déplacer / renommer / supprimer / partager, tri et filtres |
+| **3. Recherche** | Worker d'analyse, ML Kit, dictionnaire FR/EN, recherche mot-clé / date / lieu, doublons, flous, écran de nettoyage |
+| **4. Édition** | Recadrage, rotation, filtres, luminosité / contraste / saturation, enregistrement en copie ou remplacement |
+| **5. Coffre & vie privée** | Coffre chiffré biométrie / code, suppression EXIF/GPS au partage |
+| **6. Extras** | Souvenirs, carte osmdroid, diaporama, widget Glance, finitions |
+
+Chaque étape fait l'objet d'un commit compilé et testé (tests unitaires de la
+logique pure : requêtes, regroupement, parsing de recherche, hash, flou, PIN…).
+
+---
+
+## 9. Permissions
+
+| Permission | Usage |
+|---|---|
+| `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO` (33+) / `READ_EXTERNAL_STORAGE` (≤ 32) | lecture des médias |
+| `READ_MEDIA_VISUAL_USER_SELECTED` (34+) | accès partiel, bannière « Gérer la sélection » |
+| `ACCESS_MEDIA_LOCATION` | coordonnées GPS non masquées des EXIF |
+| `MANAGE_MEDIA` (31+, facultatif) | opérations sans confirmation à chaque fois |
+| `USE_BIOMETRIC` | coffre-fort |
+| `INTERNET` (variante `standard` uniquement) | fond de carte OSM, sur activation explicite |

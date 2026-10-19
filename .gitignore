@@ -1,0 +1,27 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.hprof
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Kotlin
+.kotlin/
+
+# Signature (ne jamais committer de keystore)
+*.jks
+*.keystore
+!debug.keystore
+keystore.properties
