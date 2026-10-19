@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -31,9 +32,11 @@ import app.focale.ui.settings.SettingsGroup
 import app.focale.ui.settings.SettingsSwitch
 import app.focale.ui.theme.FocaleTheme
 import app.focale.ui.update.UpdateBanner
+import app.focale.ui.whatsnew.ReleaseNotesBlocks
 import app.focale.update.AppUpdate
 import app.focale.update.UpdateError
 import app.focale.update.UpdateState
+import app.focale.whatsnew.Changelog
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -102,6 +105,25 @@ class ComponentScreenshotTest {
                 hiddenFromTimeline = true,
                 onClick = {},
             )
+        }
+    }
+
+    @Test
+    fun nouveautes() = capture(dark = false) {
+        val release = Changelog.parse(
+            """
+            ## 1.2.0
+
+            - Dessins dans l'éditeur : stylo, surligneur, formes
+            - Sauvegarde chiffrée du coffre, à restaurer sur un autre
+              téléphone
+
+            Merci d'utiliser Focale !
+            """.trimIndent(),
+        ).single()
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Version ${release.version}", style = MaterialTheme.typography.titleLargeEmphasized)
+            ReleaseNotesBlocks(release.blocks)
         }
     }
 

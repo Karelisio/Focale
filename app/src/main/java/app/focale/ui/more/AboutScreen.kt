@@ -11,6 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -23,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,13 +33,19 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.BuildConfig
 import app.focale.R
+import app.focale.ui.whatsnew.WhatsNewSheet
+import app.focale.ui.whatsnew.WhatsNewViewModel
 
-/** À propos : version, engagement hors ligne et crédits. */
+/** À propos : version, nouveautés, engagement hors ligne et crédits. */
 @Composable
-fun AboutScreen(onBack: () -> Unit) {
+fun AboutScreen(onBack: () -> Unit, whatsNew: WhatsNewViewModel = hiltViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val releases by whatsNew.shown.collectAsStateWithLifecycle()
+    if (releases.isNotEmpty()) WhatsNewSheet(releases = releases, onDismiss = whatsNew::dismiss)
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
@@ -74,6 +83,9 @@ fun AboutScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            FilledTonalButton(onClick = whatsNew::showAll, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(R.string.whatsnew_title))
+            }
             AboutCard(stringResource(R.string.about_offline_title), stringResource(R.string.about_offline_body))
             AboutCard(stringResource(R.string.about_credits_title), stringResource(R.string.about_credits_body))
         }

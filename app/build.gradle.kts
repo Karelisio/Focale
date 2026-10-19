@@ -33,6 +33,28 @@ val appVersionName: String = System.getenv("GITHUB_REF_NAME")
 val appVersionCode: Int = appVersionName.split('.').map(String::toInt)
     .let { (major, minor, patch) -> major * 1_000_000 + minor * 1_000 + patch }
 
+// Journal des versions (CHANGELOG.md à la racine) embarqué dans les assets : l'application
+// en affiche les nouveautés au premier lancement après une mise à jour.
+abstract class ChangelogAssetTask : DefaultTask() {
+    @get:InputFile
+    abstract val changelog: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val dir = outputDir.get().asFile
+        dir.deleteRecursively()
+        dir.mkdirs()
+        changelog.get().asFile.copyTo(dir.resolve("CHANGELOG.md"))
+    }
+}
+
+val changelogAssets = tasks.register<ChangelogAssetTask>("changelogAssets") {
+    changelog.set(rootProject.layout.projectDirectory.file("CHANGELOG.md"))
+}
+
 // Dépôt GitHub interrogé par les mises à jour intégrées : celui de la CI, sinon l'original.
 val updateRepository: String = System.getenv("GITHUB_REPOSITORY")?.takeIf { it.isNotBlank() } ?: "Karelisio/Focale"
 
@@ -161,6 +183,12 @@ kotlin {
             "kotlinx.coroutines.FlowPreview",
             "me.saket.telephoto.ExperimentalTelephotoApi",
         )
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(changelogAssets, ChangelogAssetTask::outputDir)
     }
 }
 

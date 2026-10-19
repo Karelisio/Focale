@@ -40,6 +40,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.focale.R
 import app.focale.core.util.Formatters
+import app.focale.ui.whatsnew.ReleaseNotesBlocks
 import app.focale.update.AppUpdate
 import app.focale.update.ReleaseNotes
 import app.focale.update.UpdateError
@@ -180,25 +181,7 @@ private fun ReleaseNotesSheet(update: AppUpdate, canInstall: Boolean, onInstall:
                 text = stringResource(R.string.update_notes_title, update.version),
                 style = MaterialTheme.typography.headlineSmallEmphasized,
             )
-            blocks.forEach { block ->
-                when (block) {
-                    is ReleaseNotes.Block.Heading -> Text(
-                        text = block.text,
-                        style = MaterialTheme.typography.titleMediumEmphasized,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    is ReleaseNotes.Block.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("•", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
-                        Text(block.text, style = MaterialTheme.typography.bodyLarge)
-                    }
-                    is ReleaseNotes.Block.Paragraph -> Text(
-                        text = block.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+            ReleaseNotesBlocks(blocks)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
                 if (canInstall) {
                     Button(onClick = onInstall, shapes = ButtonDefaults.shapes()) {

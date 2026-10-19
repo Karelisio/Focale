@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Nouveautés après une mise à jour -->
+    <string name="whatsnew_title">Nouveautés</string>
+    <string name="whatsnew_version">Version %1$s</string>
+    <string name="whatsnew_done">C\'est parti</string>
+</resources>

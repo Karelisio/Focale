@@ -11,14 +11,15 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import app.focale.core.model.MediaQuery
 import app.focale.ui.components.LocalNavAnimatedVisibilityScope
 import app.focale.ui.components.LocalSharedTransitionScope
 import app.focale.ui.viewer.ViewerScreen
+import app.focale.ui.whatsnew.WhatsNewHost
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -64,6 +65,8 @@ fun FocaleApp(openMediaRequests: StateFlow<Long?>, onOpenMediaHandled: () -> Uni
                 }
                 additionalRootDestinations(rootNav)
             }
+            // Premier lancement après une mise à jour : nouveautés de la version.
+            WhatsNewHost()
         }
     }
 }

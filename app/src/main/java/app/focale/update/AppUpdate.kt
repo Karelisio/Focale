@@ -104,16 +104,44 @@ object ReleaseNotes {
     /** Suffixe des notes générées par GitHub : « by @auteur in https://…/pull/12 ». */
     private val attribution = Regex("""\s+by @\S+ in https?://\S+$""")
 
-    fun parse(markdown: String): List<Block> = markdown.lineSequence()
-        .map { it.trimEnd() }
-        .filter { it.isNotBlank() && !it.trimStart().startsWith("<!--") }
-        .map { line ->
-            heading.matchEntire(line)?.let { return@map Block.Heading(clean(it.groupValues[1])) }
-            bullet.matchEntire(line)?.let { return@map Block.Bullet(clean(it.groupValues[1])) }
-            Block.Paragraph(clean(line))
+    /**
+     * Les lignes consécutives forment un même bloc (paragraphe ou puce continuée sur la
+     * ligne suivante) ; une ligne vide, un titre ou une nouvelle puce le terminent.
+     */
+    fun parse(markdown: String): List<Block> {
+        val blocks = mutableListOf<Block>()
+        var pending: StringBuilder? = null
+        var pendingIsBullet = false
+        fun close() {
+            pending?.let { text ->
+                val cleaned = clean(text.toString())
+                if (cleaned.isNotEmpty()) blocks += if (pendingIsBullet) Block.Bullet(cleaned) else Block.Paragraph(cleaned)
+            }
+            pending = null
         }
-        .filter { it.text.isNotEmpty() }
-        .toList()
+        markdown.lineSequence().map { it.trimEnd() }.forEach { line ->
+            when {
+                line.trimStart().startsWith("<!--") -> Unit
+                line.isBlank() -> close()
+                heading.matches(line) -> {
+                    close()
+                    clean(heading.matchEntire(line)!!.groupValues[1]).takeIf { it.isNotEmpty() }?.let { blocks += Block.Heading(it) }
+                }
+                bullet.matches(line) -> {
+                    close()
+                    pending = StringBuilder(bullet.matchEntire(line)!!.groupValues[1])
+                    pendingIsBullet = true
+                }
+                pending != null -> pending!!.append(' ').append(line.trim())
+                else -> {
+                    pending = StringBuilder(line.trim())
+                    pendingIsBullet = false
+                }
+            }
+        }
+        close()
+        return blocks
+    }
 
     private fun clean(text: String): String = text
         .replace(link, "$1")

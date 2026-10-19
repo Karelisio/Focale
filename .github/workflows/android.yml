@@ -114,19 +114,23 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" "${apks[@]}" --repo "$GITHUB_REPOSITORY"
           fi
-      # Version publiée sans description : liste des changements depuis la précédente,
-      # affichée par l'application (« Nouveautés »).
+      # Version publiée sans description : section de CHANGELOG.md pour cette version, à
+      # défaut la liste des commits depuis la précédente (affichée par l'application).
       - name: Notes de version
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           body=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
           if [ -z "$(echo "$body" | tr -d '[:space:]')" ]; then
-            previous=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
-            changes=$(git log --no-merges --pretty='%s' "${previous:+$previous..}$GITHUB_REF_NAME" \
-              | grep -Ev '^(ci|chore|docs|test|build|style|refactor)(\(.+\))?!?:' \
-              | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//; s/^(.)/\U\1/; s/^/- /' || true)
-            if [ -n "$changes" ]; then
+            heading="## ${GITHUB_REF_NAME#v}"
+            changes=$(awk -v h="$heading" 'index($0, h) == 1 && substr($0, length(h) + 1, 1) !~ /[0-9.]/ { f = 1; next } /^## / { f = 0 } f' CHANGELOG.md)
+            if [ -z "$(echo "$changes" | tr -d '[:space:]')" ]; then
+              previous=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
+              changes=$(git log --no-merges --pretty='%s' "${previous:+$previous..}$GITHUB_REF_NAME" \
+                | grep -Ev '^(ci|chore|docs|test|build|style|refactor|perf)(\(.+\))?!?:' \
+                | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//; s/^(.)/\U\1/; s/^/- /' || true)
+            fi
+            if [ -n "$(echo "$changes" | tr -d '[:space:]')" ]; then
               printf '## Nouveautés\n\n%s\n' "$changes" > notes.md
               gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
             fi
