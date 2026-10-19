@@ -152,6 +152,13 @@ android {
             "/META-INF/LICENSE*",
             "/META-INF/NOTICE*",
         )
+        jniLibs {
+            // Bibliothèques natives (ML Kit, ONNX Runtime) compressées dans l'APK : téléchargement
+            // et mises à jour bien plus légers ; Android les extrait à l'installation.
+            useLegacyPackaging = true
+            // x86 32 bits : anciens émulateurs uniquement.
+            excludes += "/lib/x86/**"
+        }
     }
 
     testOptions {
