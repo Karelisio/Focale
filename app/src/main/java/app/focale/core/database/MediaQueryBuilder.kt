@@ -135,6 +135,9 @@ object MediaQueryBuilder {
             clauses += "m.bucket_id = ?"
             args += it
         }
+        if (query.excludedBuckets.isNotEmpty()) {
+            clauses += "m.bucket_id NOT IN (${query.excludedBuckets.joinToString(",")})"
+        }
         query.albumId?.let {
             clauses += "m.id IN (SELECT media_id FROM album_media WHERE album_id = ?)"
             args += it

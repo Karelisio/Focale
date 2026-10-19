@@ -73,6 +73,8 @@ data class MediaQuery(
     val geotaggedOnly: Boolean = false,
     /** Médias pris dans cette zone (groupe de la carte). */
     val area: GeoArea? = null,
+    /** Dossiers exclus (dossiers masqués de la timeline). */
+    val excludedBuckets: List<Long> = emptyList(),
     val sort: MediaSort = MediaSort(),
 ) {
     companion object {

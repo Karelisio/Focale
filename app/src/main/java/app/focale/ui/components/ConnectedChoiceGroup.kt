@@ -1,5 +1,6 @@
 package app.focale.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -26,7 +28,8 @@ data class Choice<T>(val value: T, val label: String, val icon: ImageVector? = n
 
 /**
  * Groupe de boutons bascule connectés (Material 3 Expressive) : la forme du bouton
- * coché se transforme en pilule, avec retour haptique.
+ * coché se transforme en pilule, avec retour haptique. En mode [compact], seul le
+ * bouton coché affiche son libellé et s'élargit ; les autres montrent leur icône.
  */
 @Composable
 fun <T> ConnectedChoiceGroup(
@@ -34,6 +37,7 @@ fun <T> ConnectedChoiceGroup(
     selected: T,
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     val haptics = LocalHapticFeedback.current
     Row(
@@ -41,8 +45,11 @@ fun <T> ConnectedChoiceGroup(
         modifier = modifier.fillMaxWidth(),
     ) {
         choices.forEachIndexed { index, choice ->
+            val checked = choice.value == selected
+            val showLabel = !compact || checked || choice.icon == null
+            val weight by animateFloatAsState(if (compact && checked) COMPACT_SELECTED_WEIGHT else 1f, label = "choiceWeight")
             ToggleButton(
-                checked = choice.value == selected,
+                checked = checked,
                 onCheckedChange = {
                     haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                     onSelect(choice.value)
@@ -53,15 +60,17 @@ fun <T> ConnectedChoiceGroup(
                     else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                 },
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(weight)
                     .semantics { role = Role.RadioButton },
             ) {
                 choice.icon?.let {
-                    Icon(it, contentDescription = null, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
-                    Spacer(Modifier.width(ToggleButtonDefaults.IconSpacing))
+                    Icon(it, contentDescription = if (showLabel) null else choice.label, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
+                    if (showLabel) Spacer(Modifier.width(ToggleButtonDefaults.IconSpacing))
                 }
-                Text(choice.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (showLabel) Text(choice.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
 }
+
+private const val COMPACT_SELECTED_WEIGHT = 2.6f

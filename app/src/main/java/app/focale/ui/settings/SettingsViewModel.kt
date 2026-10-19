@@ -2,21 +2,30 @@ package app.focale.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.focale.core.model.Album
 import app.focale.core.model.GroupMode
 import app.focale.core.settings.AppSettings
 import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.ThemeMode
+import app.focale.data.AlbumRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
+    albumRepository: AlbumRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = repository.current
+
+    /** Dossiers de l'appareil, pour choisir ceux masqués de la timeline. */
+    val folders: StateFlow<List<Album.Folder>> = albumRepository.observeFolders()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private fun update(block: suspend SettingsRepository.() -> Unit) {
         viewModelScope.launch { repository.block() }
@@ -37,4 +46,5 @@ class SettingsViewModel @Inject constructor(
     fun setSlideshowInterval(seconds: Int) = update { setSlideshowInterval(seconds) }
     fun setVaultAutoLock(seconds: Int) = update { setVaultAutoLockSeconds(seconds) }
     fun setAutoCheckUpdates(enabled: Boolean) = update { setAutoCheckUpdates(enabled) }
+    fun setFolderHidden(bucketId: Long, hidden: Boolean) = update { setFolderHidden(bucketId, hidden) }
 }

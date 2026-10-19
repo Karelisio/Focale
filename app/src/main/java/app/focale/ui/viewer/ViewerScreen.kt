@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -24,9 +25,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
@@ -35,9 +36,9 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Wallpaper
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -84,6 +85,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import app.focale.R
 import app.focale.core.image.ThumbnailSizes
+import app.focale.core.image.UltraHdr
 import app.focale.core.image.thumbnail
 import app.focale.core.model.MediaItem
 import app.focale.core.util.Formatters
@@ -100,8 +102,10 @@ import app.focale.ui.theme.ViewerChromeTheme
 import coil3.compose.AsyncImage
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.withContext
 import me.saket.telephoto.flick.FlickToDismiss
 import me.saket.telephoto.flick.FlickToDismissState
 import me.saket.telephoto.flick.rememberFlickToDismissState
@@ -141,6 +145,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val flickState = rememberFlickToDismissState(dismissThresholdRatio = 0.15f, rotateOnDrag = false)
 
     ImmersiveSystemBars(visible = chromeVisible)
+    HdrWindowMode(current)
     BackHandler(enabled = showInfo) { showInfo = false }
 
     // Plus rien à afficher (dernier média supprimé, filtre vidé) : on referme.
@@ -506,6 +511,26 @@ private fun startChooser(context: Context, action: String, item: MediaItem) {
     }
     runCatching {
         context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+}
+
+/**
+ * Photo Ultra HDR affichée (Android 14+) : la fenêtre passe en mode couleur HDR pour
+ * que la gainmap restitue les hautes lumières ; retour au mode standard sinon.
+ */
+@Composable
+private fun HdrWindowMode(item: MediaItem?) {
+    if (!UltraHdr.supported) return
+    val context = LocalContext.current
+    val window = context.findActivity()?.window ?: return
+    var hdr by remember { mutableStateOf(false) }
+    LaunchedEffect(item?.id, item?.dateModified) {
+        hdr = item != null && !item.isVideo && UltraHdr.isCandidate(item.mimeType) &&
+            withContext(Dispatchers.IO) { UltraHdr.hasGainmap(context.contentResolver, item.uri) }
+    }
+    DisposableEffect(window, hdr) {
+        window.colorMode = if (hdr) ActivityInfo.COLOR_MODE_HDR else ActivityInfo.COLOR_MODE_DEFAULT
+        onDispose { window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT }
     }
 }
 

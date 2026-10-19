@@ -9,6 +9,8 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Slideshow
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
@@ -65,6 +67,7 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val isUserAlbum = viewModel.kind == CollectionKind.USER_ALBUM
+    val folderHidden by viewModel.folderHidden.collectAsStateWithLifecycle()
 
     var showSort by rememberSaveable { mutableStateOf(false) }
     var renaming by rememberSaveable { mutableStateOf(false) }
@@ -153,6 +156,9 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
                     if (isUserAlbum) {
                         AlbumMenu(onRename = { renaming = true }, onDelete = { confirmDelete = true })
                     }
+                    folderHidden?.let { hidden ->
+                        FolderMenu(hidden = hidden, onHiddenChange = viewModel::setFolderHidden)
+                    }
                 },
                 scrollBehavior = scrollBehavior,
             )
@@ -189,6 +195,29 @@ private fun AlbumMenu(onRename: () -> Unit, onDelete: () -> Unit) {
                 onClick = {
                     open = false
                     onDelete()
+                },
+            )
+        }
+    }
+}
+
+/** Menu d'un album dossier : masquer ou réafficher ses médias dans la timeline. */
+@Composable
+private fun FolderMenu(hidden: Boolean, onHiddenChange: (Boolean) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, shapes = IconButtonDefaults.shapes()) {
+            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(if (hidden) R.string.folder_show_in_timeline else R.string.folder_hide_from_timeline)) },
+                leadingIcon = {
+                    Icon(if (hidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, contentDescription = null)
+                },
+                onClick = {
+                    open = false
+                    onHiddenChange(!hidden)
                 },
             )
         }

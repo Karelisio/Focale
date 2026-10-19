@@ -8,6 +8,7 @@ import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaQuery
 import app.focale.core.permissions.MediaAccess
 import app.focale.core.permissions.MediaAccessManager
+import app.focale.core.settings.SettingsRepository
 import app.focale.data.AlbumRepository
 import app.focale.data.MediaRepository
 import app.focale.data.TrashRepository
@@ -16,6 +17,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 /** Compteurs des collections automatiques (favoris, vidéos…). */
@@ -34,6 +36,7 @@ class AlbumsViewModel @Inject constructor(
     mediaRepository: MediaRepository,
     trashRepository: TrashRepository,
     accessManager: MediaAccessManager,
+    settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     val access: StateFlow<MediaAccess> = accessManager.access
@@ -43,6 +46,10 @@ class AlbumsViewModel @Inject constructor(
 
     val folders: StateFlow<List<Album.Folder>> = albumRepository.observeFolders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Dossiers masqués de la timeline, signalés sur leur carte. */
+    val hiddenFolders: StateFlow<Set<Long>> = settingsRepository.settings.map { it.hiddenFolders }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), settingsRepository.current.value.hiddenFolders)
 
     val counts: StateFlow<CollectionCounts> = combine(
         mediaRepository.observeCount(FAVORITES),

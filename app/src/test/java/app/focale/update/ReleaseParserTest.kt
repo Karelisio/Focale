@@ -11,7 +11,7 @@ class ReleaseParserTest {
     private val release = ReleaseParser.parse(RELEASE_JSON)
 
     @Test
-    fun `versions are compared numerically`() {
+    fun `les versions sont comparées numériquement`() {
         assertTrue(AppVersion.isNewer("v1.10.0", "1.9.3"))
         assertTrue(AppVersion.isNewer("2.0.0", "1.99.99"))
         assertTrue(AppVersion.isNewer("1.0.1", "1.0.0-debug"))
@@ -21,31 +21,55 @@ class ReleaseParserTest {
     }
 
     @Test
-    fun `release from the GitHub API is parsed`() {
+    fun `la réponse de l'API GitHub est lue`() {
         assertEquals("v1.2.0", release.tagName)
         assertEquals(4, release.assets.size)
         assertFalse(release.draft || release.prerelease)
     }
 
     @Test
-    fun `apk matching the device architecture is preferred`() {
+    fun `l'APK de l'architecture de l'appareil est préféré`() {
         val update = ReleaseParser.updateFrom(release, current = "1.1.0", abis = listOf("arm64-v8a", "armeabi-v7a", "armeabi"))!!
         assertEquals("1.2.0", update.version)
         assertEquals("https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-standard-arm64-v8a-release.apk", update.apkUrl)
         assertEquals(25_162_099L, update.apkSize)
         assertEquals("ce90d922dbbe8b73494dbbb6717cedb87620c2aa13ec997352c838305ec4f510", update.sha256)
         assertEquals("https://github.com/Karelisio/Focale/releases/tag/v1.2.0", update.pageUrl)
+        assertTrue(update.notes.startsWith("## Nouveautés"))
     }
 
     @Test
-    fun `universal apk is used for other architectures and never the strict variant`() {
+    fun `les notes Markdown sont réduites à des titres, puces et paragraphes`() {
+        val blocks = ReleaseNotes.parse(
+            """
+            ## What's Changed
+            * **Carte** visible en thème sombre by @Karelisio in https://github.com/Karelisio/Focale/pull/3
+            - Voir [la documentation](https://example.org)
+            <!-- commentaire -->
+
+            **Full Changelog**: https://github.com/Karelisio/Focale/compare/v1.1.0...v1.2.0
+            """.trimIndent(),
+        )
+        assertEquals(
+            listOf(
+                ReleaseNotes.Block.Heading("What's Changed"),
+                ReleaseNotes.Block.Bullet("Carte visible en thème sombre"),
+                ReleaseNotes.Block.Bullet("Voir la documentation"),
+                ReleaseNotes.Block.Paragraph("Full Changelog: https://github.com/Karelisio/Focale/compare/v1.1.0...v1.2.0"),
+            ),
+            blocks,
+        )
+    }
+
+    @Test
+    fun `l'APK universel sert aux autres architectures, jamais la variante strict`() {
         val update = ReleaseParser.updateFrom(release, current = "1.1.0", abis = listOf("riscv64"))!!
         assertEquals("https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-standard-universal-release.apk", update.apkUrl)
         assertNull(update.sha256)
     }
 
     @Test
-    fun `no update when the release is not newer, is a preview or has no apk`() {
+    fun `pas de mise à jour pour une version ancienne, une préversion ou sans APK`() {
         assertNull(ReleaseParser.updateFrom(release, current = "1.2.0", abis = listOf("arm64-v8a")))
         assertNull(ReleaseParser.updateFrom(release.copy(prerelease = true), current = "1.1.0", abis = listOf("arm64-v8a")))
         assertNull(ReleaseParser.updateFrom(release.copy(assets = emptyList()), current = "1.1.0", abis = listOf("arm64-v8a")))
@@ -61,6 +85,7 @@ class ReleaseParserTest {
               "draft": false,
               "prerelease": false,
               "html_url": "https://github.com/Karelisio/Focale/releases/tag/v1.2.0",
+              "body": "## Nouveautés\n\n- Dessins dans l'éditeur",
               "assets": [
                 {
                   "id": 656108883,

@@ -124,6 +124,19 @@ class CollectionViewModel @Inject constructor(
 
     suspend fun gridIndexOf(mediaId: Long): Int? = mediaRepository.gridPositionOf(query.value, mediaId, groupLevel.value)
 
+    // ── Album dossier ──────────────────────────────────────────────────────────────
+
+    /** Dossier masqué de la timeline (null hors album dossier). */
+    val folderHidden: StateFlow<Boolean?> = (baseQuery.bucketId?.let { bucket ->
+        settingsRepository.settings.map { bucket in it.hiddenFolders }
+    } ?: flowOf(null))
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun setFolderHidden(hidden: Boolean) {
+        val bucket = baseQuery.bucketId ?: return
+        viewModelScope.launch { settingsRepository.setFolderHidden(bucket, hidden) }
+    }
+
     // ── Album virtuel ──────────────────────────────────────────────────────────────
 
     fun renameAlbum(name: String) {

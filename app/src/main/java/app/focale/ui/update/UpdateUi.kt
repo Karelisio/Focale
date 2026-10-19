@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Button
@@ -19,10 +21,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import app.focale.R
 import app.focale.core.util.Formatters
 import app.focale.update.AppUpdate
+import app.focale.update.ReleaseNotes
 import app.focale.update.UpdateError
 import app.focale.update.UpdateState
 import app.focale.update.update
@@ -70,6 +79,18 @@ fun UpdateControls(
 ) {
     val uriHandler = LocalUriHandler.current
     val update = state.update
+    var showNotes by rememberSaveable { mutableStateOf(false) }
+    if (showNotes && update != null) {
+        ReleaseNotesSheet(
+            update = update,
+            canInstall = state is UpdateState.Available,
+            onInstall = {
+                showNotes = false
+                onInstall(update)
+            },
+            onDismiss = { showNotes = false },
+        )
+    }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when (state) {
             UpdateState.Checking, is UpdateState.Installing -> LinearWavyProgressIndicator(Modifier.fillMaxWidth())
@@ -82,7 +103,12 @@ fun UpdateControls(
                     Button(onClick = { onInstall(state.update) }, shapes = ButtonDefaults.shapes()) {
                         Text(stringResource(R.string.update_action_install))
                     }
-                    TextButton(onClick = { uriHandler.openUri(state.update.pageUrl) }, shapes = ButtonDefaults.shapes()) {
+                    TextButton(
+                        onClick = {
+                            if (state.update.notes.isBlank()) uriHandler.openUri(state.update.pageUrl) else showNotes = true
+                        },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
                         Text(stringResource(R.string.update_action_notes))
                     }
                 }
@@ -132,6 +158,57 @@ fun UpdateBanner(state: UpdateState, onCheck: () -> Unit, onInstall: (AppUpdate)
                 }
             }
             UpdateControls(state = state, onCheck = onCheck, onInstall = onInstall)
+        }
+    }
+}
+
+/** Nouveautés de la version proposée, lues dans l'application. */
+@Composable
+private fun ReleaseNotesSheet(update: AppUpdate, canInstall: Boolean, onInstall: () -> Unit, onDismiss: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+    val blocks = remember(update.notes) { ReleaseNotes.parse(update.notes) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.update_notes_title, update.version),
+                style = MaterialTheme.typography.headlineSmallEmphasized,
+            )
+            blocks.forEach { block ->
+                when (block) {
+                    is ReleaseNotes.Block.Heading -> Text(
+                        text = block.text,
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    is ReleaseNotes.Block.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("•", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+                        Text(block.text, style = MaterialTheme.typography.bodyLarge)
+                    }
+                    is ReleaseNotes.Block.Paragraph -> Text(
+                        text = block.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
+                if (canInstall) {
+                    Button(onClick = onInstall, shapes = ButtonDefaults.shapes()) {
+                        Text(stringResource(R.string.update_action_install))
+                    }
+                }
+                TextButton(onClick = { uriHandler.openUri(update.pageUrl) }, shapes = ButtonDefaults.shapes()) {
+                    Text(stringResource(R.string.update_action_github))
+                }
+            }
         }
     }
 }

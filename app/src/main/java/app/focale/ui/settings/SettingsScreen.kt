@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Contrast
@@ -18,7 +19,7 @@ import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.SettingsSuggest
-import androidx.compose.material.icons.automirrored.outlined.VolumeOff
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Wallpaper
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,9 +30,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -127,6 +132,16 @@ private fun AppearanceSection(settings: AppSettings, viewModel: SettingsViewMode
 
 @Composable
 private fun GridSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    var choosingFolders by rememberSaveable { mutableStateOf(false) }
+    if (choosingFolders) {
+        val folders by viewModel.folders.collectAsStateWithLifecycle()
+        HiddenFoldersSheet(
+            folders = folders,
+            hidden = settings.hiddenFolders,
+            onHiddenChange = viewModel::setFolderHidden,
+            onDismiss = { choosingFolders = false },
+        )
+    }
     val groupChoices = listOf(
         Choice(GroupMode.AUTO, stringResource(R.string.settings_grouping_auto)),
         Choice(GroupMode.DAY, stringResource(R.string.settings_grouping_day)),
@@ -142,6 +157,20 @@ private fun GridSection(settings: AppSettings, viewModel: SettingsViewModel) {
             ) {
                 ConnectedChoiceGroup(choices = groupChoices, selected = settings.groupMode, onSelect = viewModel::setGroupMode)
             }
+        }
+        item { shapes ->
+            val hiddenCount = settings.hiddenFolders.size
+            SettingsAction(
+                title = stringResource(R.string.settings_hidden_folders),
+                subtitle = if (hiddenCount == 0) {
+                    stringResource(R.string.settings_hidden_folders_none)
+                } else {
+                    pluralStringResource(R.plurals.settings_hidden_folders_count, hiddenCount, hiddenCount)
+                },
+                icon = Icons.Outlined.VisibilityOff,
+                shapes = shapes,
+                onClick = { choosingFolders = true },
+            )
         }
         item { shapes ->
             SettingsSwitch(

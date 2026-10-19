@@ -108,4 +108,13 @@ class MediaQueryBuilderTest {
         orientation = 0, duration = 0, volumeName = "external_primary", isScreenshot = false,
         isGif = false, isTrashed = false, dateExpires = 0,
     )
+
+    @Test
+    fun `les dossiers masqués sont exclus sans paramètre positionnel`() {
+        val args = mutableListOf<Any?>()
+        val where = MediaQueryBuilder.where(MediaQuery(excludedBuckets = listOf(7L, -12L)), args)
+        assertTrue(where.contains("m.bucket_id NOT IN (7,-12)"))
+        assertTrue(args.isEmpty())
+        assertFalse(MediaQueryBuilder.where(MediaQuery(), mutableListOf()).contains("NOT IN"))
+    }
 }

@@ -231,7 +231,7 @@
 
     <!-- Nettoyage -->
     <string name="cleanup_title">Cleanup</string>
-    <string name="cleanup_summary">Duplicates and blurry photos</string>
+    <string name="cleanup_summary">Duplicates, blurry photos, screenshots and large videos</string>
     <string name="cleanup_duplicates">Duplicates</string>
     <string name="cleanup_blurry">Blurry</string>
     <string name="cleanup_searching">Looking for similar photos…</string>
@@ -426,4 +426,30 @@
     <string name="update_action_github">Open GitHub</string>
     <string name="update_auto">Check automatically</string>
     <string name="update_auto_summary">Once a day, on GitHub. No other data is sent.</string>
+    <!-- Dossiers masqués -->
+    <string name="folder_hide_from_timeline">Hide from Photos</string>
+    <string name="folder_show_in_timeline">Show in Photos</string>
+    <string name="folder_hidden">Hidden from Photos</string>
+    <string name="settings_hidden_folders">Hidden folders</string>
+    <string name="settings_hidden_folders_none">All folders appear in Photos</string>
+    <string name="settings_hidden_folders_summary">Their media stay in Albums and search, but no longer appear in Photos, memories or the widget.</string>
+    <plurals name="settings_hidden_folders_count">
+        <item quantity="one">%d folder hidden from Photos</item>
+        <item quantity="other">%d folders hidden from Photos</item>
+    </plurals>
+    <!-- Nettoyage : captures et grosses vidéos -->
+    <string name="cleanup_screenshots">Screenshots</string>
+    <string name="cleanup_large_videos">Large videos</string>
+    <string name="cleanup_no_screenshots">No screenshots</string>
+    <string name="cleanup_no_large_videos">No videos over 50 MB</string>
+    <plurals name="cleanup_screenshots_summary">
+        <item quantity="one">%1$d screenshot · %2$s</item>
+        <item quantity="other">%1$d screenshots · %2$s</item>
+    </plurals>
+    <plurals name="cleanup_large_videos_summary">
+        <item quantity="one">%1$d video over 50 MB · %2$s</item>
+        <item quantity="other">%1$d videos over 50 MB · %2$s</item>
+    </plurals>
+    <!-- Notes de version -->
+    <string name="update_notes_title">What’s new in version %1$s</string>
 </resources>

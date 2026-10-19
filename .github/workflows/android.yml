@@ -94,6 +94,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Historique complet : les notes de version sont tirées des commits depuis la version précédente.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v5
         with:
           name: focale-apk-${{ github.sha }}
@@ -107,5 +111,22 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${apks[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "${apks[@]}" --repo "$GITHUB_REPOSITORY" --generate-notes
+            gh release create "$GITHUB_REF_NAME" "${apks[@]}" --repo "$GITHUB_REPOSITORY"
+          fi
+      # Version publiée sans description : liste des changements depuis la précédente,
+      # affichée par l'application (« Nouveautés »).
+      - name: Notes de version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
+          if [ -z "$(echo "$body" | tr -d '[:space:]')" ]; then
+            previous=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
+            changes=$(git log --no-merges --pretty='%s' "${previous:+$previous..}$GITHUB_REF_NAME" \
+              | grep -Ev '^(ci|chore|docs|test|build|style|refactor)(\(.+\))?!?:' \
+              | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//; s/^(.)/\U\1/; s/^/- /' || true)
+            if [ -n "$changes" ]; then
+              printf '## Nouveautés\n\n%s\n' "$changes" > notes.md
+              gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+            fi
           fi

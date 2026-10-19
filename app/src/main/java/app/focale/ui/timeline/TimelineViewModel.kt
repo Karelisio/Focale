@@ -17,8 +17,8 @@ import app.focale.core.permissions.MediaAccessManager
 import app.focale.core.settings.SettingsRepository
 import app.focale.data.DateGrouping
 import app.focale.data.MediaRepository
-import app.focale.data.Memory
 import app.focale.data.MemoriesRepository
+import app.focale.data.Memory
 import app.focale.data.toGridItems
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.components.GridSelection
@@ -61,8 +61,13 @@ class TimelineViewModel @Inject constructor(
     private val _sort = MutableStateFlow(MediaSort())
     val sort: StateFlow<MediaSort> = _sort.asStateFlow()
 
-    val query: StateFlow<MediaQuery> = combine(_filter, _sort) { filter, sort -> MediaQuery(filter = filter, sort = sort) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, MediaQuery())
+    private val hiddenFolders: Flow<List<Long>> = settingsRepository.settings
+        .map { it.hiddenFolders.sorted() }
+        .distinctUntilChanged()
+
+    val query: StateFlow<MediaQuery> = combine(_filter, _sort, hiddenFolders) { filter, sort, hidden ->
+        MediaQuery(filter = filter, sort = sort, excludedBuckets = hidden)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, MediaQuery(excludedBuckets = settingsRepository.current.value.hiddenFolders.sorted()))
 
     val columns: StateFlow<Int> = settingsRepository.settings
         .map { it.gridColumns }
@@ -97,9 +102,10 @@ class TimelineViewModel @Inject constructor(
     /** Souvenirs du jour, recalculés quand la bibliothèque ou la date change. */
     val memories: StateFlow<List<Memory>> = combine(
         settingsRepository.settings.map { it.showMemories }.distinctUntilChanged(),
+        hiddenFolders,
         mediaRepository.observeCount(MediaQuery.Timeline),
         memoriesRepository.today,
-    ) { show, _, day -> if (show) day else null }
+    ) { show, _, _, day -> if (show) day else null }
         .mapLatest { day -> if (day != null) memoriesRepository.memories(day) else emptyList() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 

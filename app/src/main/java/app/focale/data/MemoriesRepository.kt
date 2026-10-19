@@ -6,6 +6,7 @@ import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.di.IoDispatcher
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
+import app.focale.core.settings.SettingsRepository
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -14,6 +15,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 
@@ -50,6 +52,7 @@ object MemoryWindows {
 @Singleton
 class MemoriesRepository @Inject constructor(
     private val dao: MediaDao,
+    private val settings: SettingsRepository,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -57,8 +60,9 @@ class MemoriesRepository @Inject constructor(
         withContext(io) {
             val oldest = dao.oldestDateTaken() ?: return@withContext emptyList()
             val oldestYear = Instant.ofEpochMilli(oldest).atZone(zone).year
+            val hidden = settings.settings.first().hiddenFolders.sorted()
             MemoryWindows.of(today, oldestYear, zone).mapNotNull { window ->
-                val query = MediaQuery(dateFrom = window.from, dateTo = window.to)
+                val query = MediaQuery(dateFrom = window.from, dateTo = window.to, excludedBuckets = hidden)
                 val count = dao.count(MediaQueryBuilder.count(query))
                 if (count == 0) return@mapNotNull null
                 val cover = dao.list(MediaQueryBuilder.bestCover(query)).firstOrNull()?.toModel() ?: return@mapNotNull null

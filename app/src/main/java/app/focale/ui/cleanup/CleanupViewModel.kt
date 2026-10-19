@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-enum class CleanupTab { DUPLICATES, BLURRY }
+enum class CleanupTab { DUPLICATES, BLURRY, SCREENSHOTS, LARGE_VIDEOS }
 
 @HiltViewModel
 class CleanupViewModel @Inject constructor(
@@ -37,6 +37,12 @@ class CleanupViewModel @Inject constructor(
     val blurry: StateFlow<List<MediaItem>?> = _threshold
         .debounce(150)
         .flatMapLatest { repository.observeBlurry(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val screenshots: StateFlow<List<MediaItem>?> = repository.observeScreenshots()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val largeVideos: StateFlow<List<MediaItem>?> = repository.observeLargeVideos()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _selection = MutableStateFlow<Set<Long>>(emptySet())
@@ -65,6 +71,8 @@ class CleanupViewModel @Inject constructor(
         _selection.value = when (_tab.value) {
             CleanupTab.DUPLICATES -> _duplicates.value.orEmpty().flatMap { group -> group.items.filter { it.id != group.keepId }.map { it.id } }.toSet()
             CleanupTab.BLURRY -> blurry.value.orEmpty().map { it.id }.toSet()
+            CleanupTab.SCREENSHOTS -> screenshots.value.orEmpty().map { it.id }.toSet()
+            CleanupTab.LARGE_VIDEOS -> largeVideos.value.orEmpty().map { it.id }.toSet()
         }
     }
 

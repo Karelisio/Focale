@@ -15,6 +15,8 @@ data class AppUpdate(
     /** Empreinte SHA-256 publiée par GitHub (hexadécimal), contrôlée après téléchargement. */
     val sha256: String?,
     val pageUrl: String,
+    /** Notes de version (Markdown GitHub), éventuellement vides. */
+    val notes: String = "",
 )
 
 /** Comparaison de versions « X.Y.Z » ; les suffixes (« -debug »…) sont ignorés. */
@@ -40,6 +42,7 @@ object ReleaseParser {
     data class Release(
         @SerialName("tag_name") val tagName: String,
         @SerialName("html_url") val htmlUrl: String,
+        val body: String? = null,
         val draft: Boolean = false,
         val prerelease: Boolean = false,
         val assets: List<Asset> = emptyList(),
@@ -71,6 +74,7 @@ object ReleaseParser {
             apkSize = asset.size,
             sha256 = asset.digest?.takeIf { it.startsWith("sha256:") }?.removePrefix("sha256:")?.lowercase(),
             pageUrl = release.htmlUrl,
+            notes = release.body.orEmpty().trim(),
         )
     }
 
@@ -80,4 +84,40 @@ object ReleaseParser {
         return abis.firstNotNullOfOrNull { abi -> byName["app-standard-$abi-release.apk"] }
             ?: byName["app-standard-universal-release.apk"]
     }
+}
+
+/** Notes de version réduites à l'essentiel du Markdown GitHub : titres, puces, paragraphes. */
+object ReleaseNotes {
+
+    sealed interface Block {
+        val text: String
+
+        data class Heading(override val text: String) : Block
+        data class Bullet(override val text: String) : Block
+        data class Paragraph(override val text: String) : Block
+    }
+
+    private val heading = Regex("""^#{1,6}\s+(.*)$""")
+    private val bullet = Regex("""^\s*[-*+]\s+(.*)$""")
+    private val link = Regex("""\[([^\]]+)]\([^)]+\)""")
+    private val emphasis = Regex("""(\*\*|__|`)""")
+    /** Suffixe des notes générées par GitHub : « by @auteur in https://…/pull/12 ». */
+    private val attribution = Regex("""\s+by @\S+ in https?://\S+$""")
+
+    fun parse(markdown: String): List<Block> = markdown.lineSequence()
+        .map { it.trimEnd() }
+        .filter { it.isNotBlank() && !it.trimStart().startsWith("<!--") }
+        .map { line ->
+            heading.matchEntire(line)?.let { return@map Block.Heading(clean(it.groupValues[1])) }
+            bullet.matchEntire(line)?.let { return@map Block.Bullet(clean(it.groupValues[1])) }
+            Block.Paragraph(clean(line))
+        }
+        .filter { it.text.isNotEmpty() }
+        .toList()
+
+    private fun clean(text: String): String = text
+        .replace(link, "$1")
+        .replace(emphasis, "")
+        .replace(attribution, "")
+        .trim()
 }

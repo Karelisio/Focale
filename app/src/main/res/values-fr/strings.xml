@@ -245,7 +245,7 @@
 
     <!-- Nettoyage -->
     <string name="cleanup_title">Nettoyage</string>
-    <string name="cleanup_summary">Doublons et photos floues</string>
+    <string name="cleanup_summary">Doublons, photos floues, captures et grosses vidéos</string>
     <string name="cleanup_duplicates">Doublons</string>
     <string name="cleanup_blurry">Floues</string>
     <string name="cleanup_searching">Recherche de photos similaires…</string>
@@ -449,4 +449,30 @@
     <string name="update_action_github">Ouvrir GitHub</string>
     <string name="update_auto">Rechercher automatiquement</string>
     <string name="update_auto_summary">Une fois par jour, sur GitHub. Aucune autre donnée n\'est envoyée.</string>
+    <!-- Dossiers masqués -->
+    <string name="folder_hide_from_timeline">Masquer dans Photos</string>
+    <string name="folder_show_in_timeline">Afficher dans Photos</string>
+    <string name="folder_hidden">Masqué dans Photos</string>
+    <string name="settings_hidden_folders">Dossiers masqués</string>
+    <string name="settings_hidden_folders_none">Tous les dossiers apparaissent dans Photos</string>
+    <string name="settings_hidden_folders_summary">Leurs médias restent dans Albums et la recherche, mais n\'apparaissent plus dans Photos, les souvenirs ni le widget.</string>
+    <plurals name="settings_hidden_folders_count">
+        <item quantity="one">%d dossier masqué dans Photos</item>
+        <item quantity="other">%d dossiers masqués dans Photos</item>
+    </plurals>
+    <!-- Nettoyage : captures et grosses vidéos -->
+    <string name="cleanup_screenshots">Captures</string>
+    <string name="cleanup_large_videos">Grosses vidéos</string>
+    <string name="cleanup_no_screenshots">Aucune capture d\'écran</string>
+    <string name="cleanup_no_large_videos">Aucune vidéo de plus de 50 Mo</string>
+    <plurals name="cleanup_screenshots_summary">
+        <item quantity="one">%1$d capture · %2$s</item>
+        <item quantity="other">%1$d captures · %2$s</item>
+    </plurals>
+    <plurals name="cleanup_large_videos_summary">
+        <item quantity="one">%1$d vidéo de plus de 50 Mo · %2$s</item>
+        <item quantity="other">%1$d vidéos de plus de 50 Mo · %2$s</item>
+    </plurals>
+    <!-- Notes de version -->
+    <string name="update_notes_title">Nouveautés de la version %1$s</string>
 </resources>

@@ -5,6 +5,7 @@ import app.focale.R
 import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
+import app.focale.core.settings.SettingsRepository
 import app.focale.core.util.Formatters
 import app.focale.data.MediaRepository
 import app.focale.data.MemoriesRepository
@@ -12,6 +13,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.first
 
 /** Photo affichée par le widget, avec sa légende. */
 data class WidgetPhoto(val item: MediaItem, val title: String, val subtitle: String)
@@ -27,6 +29,7 @@ class WidgetPhotoPicker @Inject constructor(
     @ApplicationContext private val context: Context,
     private val memories: MemoriesRepository,
     private val media: MediaRepository,
+    private val settings: SettingsRepository,
 ) {
 
     suspend fun pick(now: Long = System.currentTimeMillis()): WidgetPhoto? {
@@ -40,11 +43,12 @@ class WidgetPhotoPicker @Inject constructor(
                 return WidgetPhoto(item, title, date(item))
             }
         }
-        candidates(MediaQuery(favoritesOnly = true))?.let { list ->
+        val hidden = settings.settings.first().hiddenFolders.sorted()
+        candidates(MediaQuery(favoritesOnly = true, excludedBuckets = hidden))?.let { list ->
             val item = list.choose(slot)
             return WidgetPhoto(item, context.getString(R.string.widget_favorite), date(item))
         }
-        return candidates(MediaQuery())?.let { list ->
+        return candidates(MediaQuery(excludedBuckets = hidden))?.let { list ->
             val item = list.choose(slot)
             WidgetPhoto(item, date(item), item.bucketName)
         }

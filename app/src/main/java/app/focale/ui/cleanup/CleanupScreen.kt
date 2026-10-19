@@ -32,7 +32,9 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Screenshot
 import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -61,6 +63,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
@@ -72,6 +75,7 @@ import app.focale.R
 import app.focale.core.image.thumbnail
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
+import app.focale.core.util.Formatters
 import app.focale.data.DuplicateGroup
 import app.focale.ui.actions.MediaActionsHost
 import app.focale.ui.components.Choice
@@ -83,12 +87,14 @@ import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.openViewer
 import coil3.compose.AsyncImage
 
-/** Nettoyage : doublons (similarité perceptuelle) et photos floues (netteté). */
+/** Nettoyage : doublons (similarité perceptuelle), photos floues (netteté), captures et grosses vidéos. */
 @Composable
 fun CleanupScreen(onBack: () -> Unit, viewModel: CleanupViewModel = hiltViewModel()) {
     val tab by viewModel.tab.collectAsStateWithLifecycle()
     val duplicates by viewModel.duplicates.collectAsStateWithLifecycle()
     val blurry by viewModel.blurry.collectAsStateWithLifecycle()
+    val screenshots by viewModel.screenshots.collectAsStateWithLifecycle()
+    val largeVideos by viewModel.largeVideos.collectAsStateWithLifecycle()
     val threshold by viewModel.threshold.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -139,9 +145,12 @@ fun CleanupScreen(onBack: () -> Unit, viewModel: CleanupViewModel = hiltViewMode
                         choices = listOf(
                             Choice(CleanupTab.DUPLICATES, stringResource(R.string.cleanup_duplicates), Icons.Outlined.ContentCopy),
                             Choice(CleanupTab.BLURRY, stringResource(R.string.cleanup_blurry), Icons.Outlined.BlurOn),
+                            Choice(CleanupTab.SCREENSHOTS, stringResource(R.string.cleanup_screenshots), Icons.Outlined.Screenshot),
+                            Choice(CleanupTab.LARGE_VIDEOS, stringResource(R.string.cleanup_large_videos), Icons.Outlined.VideoFile),
                         ),
                         selected = tab,
                         onSelect = viewModel::setTab,
+                        compact = true,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
@@ -194,6 +203,44 @@ fun CleanupScreen(onBack: () -> Unit, viewModel: CleanupViewModel = hiltViewMode
                                     onToggle = { viewModel.toggle(item.id) },
                                     onOpen = { rootNav.openViewer(MediaQuery(mediaIds = photos.map { it.id }), item) },
                                 )
+                            }
+                        }
+                    }
+                    CleanupTab.SCREENSHOTS, CleanupTab.LARGE_VIDEOS -> {
+                        val videos = tab == CleanupTab.LARGE_VIDEOS
+                        val list = if (videos) largeVideos else screenshots
+                        when {
+                            list == null -> item(key = "loading", span = { GridItemSpan(maxLineSpan) }) { LoadingState() }
+                            list.isEmpty() -> item(key = "empty", span = { GridItemSpan(maxLineSpan) }) {
+                                EmptyState(
+                                    icon = Icons.Outlined.CheckCircle,
+                                    title = stringResource(if (videos) R.string.cleanup_no_large_videos else R.string.cleanup_no_screenshots),
+                                    shape = MaterialShapes.Sunny,
+                                )
+                            }
+                            else -> {
+                                item(key = "summary", span = { GridItemSpan(maxLineSpan) }) {
+                                    val total = Formatters.fileSize(LocalContext.current, list.sumOf { it.size })
+                                    Text(
+                                        text = if (videos) {
+                                            pluralStringResource(R.plurals.cleanup_large_videos_summary, list.size, list.size, total)
+                                        } else {
+                                            pluralStringResource(R.plurals.cleanup_screenshots_summary, list.size, list.size, total)
+                                        },
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                                    )
+                                }
+                                items(list, key = { "${tab.name}-${it.id}" }) { item ->
+                                    SelectableThumb(
+                                        item = item,
+                                        selected = item.id in selection,
+                                        onToggle = { viewModel.toggle(item.id) },
+                                        onOpen = { rootNav.openViewer(MediaQuery(mediaIds = list.map { it.id }), item) },
+                                        label = if (videos) Formatters.fileSize(LocalContext.current, item.size) else null,
+                                    )
+                                }
                             }
                         }
                     }
@@ -267,7 +314,13 @@ private fun DuplicateGroupCard(
 
 /** Miniature sélectionnable : appui = sélection, appui long = ouverture. */
 @Composable
-private fun SelectableThumb(item: MediaItem, selected: Boolean, onToggle: () -> Unit, onOpen: () -> Unit) {
+private fun SelectableThumb(
+    item: MediaItem,
+    selected: Boolean,
+    onToggle: () -> Unit,
+    onOpen: () -> Unit,
+    label: String? = null,
+) {
     val haptics = LocalHapticFeedback.current
     val scale by animateFloatAsState(
         targetValue = if (selected) 0.86f else 1f,
@@ -299,6 +352,18 @@ private fun SelectableThumb(item: MediaItem, selected: Boolean, onToggle: () -> 
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         )
         SelectionIndicator(selected = selected, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
+        label?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(6.dp)
+                    .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.8f), RoundedCornerShape(50))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
     }
 }
 

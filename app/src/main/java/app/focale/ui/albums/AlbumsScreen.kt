@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Favorite
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.outlined.Gif
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.Screenshot
 import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -89,6 +91,7 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel()) {
     val tabsNav = LocalTabsNavController.current
     val userAlbums by viewModel.userAlbums.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
+    val hiddenFolders by viewModel.hiddenFolders.collectAsStateWithLifecycle()
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyGridState()
@@ -162,7 +165,7 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel()) {
                 SectionHeader(stringResource(R.string.albums_device))
             }
             items(folders, key = { "folder-${it.bucketId}" }) { folder ->
-                AlbumCard(folder) {
+                AlbumCard(folder, hiddenFromTimeline = folder.bucketId in hiddenFolders) {
                     tabsNav.openCollection(folder.name, MediaQuery(bucketId = folder.bucketId), CollectionKind.FOLDER)
                 }
             }
@@ -275,7 +278,7 @@ private fun EmptyAlbumsHint(onCreate: () -> Unit) {
 
 /** Carte d'album : couverture arrondie, nom et nombre d'éléments. */
 @Composable
-fun AlbumCard(album: Album, onClick: () -> Unit) {
+fun AlbumCard(album: Album, hiddenFromTimeline: Boolean = false, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         Surface(
             onClick = onClick,
@@ -300,6 +303,20 @@ fun AlbumCard(album: Album, onClick: () -> Unit) {
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(40.dp),
+                    )
+                }
+            }
+            if (hiddenFromTimeline) {
+                Box(Modifier.padding(8.dp), contentAlignment = Alignment.TopEnd) {
+                    Icon(
+                        Icons.Outlined.VisibilityOff,
+                        contentDescription = stringResource(R.string.folder_hidden),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                            .padding(6.dp)
+                            .size(18.dp),
                     )
                 }
             }
