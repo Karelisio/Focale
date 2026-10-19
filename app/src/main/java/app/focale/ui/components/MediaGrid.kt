@@ -269,6 +269,7 @@ fun MediaCell(
                     showPlayIcon = false,
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
+                else -> MotionPhotoBadge(item, Modifier.align(Alignment.BottomEnd))
             }
         }
         if (selectionMode) {

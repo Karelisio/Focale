@@ -34,8 +34,11 @@
         android:theme="@style/Theme.Focale"
         tools:targetApi="37">
 
+        <!-- Rotation et redimensionnement gérés par Compose, sans recréer l'activité : une
+             vidéo en cours ne s'interrompt pas. -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTop"
             android:resizeableActivity="true"

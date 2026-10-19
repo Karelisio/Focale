@@ -21,6 +21,8 @@ import app.focale.people.Person
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.navigation.RouteCodec
 import app.focale.ui.navigation.ViewerRoute
+import app.focale.video.MotionPhoto
+import app.focale.video.MotionPhotoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -53,6 +55,7 @@ class ViewerViewModel @Inject constructor(
     settingsRepository: SettingsRepository,
     private val analysisDao: AnalysisDao,
     private val peopleRepository: PeopleRepository,
+    private val motionPhotos: MotionPhotoRepository,
     val actions: MediaActions,
 ) : ViewModel() {
 
@@ -111,6 +114,12 @@ class ViewerViewModel @Inject constructor(
         .distinctUntilChangedBy { it?.id }
         .flatMapLatest { item -> item?.let { peopleRepository.observePeopleIn(it.id) } ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Vidéo intégrée du média courant, s'il s'agit d'une photo animée. */
+    val motionPhoto: StateFlow<MotionPhoto?> = _current
+        .distinctUntilChangedBy { it?.id to it?.dateModified }
+        .mapLatest { item -> item?.let { motionPhotos.find(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _details = MutableStateFlow<MediaDetails?>(null)
     val details: StateFlow<MediaDetails?> = _details.asStateFlow()
