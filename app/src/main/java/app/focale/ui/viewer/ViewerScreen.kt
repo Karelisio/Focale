@@ -270,6 +270,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
         )
     }
     MediaActionsHost(actions = viewModel.actions, snackbarHostState = snackbarHostState)
+    ViewerExtraSheets()
 
     val infoItem = current
     if (showInfo && infoItem != null) {

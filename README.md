@@ -4,8 +4,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 **Material 3 Expressive** et de couleurs Material You.
 
 > Aucune donnée ne quitte l'appareil : pas de compte, pas de statistiques, pas de cloud.
-> L'étiquetage des photos (ML Kit), la détection de doublons et le géocodage tournent
-> localement.
+> L'étiquetage des photos et la lecture de leur texte (ML Kit), la détection de doublons
+> et le géocodage tournent localement.
 
 ## Fonctionnalités
 
@@ -14,7 +14,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   rapide avec bulle de date.
 - **Visionneuse** plein écran : swipe, zoom et double appui (sous-échantillonnage des
   très grandes images), glisser vers le bas pour fermer, transition partagée depuis la
-  grille, vidéos (Media3), GIF animés, panneau d'infos EXIF / localisation.
+  grille, vidéos (Media3), GIF animés, panneau d'infos EXIF / localisation, texte de la
+  photo sélectionnable et copiable.
 - **Material You** : couleurs du fond d'écran (Android 12+), thème clair / sombre /
   système, noir pur AMOLED, palette « couleur depuis la photo », police variable
   Google Sans Flex, formes et morphing Expressive, retours haptiques.
@@ -24,8 +25,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   30 jours, sélection multiple (appui long + glisser), copier / déplacer / renommer /
   supprimer / partager, tri et filtres (photos, vidéos, captures, GIF).
 - **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
-  (« plage », « chien »…, en français ou en anglais), dates, lieux (géocodage hors
-  ligne), écran de nettoyage des doublons et des photos floues.
+  (« plage », « chien »…, en français ou en anglais), texte des photos et des captures
+  d'écran (« facture », « wifi »…), dates, lieux (géocodage hors ligne), écran de
+  nettoyage des doublons et des photos floues.
 - **Édition** : recadrage libre ou au format, rotation, miroir, filtres, luminosité /
   contraste / saturation / chaleur ; enregistrement en copie ou à la place de
   l'original.
@@ -109,7 +111,7 @@ en base64), `FOCALE_STORE_PASSWORD`, `FOCALE_KEY_ALIAS` et `FOCALE_KEY_PASSWORD`
 
 Kotlin 2.4 · AGP 9 · Compose (Material 3 1.5, adaptive) · Hilt · Coroutines/Flow ·
 Room · Paging 3 · DataStore · WorkManager · Coil 3 · telephoto · Media3 · MaterialKolor ·
-ML Kit (modèle embarqué) · osmdroid · Tink · Glance.
+ML Kit (modèles embarqués) · osmdroid · Tink · Glance.
 
 ## Licences des ressources
 
@@ -122,8 +124,8 @@ ML Kit (modèle embarqué) · osmdroid · Tink · Glance.
 - Tuiles en ligne (optionnelles) : © contributeurs **OpenStreetMap**, données sous
   licence ODbL (<https://www.openstreetmap.org/copyright>) ; l'attribution est affichée
   sur la carte.
-- Étiquetage d'images : modèle **ML Kit** embarqué, soumis aux conditions d'utilisation
-  de ML Kit.
+- Étiquetage d'images et reconnaissance de texte (alphabet latin) : modèles **ML Kit**
+  embarqués dans l'APK, sans téléchargement, soumis aux conditions d'utilisation de ML Kit.
 
 Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
 carte) à partir des données sources ; ils ne sont pas nécessaires à la compilation.
