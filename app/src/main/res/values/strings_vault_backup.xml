@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : sauvegarde -->
+    <string name="vault_backup_action">Back up vault</string>
+    <string name="vault_backup_title">Back up the vault</string>
+    <string name="vault_backup_password_message">Choose a password to encrypt the backup. You’ll need it to restore the backup, and it can’t be recovered: without it, the backup is useless.</string>
+    <string name="vault_backup_password">Password</string>
+    <string name="vault_backup_password_confirm">Confirm the password</string>
+    <string name="vault_backup_password_mismatch">The passwords don’t match</string>
+    <plurals name="vault_backup_password_min">
+        <item quantity="one">At least %d character</item>
+        <item quantity="other">At least %d characters</item>
+    </plurals>
+    <string name="vault_backup_strength_weak">Strength: weak</string>
+    <string name="vault_backup_strength_fair">Strength: fair</string>
+    <string name="vault_backup_strength_strong">Strength: strong</string>
+    <string name="vault_backup_show_password">Show password</string>
+    <string name="vault_backup_hide_password">Hide password</string>
+    <string name="vault_backup_choose_location">Choose location</string>
+    <string name="vault_backup_file_name">focale-vault-%1$s.fvault</string>
+    <string name="vault_backup_no_picker">No app on this device can choose a file</string>
+    <string name="vault_backup_progress_title">Backing up the vault</string>
+    <string name="vault_backup_preparing">Preparing encryption…</string>
+    <plurals name="vault_backup_progress_items">
+        <item quantity="one">%1$d / %2$d item</item>
+        <item quantity="other">%1$d / %2$d items</item>
+    </plurals>
+    <string name="vault_backup_progress_bytes">%1$s of %2$s</string>
+    <string name="vault_backup_keep_open">Keep Focale open until it’s finished.</string>
+    <string name="vault_backup_cancelling">Cancelling…</string>
+    <plurals name="vault_backup_done">
+        <item quantity="one">Vault backed up: %d item</item>
+        <item quantity="other">Vault backed up: %d items</item>
+    </plurals>
+    <string name="vault_backup_done_title">Backup created</string>
+    <plurals name="vault_backup_saved">
+        <item quantity="one">%d item backed up</item>
+        <item quantity="other">%d items backed up</item>
+    </plurals>
+    <plurals name="vault_backup_unreadable">
+        <item quantity="one">%d damaged item in the vault couldn’t be read and isn’t in the backup</item>
+        <item quantity="other">%d damaged items in the vault couldn’t be read and aren’t in the backup</item>
+    </plurals>
+    <string name="vault_backup_cancelled">Backup cancelled</string>
+    <string name="vault_backup_failed_title">Backup failed</string>
+    <string name="vault_backup_failed_message">The backup file couldn’t be written. Check the free space at the chosen location, then try again.</string>
+    <string name="vault_backup_partial_left">The incomplete file couldn’t be deleted. Delete it yourself: it can’t be restored.</string>
+    <string name="vault_backup_reminder">No backup yet: the vault would be lost if you uninstall Focale or change phones.</string>
+    <string name="vault_backup_reminder_action">Back up</string>
+    <string name="vault_backup_last">Last backup: %1$s</string>
+
+    <!-- Coffre-fort : restauration d'une sauvegarde -->
+    <string name="vault_restore_action">Restore a backup</string>
+    <string name="vault_restore_title">Restore a backup</string>
+    <string name="vault_restore_password_message">Enter the password chosen when the backup was created. Its items are added to this vault; those already in it are skipped.</string>
+    <string name="vault_restore_password">Backup password</string>
+    <string name="vault_restore_wrong_password">Wrong password</string>
+    <string name="vault_restore_checking">Checking the password…</string>
+    <string name="vault_restore_progress_title">Restoring the backup</string>
+    <string name="vault_restore_finishing">Adding the items to the vault…</string>
+    <string name="vault_restore_done_title">Restore complete</string>
+    <plurals name="vault_restore_added">
+        <item quantity="one">%d item added to the vault</item>
+        <item quantity="other">%d items added to the vault</item>
+    </plurals>
+    <plurals name="vault_restore_duplicates">
+        <item quantity="one">%d item already in the vault was skipped</item>
+        <item quantity="other">%d items already in the vault were skipped</item>
+    </plurals>
+    <plurals name="vault_restore_unreadable">
+        <item quantity="one">%d item, damaged when the backup was made, was skipped</item>
+        <item quantity="other">%d items, damaged when the backup was made, were skipped</item>
+    </plurals>
+    <string name="vault_restore_cancelled">Restore cancelled: nothing was imported</string>
+    <string name="vault_restore_failed_title">Restore failed</string>
+    <string name="vault_restore_not_archive">This file isn’t a Focale vault backup.</string>
+    <string name="vault_restore_unsupported">This backup was created by a newer version of Focale. Update the app to restore it.</string>
+    <string name="vault_restore_corrupted">The backup is damaged or incomplete. Nothing was imported.</string>
+    <string name="vault_restore_no_space">Not enough free space on this device. Nothing was imported.</string>
+    <string name="vault_restore_unreadable_file">The backup file couldn’t be read. Nothing was imported.</string>
+</resources>

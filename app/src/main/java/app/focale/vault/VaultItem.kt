@@ -52,7 +52,17 @@ class VaultStorage @Inject constructor(
 ) {
     val directory: File by lazy { File(context.noBackupFilesDir, "vault").apply { mkdirs() } }
 
+    /** Attente d'une restauration, sur le même volume : l'ajout au coffre n'est qu'un renommage. */
+    private val stagingDirectory: File by lazy { File(context.noBackupFilesDir, "vault-staging").apply { mkdirs() } }
+
     fun file(name: String): File = File(directory, name)
+
+    fun stagingFile(name: String): File = File(stagingDirectory, name)
+
+    /** Efface les fichiers en attente (restauration terminée, refusée ou interrompue). */
+    fun clearStaging() {
+        stagingDirectory.listFiles()?.forEach(File::delete)
+    }
 
     /** Place suffisante pour [bytes] octets, marge comprise (caches purgeables inclus). */
     fun hasRoomFor(bytes: Long): Boolean {
@@ -63,7 +73,10 @@ class VaultStorage @Inject constructor(
         }.getOrElse { directory.usableSpace >= needed }
     }
 
-    private companion object {
-        const val MIN_FREE_BYTES = 64L * 1024 * 1024
+    companion object {
+        /** Suffixes des fichiers chiffrés d'un élément : média et miniature. */
+        const val MEDIA_SUFFIX = ".bin"
+        const val THUMB_SUFFIX = ".thumb"
+        private const val MIN_FREE_BYTES = 64L * 1024 * 1024
     }
 }

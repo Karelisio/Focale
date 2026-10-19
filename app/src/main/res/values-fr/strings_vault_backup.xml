@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : sauvegarde -->
+    <string name="vault_backup_action">Sauvegarder le coffre</string>
+    <string name="vault_backup_title">Sauvegarder le coffre</string>
+    <string name="vault_backup_password_message">Choisissez un mot de passe pour chiffrer la sauvegarde. Il sera demandé pour la restaurer et ne pourra pas être récupéré : sans lui, la sauvegarde est inutilisable.</string>
+    <string name="vault_backup_password">Mot de passe</string>
+    <string name="vault_backup_password_confirm">Confirmez le mot de passe</string>
+    <string name="vault_backup_password_mismatch">Les mots de passe ne correspondent pas</string>
+    <plurals name="vault_backup_password_min">
+        <item quantity="one">Au moins %d caractère</item>
+        <item quantity="many">Au moins %d caractères</item>
+        <item quantity="other">Au moins %d caractères</item>
+    </plurals>
+    <string name="vault_backup_strength_weak">Robustesse : faible</string>
+    <string name="vault_backup_strength_fair">Robustesse : moyenne</string>
+    <string name="vault_backup_strength_strong">Robustesse : forte</string>
+    <string name="vault_backup_show_password">Afficher le mot de passe</string>
+    <string name="vault_backup_hide_password">Masquer le mot de passe</string>
+    <string name="vault_backup_choose_location">Choisir l\'emplacement</string>
+    <string name="vault_backup_file_name">focale-coffre-%1$s.fvault</string>
+    <string name="vault_backup_no_picker">Aucune application de cet appareil ne permet de choisir un fichier</string>
+    <string name="vault_backup_progress_title">Sauvegarde du coffre</string>
+    <string name="vault_backup_preparing">Préparation du chiffrement…</string>
+    <plurals name="vault_backup_progress_items">
+        <item quantity="one">%1$d / %2$d élément</item>
+        <item quantity="many">%1$d / %2$d éléments</item>
+        <item quantity="other">%1$d / %2$d éléments</item>
+    </plurals>
+    <string name="vault_backup_progress_bytes">%1$s sur %2$s</string>
+    <string name="vault_backup_keep_open">Gardez Focale ouverte jusqu\'à la fin.</string>
+    <string name="vault_backup_cancelling">Annulation…</string>
+    <plurals name="vault_backup_done">
+        <item quantity="one">Coffre sauvegardé : %d élément</item>
+        <item quantity="many">Coffre sauvegardé : %d éléments</item>
+        <item quantity="other">Coffre sauvegardé : %d éléments</item>
+    </plurals>
+    <string name="vault_backup_done_title">Sauvegarde créée</string>
+    <plurals name="vault_backup_saved">
+        <item quantity="one">%d élément sauvegardé</item>
+        <item quantity="many">%d éléments sauvegardés</item>
+        <item quantity="other">%d éléments sauvegardés</item>
+    </plurals>
+    <plurals name="vault_backup_unreadable">
+        <item quantity="one">%d élément endommagé du coffre n\'a pas pu être lu et ne figure pas dans la sauvegarde</item>
+        <item quantity="many">%d éléments endommagés du coffre n\'ont pas pu être lus et ne figurent pas dans la sauvegarde</item>
+        <item quantity="other">%d éléments endommagés du coffre n\'ont pas pu être lus et ne figurent pas dans la sauvegarde</item>
+    </plurals>
+    <string name="vault_backup_cancelled">Sauvegarde annulée</string>
+    <string name="vault_backup_failed_title">Échec de la sauvegarde</string>
+    <string name="vault_backup_failed_message">Le fichier de sauvegarde n\'a pas pu être écrit. Vérifiez l\'espace libre à l\'emplacement choisi, puis réessayez.</string>
+    <string name="vault_backup_partial_left">Le fichier incomplet n\'a pas pu être supprimé. Supprimez-le vous-même : il ne peut pas être restauré.</string>
+    <string name="vault_backup_reminder">Aucune sauvegarde : le coffre serait perdu en cas de désinstallation ou de changement de téléphone.</string>
+    <string name="vault_backup_reminder_action">Sauvegarder</string>
+    <string name="vault_backup_last">Dernière sauvegarde : %1$s</string>
+
+    <!-- Coffre-fort : restauration d'une sauvegarde -->
+    <string name="vault_restore_action">Restaurer une sauvegarde</string>
+    <string name="vault_restore_title">Restaurer une sauvegarde</string>
+    <string name="vault_restore_password_message">Saisissez le mot de passe choisi lors de la sauvegarde. Ses éléments sont ajoutés à ce coffre ; ceux qui s\'y trouvent déjà sont ignorés.</string>
+    <string name="vault_restore_password">Mot de passe de la sauvegarde</string>
+    <string name="vault_restore_wrong_password">Mot de passe incorrect</string>
+    <string name="vault_restore_checking">Vérification du mot de passe…</string>
+    <string name="vault_restore_progress_title">Restauration de la sauvegarde</string>
+    <string name="vault_restore_finishing">Ajout des éléments au coffre…</string>
+    <string name="vault_restore_done_title">Restauration terminée</string>
+    <plurals name="vault_restore_added">
+        <item quantity="one">%d élément ajouté au coffre</item>
+        <item quantity="many">%d éléments ajoutés au coffre</item>
+        <item quantity="other">%d éléments ajoutés au coffre</item>
+    </plurals>
+    <plurals name="vault_restore_duplicates">
+        <item quantity="one">%d élément déjà présent a été ignoré</item>
+        <item quantity="many">%d éléments déjà présents ont été ignorés</item>
+        <item quantity="other">%d éléments déjà présents ont été ignorés</item>
+    </plurals>
+    <plurals name="vault_restore_unreadable">
+        <item quantity="one">%d élément, endommagé lors de la sauvegarde, a été ignoré</item>
+        <item quantity="many">%d éléments, endommagés lors de la sauvegarde, ont été ignorés</item>
+        <item quantity="other">%d éléments, endommagés lors de la sauvegarde, ont été ignorés</item>
+    </plurals>
+    <string name="vault_restore_cancelled">Restauration annulée : rien n\'a été importé</string>
+    <string name="vault_restore_failed_title">Échec de la restauration</string>
+    <string name="vault_restore_not_archive">Ce fichier n\'est pas une sauvegarde du coffre Focale.</string>
+    <string name="vault_restore_unsupported">Cette sauvegarde a été créée par une version plus récente de Focale. Mettez l\'application à jour pour la restaurer.</string>
+    <string name="vault_restore_corrupted">La sauvegarde est endommagée ou incomplète. Rien n\'a été importé.</string>
+    <string name="vault_restore_no_space">Espace insuffisant sur cet appareil. Rien n\'a été importé.</string>
+    <string name="vault_restore_unreadable_file">Le fichier de sauvegarde n\'a pas pu être lu. Rien n\'a été importé.</string>
+</resources>
