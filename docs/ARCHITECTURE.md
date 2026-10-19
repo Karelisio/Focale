@@ -33,7 +33,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Vidéo | Media3 ExoPlayer + `media3-ui-compose` (contrôles M3 maison) |
 | Couleurs depuis photo | MaterialKolor (quantification + score Material Color Utilities) |
 | Formes | `MaterialShapes` + androidx.graphics.shapes (`Morph`) |
-| ML sur l'appareil | ML Kit Image Labeling (modèle **embarqué**, pas de téléchargement) |
+| ML sur l'appareil | ML Kit Image Labeling et Text Recognition v2 (alphabet latin), modèles **embarqués**, pas de téléchargement |
 | Arrière-plan | WorkManager |
 | Carte | osmdroid + fond vectoriel hors ligne (Natural Earth, domaine public) |
 | Géocodage inverse | Hors ligne : base GeoNames (CC BY 4.0) embarquée, index spatial en grille |
@@ -64,7 +64,7 @@ cible, les choix techniques structurants et le découpage du développement.
                 │
 ┌───────────────┴───────────── Arrière-plan ───────────────────────────────┐
 │ WorkManager : synchro MediaStore, analyse (étiquettes, pHash, flou,      │
-│ GPS, lieu), purge corbeille, rafraîchissement du widget                  │
+│ GPS, lieu, texte), purge corbeille, rafraîchissement du widget           │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -95,7 +95,7 @@ app/src/main/java/app/focale/
 │   ├── permissions/            état des permissions (complet / partiel / refusé)
 │   └── util/                   dates, formats, haptique, extensions
 ├── data/                       repositories
-├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur
+├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur, texte
 ├── work/                       workers
 ├── vault/                      crypto, stockage, verrouillage
 ├── widget/                     widget Glance
@@ -132,6 +132,7 @@ Index : `date_taken`, `bucket_id`, `media_type`.
 |---|---|
 | `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `country` |
 | `media_label` | (media, étiquette ML Kit canonique, confiance) |
+| `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée |
 | `favorite` | médias favoris |
 | `album` / `album_media` | albums virtuels et leur contenu |
 | `trash_item` | corbeille applicative (API 29 uniquement) |
@@ -200,12 +201,17 @@ travail :
 2. ML Kit Image Labeling (confiance ≥ 0,6) → étiquettes canoniques anglaises ;
 3. dHash 64 bits (doublons) ;
 4. variance du Laplacien (flou) ;
-5. GPS EXIF (avec `ACCESS_MEDIA_LOCATION`) → ville/pays via géocodeur hors ligne.
+5. GPS EXIF (avec `ACCESS_MEDIA_LOCATION`) → ville/pays via géocodeur hors ligne ;
+6. puis étapes complémentaires (`AnalysisStep`), dont le texte : ML Kit Text Recognition
+   sur la photo réduite à 1600 px (orientation appliquée), captures d'écran d'abord, les
+   plus hautes lues par bandes à leur largeur d'écran ; aussi lancée à la demande par
+   l'action « Texte » de la visionneuse.
 
 Recherche : la requête est normalisée (minuscules, sans accents), confrontée au
 dictionnaire FR/EN des 447 étiquettes (avec synonymes et hyperonymes :
 « chien » couvre aussi les races détectées), aux lieux, aux dates
-(« 2023 », « juillet 2022 », « 14/07/2021 ») et aux noms de fichiers.
+(« 2023 », « juillet 2022 », « 14/07/2021 »), aux noms de fichiers et au texte reconnu
+dans les photos (« wifi » trouve aussi « Wi-Fi »).
 
 Doublons : regroupement par dHash, distance de Hamming ≤ seuil, candidats obtenus
 par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).

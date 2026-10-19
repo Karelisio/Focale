@@ -121,7 +121,7 @@ android {
         }
     }
 
-    // Un APK par architecture (ML Kit embarque ~10 Mo de code natif par ABI) + un universel.
+    // Un APK par architecture (ML Kit embarque ~10 Mo de code natif par ABI et par modèle) + un universel.
     splits {
         abi {
             isEnable = true
@@ -267,6 +267,7 @@ dependencies {
     implementation(libs.osmdroid)
     implementation(libs.tink.android)
     implementation(libs.mlkit.image.labeling)
+    implementation(libs.mlkit.text.recognition)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
 

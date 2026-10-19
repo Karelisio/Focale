@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Texte reconnu dans les photos (OCR sur l'appareil) -->
+    <string name="action_text">Texte</string>
+    <string name="text_title">Texte de la photo</string>
+    <string name="text_subtitle">Reconnu sur cet appareil</string>
+    <string name="text_reading">Lecture du texte…</string>
+    <string name="text_empty_title">Aucun texte</string>
+    <string name="text_empty_message">Aucun texte lisible n\'a été reconnu dans cette photo.</string>
+    <string name="text_error_title">Impossible de lire cette photo</string>
+    <string name="text_error_message">L\'image n\'a pas pu être ouverte ou analysée.</string>
+    <string name="text_copy_all">Copier tout</string>
+    <string name="text_copied">Copié</string>
+    <string name="text_clip_label">Texte de la photo</string>
+</resources>
