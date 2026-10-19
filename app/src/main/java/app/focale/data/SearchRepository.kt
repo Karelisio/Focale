@@ -34,7 +34,9 @@ class SearchRepository @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
-    fun parse(text: String): MediaQuery = SearchQueryParser.parse(text)
+    /** @param people personnes nommées (identifiant → nom), cherchées par leur nom. */
+    fun parse(text: String, people: Map<Long, String> = emptyMap()): MediaQuery =
+        SearchQueryParser.parse(text, people = people)
 
     fun observeThings(limit: Int = 60): Flow<List<ThingSuggestion>> =
         analysisDao.observeLabelStats(limit).mapLatest { stats ->

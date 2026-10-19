@@ -58,6 +58,13 @@
                 tools:node="remove" />
         </service>
 
+        <!-- Télémétrie d'ONNX Runtime neutralisée : sans ce fournisseur, aucun client d'envoi
+             n'est créé (et la bibliothèque n'est plus chargée à chaque démarrage). -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            tools:node="remove" />
+
         <!-- WorkManager est initialisé par l'application (HiltWorkerFactory). -->
         <provider
             android:name="androidx.startup.InitializationProvider"

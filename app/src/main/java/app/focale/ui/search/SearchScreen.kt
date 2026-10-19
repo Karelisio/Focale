@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CleaningServices
+import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Gif
 import androidx.compose.material.icons.outlined.History
@@ -91,11 +92,16 @@ import app.focale.data.PlaceSuggestion
 import app.focale.data.ThingSuggestion
 import app.focale.ml.CountryResolver
 import app.focale.ml.LabelDictionary
+import app.focale.people.Person
 import app.focale.ui.components.MediaPermissionScreen
 import app.focale.ui.navigation.CleanupRoute
 import app.focale.ui.navigation.CollectionKind
 import app.focale.ui.navigation.LocalTabsNavController
+import app.focale.ui.navigation.PersonRoute
 import app.focale.ui.navigation.openCollection
+import app.focale.ui.people.PeopleRow
+import app.focale.ui.people.matchingPeople
+import app.focale.ui.people.peopleSuggestions
 import app.focale.work.AnalysisProgress
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -111,6 +117,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
     val tabsNav = LocalTabsNavController.current
     val things by viewModel.things.collectAsStateWithLifecycle()
     val places by viewModel.places.collectAsStateWithLifecycle()
+    val people by viewModel.people.collectAsStateWithLifecycle()
     val recent by viewModel.recent.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     val analysisEnabled by viewModel.analysisEnabled.collectAsStateWithLifecycle()
@@ -124,6 +131,11 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
     fun open(title: String, query: MediaQuery) {
         scope.launch { searchBarState.animateToCollapsed() }
         tabsNav.openCollection(title, query, CollectionKind.QUERY)
+    }
+
+    fun openPerson(person: Person) {
+        scope.launch { searchBarState.animateToCollapsed() }
+        tabsNav.navigate(PersonRoute(person.id)) { launchSingleTop = true }
     }
 
     fun submit(text: String) {
@@ -192,6 +204,13 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
                 CategoriesRow(onOpen = ::open)
             }
 
+            if (people.isNotEmpty()) {
+                item(key = "people-header", span = { GridItemSpan(maxLineSpan) }) {
+                    SectionTitle(stringResource(R.string.people_title), Icons.Outlined.Face)
+                }
+                item(key = "people", span = { GridItemSpan(maxLineSpan) }) { PeopleRow(people, onOpen = ::openPerson) }
+            }
+
             if (places.isNotEmpty()) {
                 item(key = "places-header", span = { GridItemSpan(maxLineSpan) }) {
                     SectionTitle(stringResource(R.string.search_places), Icons.Outlined.LocationOn)
@@ -240,8 +259,10 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
             recent = recent,
             things = things,
             places = places,
+            people = people,
             locale = locale,
             onSearch = ::submit,
+            onPickPerson = ::openPerson,
             onPickThing = { thing, name -> open(name, MediaQuery(terms = listOf(SearchTerm(labels = listOf(thing.label))))) },
             onPickPlace = { place ->
                 open(
@@ -266,8 +287,10 @@ private fun SearchSuggestions(
     recent: List<String>,
     things: List<ThingSuggestion>,
     places: List<PlaceSuggestion>,
+    people: List<Person>,
     locale: java.util.Locale,
     onSearch: (String) -> Unit,
+    onPickPerson: (Person) -> Unit,
     onPickThing: (ThingSuggestion, String) -> Unit,
     onPickPlace: (PlaceSuggestion) -> Unit,
     onForget: (String) -> Unit,
@@ -317,6 +340,7 @@ private fun SearchSuggestions(
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 ) { Text(stringResource(R.string.search_for, text.trim())) }
             }
+            peopleSuggestions(matchingPeople(people, key), onPickPerson)
             items(matchingThings, key = { "t-${it.label}" }) { thing ->
                 val name = LabelDictionary.displayName(thing.label, locale)
                 ListItem(

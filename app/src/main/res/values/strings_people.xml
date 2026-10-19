@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Personnes : visages regroupés sur l'appareil -->
+    <string name="people_title">People</string>
+    <string name="people_see_all">See all</string>
+    <string name="people_add_name">Add a name</string>
+    <string name="people_unnamed">Unnamed person</string>
+    <string name="people_name_title">Who is this?</string>
+    <string name="people_name_label">Name</string>
+    <string name="people_edit_name">Edit name</string>
+    <string name="people_remove_name">Remove name</string>
+    <string name="people_choose_cover">Choose thumbnail</string>
+    <string name="people_cover_title">Choose a thumbnail</string>
+    <string name="people_set_cover">Use as thumbnail</string>
+    <string name="people_cover_updated">Thumbnail updated</string>
+    <string name="people_merge">Merge with another person</string>
+    <string name="people_merge_title">Same person as…</string>
+    <string name="people_merge_confirm_title">Merge these people?</string>
+    <string name="people_merge_confirm_message">The photos of %1$s will be grouped with %2$s.</string>
+    <string name="people_merge_action">Merge</string>
+    <string name="people_merge_empty">There is no other person to merge with yet.</string>
+    <string name="people_hide">Hide from People</string>
+    <string name="people_unhide">Show in People</string>
+    <string name="people_hidden_done">Person hidden from People</string>
+    <string name="people_hidden_badge">Hidden</string>
+    <string name="people_show_hidden">Show hidden people</string>
+    <string name="people_remove_from_person">Remove from this person</string>
+    <plurals name="people_removed">
+        <item quantity="one">%d photo removed from this person</item>
+        <item quantity="other">%,d photos removed from this person</item>
+    </plurals>
+    <plurals name="people_photo_count">
+        <item quantity="one">%d photo</item>
+        <item quantity="other">%,d photos</item>
+    </plurals>
+    <string name="people_empty_title">No people yet</string>
+    <string name="people_empty_message">Faces are grouped on this device while your library is analyzed. A person shows up once they appear in a few photos.</string>
+    <string name="people_analysis_off_message">Turn on the on-device analysis to group faces by person.</string>
+    <string name="people_person_empty">No photos of this person left</string>
+    <string name="people_credits_title">Face grouping</string>
+    <string name="people_credits_body">Face detection: ML Kit (bundled model) · Face embeddings: SFace, OpenCV Zoo (Apache 2.0) · Inference: ONNX Runtime (MIT). Faces never leave this device.</string>
+</resources>

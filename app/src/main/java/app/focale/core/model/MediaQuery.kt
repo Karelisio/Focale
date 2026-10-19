@@ -25,8 +25,8 @@ data class MediaSort(
  * Terme de recherche résolu : un mot saisi par l'utilisateur et ce à quoi il correspond.
  * Un média satisfait le terme s'il porte l'une des [labels], si son lieu contient
  * [place] (forme normalisée), s'il a été pris dans l'un des [countries], si son nom de
- * fichier ou le texte reconnu dans la photo contient [text], ou s'il fait partie des
- * [similarIds] (recherche en langage naturel).
+ * fichier ou le texte reconnu dans la photo contient [text], s'il fait partie des
+ * [similarIds] (recherche en langage naturel) ou si l'une des [personIds] y figure.
  */
 @Serializable
 @Immutable
@@ -40,6 +40,8 @@ data class SearchTerm(
     val text: String? = null,
     /** Médias jugés proches du terme par la recherche en langage naturel. */
     val similarIds: List<Long> = emptyList(),
+    /** Personnes dont le nom correspond au terme (regroupement de visages). */
+    val personIds: List<Long> = emptyList(),
 )
 
 /** Zone géographique en degrés, bornes incluses (regroupement de la carte). */

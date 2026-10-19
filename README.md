@@ -4,8 +4,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 **Material 3 Expressive** et de couleurs Material You.
 
 > Aucune donnée ne quitte l'appareil : pas de compte, pas de statistiques, pas de cloud.
-> L'étiquetage des photos (ML Kit), la détection de doublons et le géocodage tournent
-> localement.
+> L'étiquetage des photos (ML Kit), le regroupement des visages, la détection de doublons
+> et le géocodage tournent localement.
 
 ## Fonctionnalités
 
@@ -26,6 +26,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 - **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
   (« plage », « chien »…, en français ou en anglais), dates, lieux (géocodage hors
   ligne), écran de nettoyage des doublons et des photos floues.
+- **Personnes** : visages détectés (ML Kit) et regroupés sur l'appareil (empreintes SFace
+  exécutées par ONNX Runtime) ; section dans l'onglet Albums, nom, vignette, masquage,
+  fusion, retrait d'une photo ; recherche par nom et personnes listées dans les infos.
 - **Édition** : recadrage libre ou au format, rotation, miroir, filtres, luminosité /
   contraste / saturation / chaleur ; enregistrement en copie ou à la place de
   l'original.
@@ -109,7 +112,7 @@ en base64), `FOCALE_STORE_PASSWORD`, `FOCALE_KEY_ALIAS` et `FOCALE_KEY_PASSWORD`
 
 Kotlin 2.4 · AGP 9 · Compose (Material 3 1.5, adaptive) · Hilt · Coroutines/Flow ·
 Room · Paging 3 · DataStore · WorkManager · Coil 3 · telephoto · Media3 · MaterialKolor ·
-ML Kit (modèle embarqué) · osmdroid · Tink · Glance.
+ML Kit (modèles embarqués) · ONNX Runtime · osmdroid · Tink · Glance.
 
 ## Licences des ressources
 
@@ -122,8 +125,13 @@ ML Kit (modèle embarqué) · osmdroid · Tink · Glance.
 - Tuiles en ligne (optionnelles) : © contributeurs **OpenStreetMap**, données sous
   licence ODbL (<https://www.openstreetmap.org/copyright>) ; l'attribution est affichée
   sur la carte.
-- Étiquetage d'images : modèle **ML Kit** embarqué, soumis aux conditions d'utilisation
-  de ML Kit.
+- Étiquetage d'images et détection des visages : modèles **ML Kit** embarqués, soumis aux
+  conditions d'utilisation de ML Kit.
+- Empreintes de visages : modèle **SFace** d'OpenCV Zoo (`face_recognition_sface_2021dec_int8`),
+  licence Apache 2.0 (`app/src/main/assets/licenses/sface_APACHE-2.0.txt`), redistribué sans
+  modification dans `app/src/main/assets/models/sface_int8.onnx`.
+- Exécution du modèle : **ONNX Runtime**, licence MIT (`app/src/main/assets/licenses/onnxruntime_MIT.txt`) ;
+  sa télémétrie Android est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
 
 Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
 carte) à partir des données sources ; ils ne sont pas nécessaires à la compilation.

@@ -66,6 +66,28 @@ class MediaQueryBuilderTest {
     }
 
     @Test
+    fun `les personnes d'un terme sont une alternative de plus, sans paramètre positionnel`() {
+        val args = mutableListOf<Any?>()
+        val where = MediaQueryBuilder.where(
+            MediaQuery(terms = listOf(SearchTerm(labels = listOf("Beach"), text = "marie", personIds = listOf(4L, 12L)))),
+            args,
+        )
+        assertTrue(where.contains("m.id IN (SELECT media_id FROM face WHERE person_id IN (4,12))"))
+        // Étiquettes, nom de fichier, texte reconnu ou personne : une seule voie suffit.
+        assertTrue(where.contains("label IN (?)) OR m.display_name LIKE ?"))
+        assertTrue(where.contains(" OR m.id IN (SELECT media_id FROM face WHERE person_id IN (4,12)))"))
+        assertEquals(listOf<Any?>("Beach", "%marie%", "%marie%"), args)
+    }
+
+    @Test
+    fun `un terme réduit à une personne ne garde que ses photos`() {
+        val args = mutableListOf<Any?>()
+        val where = MediaQueryBuilder.where(MediaQuery(terms = listOf(SearchTerm(personIds = listOf(9L)))), args)
+        assertTrue(where.endsWith(" AND (m.id IN (SELECT media_id FROM face WHERE person_id IN (9)))"))
+        assertTrue(args.isEmpty())
+    }
+
+    @Test
     fun `le filtre de mois compare le mois local sur deux chiffres`() {
         val args = mutableListOf<Any?>()
         val where = MediaQueryBuilder.where(MediaQuery(month = 7), args)

@@ -39,6 +39,8 @@ import app.focale.R
 import app.focale.core.model.MediaItem
 import app.focale.core.util.Formatters
 import app.focale.data.MediaDetails
+import app.focale.people.Person
+import app.focale.ui.people.PeopleChips
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -51,9 +53,10 @@ fun MediaInfoSheet(
     placeName: String? = null,
     labels: List<String> = emptyList(),
     onShowOnMap: ((Double, Double) -> Unit)? = null,
+    people: List<Person> = emptyList(),
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        MediaInfoContent(item, details, placeName, labels, onShowOnMap)
+        MediaInfoContent(item, details, placeName, labels, onShowOnMap, people = people)
     }
 }
 
@@ -65,6 +68,7 @@ fun MediaInfoContent(
     labels: List<String>,
     onShowOnMap: ((Double, Double) -> Unit)?,
     modifier: Modifier = Modifier,
+    people: List<Person> = emptyList(),
 ) {
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
@@ -141,6 +145,7 @@ fun MediaInfoContent(
                 }
             }
         }
+        PeopleChips(people)
         Spacer(Modifier.height(16.dp))
     }
 }

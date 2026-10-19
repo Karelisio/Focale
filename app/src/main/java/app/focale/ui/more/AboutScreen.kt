@@ -76,6 +76,7 @@ fun AboutScreen(onBack: () -> Unit) {
             )
             AboutCard(stringResource(R.string.about_offline_title), stringResource(R.string.about_offline_body))
             AboutCard(stringResource(R.string.about_credits_title), stringResource(R.string.about_credits_body))
+            AboutCard(stringResource(R.string.people_credits_title), stringResource(R.string.people_credits_body))
         }
     }
 }

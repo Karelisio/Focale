@@ -75,14 +75,18 @@ import app.focale.ui.actions.NameDialog
 import app.focale.ui.components.MediaPermissionScreen
 import app.focale.ui.navigation.CollectionKind
 import app.focale.ui.navigation.LocalTabsNavController
+import app.focale.ui.navigation.PeopleRoute
+import app.focale.ui.navigation.PersonRoute
 import app.focale.ui.navigation.TrashRoute
 import app.focale.ui.navigation.openCollection
+import app.focale.ui.people.PeopleSectionViewModel
+import app.focale.ui.people.peopleSection
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 
-/** Onglet Albums : collections automatiques, albums virtuels, dossiers de l'appareil. */
+/** Onglet Albums : collections automatiques, personnes, albums virtuels, dossiers de l'appareil. */
 @Composable
-fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel()) {
+fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel(), peopleViewModel: PeopleSectionViewModel = hiltViewModel()) {
     val access by viewModel.access.collectAsStateWithLifecycle()
     if (access == MediaAccess.DENIED) {
         MediaPermissionScreen(onAccessChanged = {})
@@ -93,6 +97,7 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel()) {
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val hiddenFolders by viewModel.hiddenFolders.collectAsStateWithLifecycle()
     val counts by viewModel.counts.collectAsStateWithLifecycle()
+    val people by peopleViewModel.people.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyGridState()
     val fabExpanded by remember { derivedStateOf { gridState.firstVisibleItemIndex == 0 } }
@@ -148,6 +153,11 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel()) {
             item(key = "collections", span = { GridItemSpan(maxLineSpan) }) {
                 CollectionsRow(counts)
             }
+            peopleSection(
+                people = people,
+                onOpen = { tabsNav.navigate(PersonRoute(it.id)) { launchSingleTop = true } },
+                onSeeAll = { tabsNav.navigate(PeopleRoute) { launchSingleTop = true } },
+            )
             item(key = "user-header", span = { GridItemSpan(maxLineSpan) }) {
                 SectionHeader(stringResource(R.string.albums_mine))
             }

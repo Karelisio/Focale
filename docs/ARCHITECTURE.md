@@ -33,7 +33,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Vidéo | Media3 ExoPlayer + `media3-ui-compose` (contrôles M3 maison) |
 | Couleurs depuis photo | MaterialKolor (quantification + score Material Color Utilities) |
 | Formes | `MaterialShapes` + androidx.graphics.shapes (`Morph`) |
-| ML sur l'appareil | ML Kit Image Labeling (modèle **embarqué**, pas de téléchargement) |
+| ML sur l'appareil | ML Kit Image Labeling et Face Detection (modèles **embarqués**, pas de téléchargement), SFace (OpenCV Zoo) via ONNX Runtime |
 | Arrière-plan | WorkManager |
 | Carte | osmdroid + fond vectoriel hors ligne (Natural Earth, domaine public) |
 | Géocodage inverse | Hors ligne : base GeoNames (CC BY 4.0) embarquée, index spatial en grille |
@@ -96,6 +96,7 @@ app/src/main/java/app/focale/
 │   └── util/                   dates, formats, haptique, extensions
 ├── data/                       repositories
 ├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur
+├── people/                     visages : détection, alignement, SFace, regroupement
 ├── work/                       workers
 ├── vault/                      crypto, stockage, verrouillage
 ├── widget/                     widget Glance
@@ -245,6 +246,22 @@ exposées par un `FileProvider` et purgées au bout d'une heure.
 - **Widget** : Glance, photo choisie par `WidgetPhotoPicker` (souvenir, sinon favori,
   sinon photo récente), stable sur une période de 4 h ; renouvellement par WorkManager
   tant qu'une instance existe, et immédiatement après un déplacement vers le coffre.
+
+### 6.9 Personnes (regroupement des visages)
+Étape d'analyse `FaceAnalysisStep` (package `people/`), après l'analyse principale :
+photo réduite à 1 280 px (orientation appliquée par `ImageDecoder`) → ML Kit Face
+Detection (mode précis, 5 points de repère ; visages < 48 px, de profil ou flous ignorés) →
+similitude vers le gabarit ArcFace 112 × 112 (`FaceAlignment`, conventions de
+`FaceRecognizerSF` d'OpenCV) → SFace int8 via ONNX Runtime (entrée RVB 0..255) →
+empreinte de 128 flottants normalisée (`face.embedding`). Après chaque lot,
+`FaceClusterer` (logique pure) rattache les nouveaux visages au centroïde le plus proche
+(cosinus ≥ 0,42, un visage par photo et par personne) ou crée une personne quand trois
+visages en attente sur trois photos forment un groupe cohérent (voisins ≥ 0,45, chacun
+proche du centroïde des autres). Les rattachements manuels (`face.manual`) ne sont jamais
+modifiés ; une personne sans nom n'est proposée qu'à partir de trois photos. Vignettes
+rondes : `FaceThumbnailFetcher` Coil (découpe dans la miniature MediaStore, sinon décodage
+réduit de la région utile de l'original). Recherche : `SearchTerm.personIds`. La télémétrie
+d'ONNX Runtime est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
 
 ---
 

@@ -65,6 +65,14 @@ data class CollectionRoute(
     val albumId: Long? = null,
 )
 
+/** Toutes les personnes (visages regroupés sur l'appareil). */
+@Serializable
+data object PeopleRoute
+
+/** Photos d'une personne, avec ses actions (nom, vignette, fusion…). */
+@Serializable
+data class PersonRoute(val personId: Long)
+
 @Serializable
 data object TrashRoute
 
