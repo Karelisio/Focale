@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Recherche en langage naturel -->
+    <string name="search_semantic_hint">You can also describe a scene: “dog on the beach”, “red car in the snow”, “children playing in the park”.</string>
+    <string name="about_credits_semantic">Natural-language search on the device: TinyCLIP model (Microsoft, MIT) · CLIP tokenizer (OpenAI, MIT) · ONNX Runtime (Microsoft, MIT).</string>
+</resources>

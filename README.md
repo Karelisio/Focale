@@ -4,8 +4,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 **Material 3 Expressive** et de couleurs Material You.
 
 > Aucune donnée ne quitte l'appareil : pas de compte, pas de statistiques, pas de cloud.
-> L'étiquetage des photos (ML Kit), la détection de doublons et le géocodage tournent
-> localement.
+> L'étiquetage des photos (ML Kit), la recherche en langage naturel, la détection de
+> doublons et le géocodage tournent localement.
 
 ## Fonctionnalités
 
@@ -26,6 +26,10 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 - **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
   (« plage », « chien »…, en français ou en anglais), dates, lieux (géocodage hors
   ligne), écran de nettoyage des doublons et des photos floues.
+- **Recherche en langage naturel** : « chien sur la plage », « voiture rouge dans la
+  neige »… Un modèle CLIP compact (TinyCLIP, 23 Mo, ONNX Runtime) calcule l'empreinte de
+  chaque photo en arrière-plan ; la requête, traduite en anglais hors ligne, est comparée
+  à toutes les empreintes et les photos les plus proches s'ajoutent aux résultats.
 - **Édition** : recadrage libre ou au format, rotation, miroir, filtres, luminosité /
   contraste / saturation / chaleur ; enregistrement en copie ou à la place de
   l'original.
@@ -109,7 +113,7 @@ en base64), `FOCALE_STORE_PASSWORD`, `FOCALE_KEY_ALIAS` et `FOCALE_KEY_PASSWORD`
 
 Kotlin 2.4 · AGP 9 · Compose (Material 3 1.5, adaptive) · Hilt · Coroutines/Flow ·
 Room · Paging 3 · DataStore · WorkManager · Coil 3 · telephoto · Media3 · MaterialKolor ·
-ML Kit (modèle embarqué) · osmdroid · Tink · Glance.
+ML Kit (modèle embarqué) · ONNX Runtime · osmdroid · Tink · Glance.
 
 ## Licences des ressources
 
@@ -124,6 +128,12 @@ ML Kit (modèle embarqué) · osmdroid · Tink · Glance.
   sur la carte.
 - Étiquetage d'images : modèle **ML Kit** embarqué, soumis aux conditions d'utilisation
   de ML Kit.
+- Recherche en langage naturel : modèle **TinyCLIP** (Microsoft, licence MIT,
+  <https://github.com/microsoft/Cream>), converti et quantifié par
+  `tools/clip/export_clip.py` ; tokeniseur et vocabulaire BPE de **CLIP** (OpenAI,
+  licence MIT, <https://github.com/openai/CLIP>) ; moteur **ONNX Runtime** (Microsoft,
+  licence MIT, <https://github.com/microsoft/onnxruntime>), télémétrie désactivée.
 
 Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
-carte) à partir des données sources ; ils ne sont pas nécessaires à la compilation.
+carte, modèles de la recherche en langage naturel) à partir des données sources ; ils ne
+sont pas nécessaires à la compilation.

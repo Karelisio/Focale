@@ -58,6 +58,14 @@
                 tools:node="remove" />
         </service>
 
+        <!-- Télémétrie d'ONNX Runtime retirée : ce fournisseur chargerait la bibliothèque native
+             à chaque démarrage pour envoyer des statistiques d'usage. -->
+        <provider
+            android:name="ai.onnxruntime.TelemetryInitializer"
+            android:authorities="${applicationId}.onnxruntime_telemetry_initializer"
+            android:exported="false"
+            tools:node="remove" />
+
         <!-- WorkManager est initialisé par l'application (HiltWorkerFactory). -->
         <provider
             android:name="androidx.startup.InitializationProvider"

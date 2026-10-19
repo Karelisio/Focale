@@ -19,3 +19,6 @@
 
 # osmdroid
 -dontwarn org.osmdroid.**
+
+# ONNX Runtime : le code natif appelle les classes Java par leur nom.
+-keep class ai.onnxruntime.** { *; }

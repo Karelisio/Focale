@@ -14,6 +14,9 @@ import java.time.ZoneId
  * - types : « vidéos », « captures », « gif », « photos », « favoris » ;
  * - autres mots : étiquettes ML Kit (dictionnaire FR/EN), lieux, pays, noms de
  *   fichiers ; chaque mot doit correspondre (ET), par l'une de ces voies (OU).
+ *
+ * Les mots libres ([freeWords]) servent aussi à la recherche par le sens, dont les
+ * résultats s'ajoutent à chaque terme (`SearchRepository.resolve`).
  */
 object SearchQueryParser {
 
@@ -50,7 +53,17 @@ object SearchQueryParser {
     private val isoDate = Regex("""^(\d{4})-(\d{1,2})-(\d{1,2})$""")
     private val year = Regex("""^(19|20)\d{2}$""")
 
-    fun parse(text: String, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): MediaQuery {
+    fun parse(text: String, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): MediaQuery =
+        analyze(text, today, zone).first
+
+    /**
+     * Mots libres de la requête, dans l'ordre et mots vides compris (« chien sur la plage »),
+     * sans les dates, types et favoris : le texte à rechercher par le sens.
+     */
+    fun freeWords(text: String, today: LocalDate = LocalDate.now(), zone: ZoneId = ZoneId.systemDefault()): List<String> =
+        analyze(text, today, zone).second
+
+    private fun analyze(text: String, today: LocalDate, zone: ZoneId): Pair<MediaQuery, List<String>> {
         var query = MediaQuery()
         var rawDates = text.trim().lowercase()
         // Les dates numériques sont reconnues avant la normalisation (qui supprime « / »).
@@ -84,6 +97,7 @@ object SearchQueryParser {
         var pendingMonth: Int? = null
         var pendingYear: Int? = null
         val remaining = mutableListOf<String>()
+        val free = mutableListOf<String>()
         for (word in words) {
             when {
                 word in todayWords -> query = query.withRange(today, today.plusDays(1), zone)
@@ -92,8 +106,11 @@ object SearchQueryParser {
                 months.containsKey(word) -> pendingMonth = months.getValue(word)
                 word in favoriteWords -> query = query.copy(favoritesOnly = true)
                 typeWords.containsKey(word) -> query = query.copy(filter = typeWords.getValue(word))
-                word in stopWords -> Unit
-                else -> remaining += word
+                word in stopWords -> free += word
+                else -> {
+                    remaining += word
+                    free += word
+                }
             }
         }
         query = when {
@@ -116,7 +133,7 @@ object SearchQueryParser {
                 text = word,
             )
         }
-        return query.copy(terms = terms)
+        return query.copy(terms = terms) to free
     }
 
     /** Vrai si la requête ne filtre rien (champ vide ou mots vides seulement). */

@@ -75,7 +75,10 @@ fun AboutScreen(onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             AboutCard(stringResource(R.string.about_offline_title), stringResource(R.string.about_offline_body))
-            AboutCard(stringResource(R.string.about_credits_title), stringResource(R.string.about_credits_body))
+            AboutCard(
+                stringResource(R.string.about_credits_title),
+                stringResource(R.string.about_credits_body) + "\n\n" + stringResource(R.string.about_credits_semantic),
+            )
         }
     }
 }
