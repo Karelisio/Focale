@@ -1,8 +1,5 @@
 package app.focale.ui.navigation
 
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Photo
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -74,6 +71,7 @@ fun MainScaffold(updates: UpdateViewModel = hiltViewModel()) {
     val destination = backStackEntry?.destination
     val suiteState = rememberNavigationSuiteScaffoldState()
     val suiteType = NavigationSuiteScaffoldDefaults.navigationSuiteType(currentWindowAdaptiveInfoV2())
+    val motion = rememberNavMotion()
 
     LaunchedEffect(chrome.navigationHidden) {
         if (chrome.navigationHidden) suiteState.hide() else suiteState.show()
@@ -108,8 +106,12 @@ fun MainScaffold(updates: UpdateViewModel = hiltViewModel()) {
             NavHost(
                 navController = tabsNav,
                 startDestination = PhotosRoute,
-                enterTransition = { fadeIn(tween(200)) },
-                exitTransition = { fadeOut(tween(120)) },
+                enterTransition = { if (toTab) motion.fadeThroughIn else motion.enter(forward = true) },
+                exitTransition = { if (toTab) motion.fadeThroughOut else motion.exit(forward = true) },
+                popEnterTransition = { motion.enter(forward = false) },
+                popExitTransition = { motion.exit(forward = false) },
+                predictivePopEnterTransition = { _ -> motion.enter(forward = false) },
+                predictivePopExitTransition = { _ -> motion.exit(forward = false) },
             ) {
                 composable<PhotosRoute> { TimelineScreen() }
                 composable<MoreRoute> { MoreScreen() }

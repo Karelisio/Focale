@@ -3,9 +3,6 @@ package app.focale.ui.navigation
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 fun FocaleApp(openMediaRequests: StateFlow<Long?>, onOpenMediaHandled: () -> Unit) {
     val rootNav = rememberNavController()
     val chrome = remember { MainChromeState() }
+    val motion = rememberNavMotion()
     val openMedia by openMediaRequests.collectAsStateWithLifecycle()
 
     // Appui sur le widget : ouvre la photo dans la visionneuse, au sein de la timeline.
@@ -45,13 +43,18 @@ fun FocaleApp(openMediaRequests: StateFlow<Long?>, onOpenMediaHandled: () -> Uni
             LocalRootNavController provides rootNav,
             LocalMainChrome provides chrome,
         ) {
+            // Visionneuse, éditeur, coffre : fondu au-dessus de l'écran d'origine, laissé en
+            // place ; au retour (geste prédictif compris), le fond s'estompe pendant que la
+            // photo partagée rejoint sa miniature, sans réduction de l'écran.
             NavHost(
                 navController = rootNav,
                 startDestination = MainRoute,
-                enterTransition = { fadeIn(tween(220)) },
+                enterTransition = { motion.fadeIn },
                 exitTransition = { ExitTransition.KeepUntilTransitionsFinished },
                 popEnterTransition = { EnterTransition.None },
-                popExitTransition = { fadeOut(tween(220)) },
+                popExitTransition = { motion.fadeOut },
+                predictivePopEnterTransition = { _ -> EnterTransition.None },
+                predictivePopExitTransition = { _ -> motion.fadeOut },
             ) {
                 composable<MainRoute> {
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
