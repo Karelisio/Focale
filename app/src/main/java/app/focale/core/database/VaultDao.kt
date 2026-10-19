@@ -14,6 +14,10 @@ interface VaultDao {
     @Insert
     suspend fun insert(item: VaultItemEntity): Long
 
+    /** Insertion groupée, en une transaction (restauration d'une sauvegarde). */
+    @Insert
+    suspend fun insertAll(items: List<VaultItemEntity>): List<Long>
+
     @Query("DELETE FROM vault_item WHERE id IN (:ids)")
     suspend fun delete(ids: List<Long>)
 }

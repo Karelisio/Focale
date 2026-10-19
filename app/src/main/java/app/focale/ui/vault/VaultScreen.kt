@@ -1,6 +1,9 @@
 package app.focale.ui.vault
 
+import android.content.ActivityNotFoundException
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -33,22 +36,27 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.RestorePage
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.SettingsBackupRestore
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingToolbarDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -84,6 +92,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -98,16 +107,19 @@ import app.focale.core.util.Formatters
 import app.focale.ui.components.EmptyState
 import app.focale.ui.components.SelectionIndicator
 import app.focale.ui.components.SelectionTopBar
+import app.focale.vault.VaultArchive
 import app.focale.vault.VaultImage
 import app.focale.vault.VaultItem
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import java.time.LocalDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
  * Coffre-fort : création du code, déverrouillage (code ou biométrie), puis grille du
- * contenu chiffré avec restauration et suppression. Captures d'écran interdites.
+ * contenu chiffré avec restauration, suppression, sauvegarde et restauration d'une
+ * sauvegarde. Captures d'écran interdites.
  */
 @Composable
 fun VaultScreen(
@@ -115,6 +127,7 @@ fun VaultScreen(
     onOpen: (VaultItem) -> Unit,
     onAdd: () -> Unit,
     viewModel: VaultViewModel = hiltViewModel(),
+    backupViewModel: VaultBackupViewModel = hiltViewModel(),
 ) {
     SecureWindow()
     val context = LocalContext.current
@@ -122,6 +135,7 @@ fun VaultScreen(
     val mode by viewModel.mode.collectAsStateWithLifecycle()
     val changingPin by viewModel.changingPin.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
+    val backupRunning by backupViewModel.running.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var offerBiometric by rememberSaveable { mutableStateOf(false) }
     var autoPrompted by rememberSaveable { mutableStateOf(false) }
@@ -140,6 +154,36 @@ fun VaultScreen(
             }
         }
     }
+    LaunchedEffect(backupViewModel) {
+        backupViewModel.events.collect { message -> launch { snackbarHostState.showSnackbar(message.resolve(context)) } }
+    }
+
+    // Sélecteurs système déclarés hors des volets : leur résultat arrive même si le coffre
+    // s'est verrouillé entre-temps.
+    val createArchive = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(VaultArchive.MIME_TYPE),
+        backupViewModel::onTargetChosen,
+    )
+    val openArchive = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument(), backupViewModel::onArchiveChosen)
+    val resources = LocalResources.current
+    val pickBackupTarget: () -> Unit = {
+        try {
+            // Nom proposé du jour de l'export, d'où la résolution au moment du clic.
+            createArchive.launch(resources.getString(R.string.vault_backup_file_name, LocalDate.now().toString()))
+        } catch (error: ActivityNotFoundException) {
+            backupViewModel.onPickerUnavailable()
+        }
+    }
+    val pickArchive: () -> Unit = {
+        backupViewModel.beforeRestorePicker()
+        try {
+            // Tous types : selon le fournisseur, une archive `.fvault` n'a pas toujours le même.
+            openArchive.launch(arrayOf("*/*"))
+        } catch (error: ActivityNotFoundException) {
+            backupViewModel.onPickerUnavailable()
+        }
+    }
+    if (backupRunning) KeepScreenOn()
 
     // Invite biométrique automatique une fois par verrouillage, écran au premier plan.
     LaunchedEffect(mode, biometricEnabled, biometricAvailable) {
@@ -190,6 +234,7 @@ fun VaultScreen(
             )
             VaultPane.CONTENT -> VaultContentPane(
                 viewModel = viewModel,
+                backupViewModel = backupViewModel,
                 snackbarHostState = snackbarHostState,
                 biometricAvailable = biometricAvailable && enableBiometrics != null,
                 onBack = onBack,
@@ -198,6 +243,8 @@ fun VaultScreen(
                 onToggleBiometric = { enabled ->
                     if (enabled) enableBiometrics?.invoke() else viewModel.setBiometricEnabled(false)
                 },
+                onPickBackupTarget = pickBackupTarget,
+                onRestoreBackup = pickArchive,
             )
         }
     }
@@ -281,18 +328,22 @@ private fun PinStep.confirmRes(): Int = when (this) {
 @Composable
 private fun VaultContentPane(
     viewModel: VaultViewModel,
+    backupViewModel: VaultBackupViewModel,
     snackbarHostState: SnackbarHostState,
     biometricAvailable: Boolean,
     onBack: () -> Unit,
     onOpen: (VaultItem) -> Unit,
     onAdd: () -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
+    onPickBackupTarget: () -> Unit,
+    onRestoreBackup: () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
     val items by viewModel.items.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
+    val lastBackupAt by backupViewModel.lastBackupAt.collectAsStateWithLifecycle()
     val selecting = selection.isNotEmpty()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -317,6 +368,7 @@ private fun VaultContentPane(
             },
         )
     }
+    VaultBackupDialogs(viewModel = backupViewModel, onPickTarget = onPickBackupTarget)
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -344,8 +396,11 @@ private fun VaultContentPane(
                             Icon(Icons.Outlined.Lock, contentDescription = stringResource(R.string.action_lock))
                         }
                         VaultMenu(
+                            canBackup = !items.isNullOrEmpty(),
                             biometricAvailable = biometricAvailable,
                             biometricEnabled = biometricEnabled,
+                            onBackup = backupViewModel::requestBackup,
+                            onRestoreBackup = onRestoreBackup,
                             onToggleBiometric = onToggleBiometric,
                             onChangePin = viewModel::startChangePin,
                         )
@@ -376,6 +431,19 @@ private fun VaultContentPane(
                     message = stringResource(R.string.vault_empty_message),
                     shape = MaterialShapes.Gem,
                     modifier = Modifier.padding(padding),
+                    action = {
+                        FilledTonalButton(onClick = onRestoreBackup, shapes = ButtonDefaults.shapes()) {
+                            Icon(
+                                imageVector = Icons.Outlined.SettingsBackupRestore,
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.IconSize),
+                            )
+                            Text(
+                                text = stringResource(R.string.vault_restore_action),
+                                modifier = Modifier.padding(start = ButtonDefaults.IconSpacing),
+                            )
+                        }
+                    },
                 )
                 else -> LazyVerticalGrid(
                     state = gridState,
@@ -389,6 +457,11 @@ private fun VaultContentPane(
                         bottom = padding.calculateBottomPadding() + 104.dp,
                     ),
                 ) {
+                    lastBackupAt?.let { at ->
+                        item(key = "backup", span = { GridItemSpan(maxLineSpan) }, contentType = "backup") {
+                            BackupStatus(lastBackupAt = at, onBackup = backupViewModel::requestBackup)
+                        }
+                    }
                     if (busy) {
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             LinearWavyProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
@@ -442,11 +515,14 @@ private fun VaultContentPane(
     }
 }
 
-/** Réglages propres au coffre, accessibles seulement une fois déverrouillé. */
+/** Sauvegarde et réglages propres au coffre, accessibles seulement une fois déverrouillé. */
 @Composable
 private fun VaultMenu(
+    canBackup: Boolean,
     biometricAvailable: Boolean,
     biometricEnabled: Boolean,
+    onBackup: () -> Unit,
+    onRestoreBackup: () -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
     onChangePin: () -> Unit,
 ) {
@@ -456,6 +532,24 @@ private fun VaultMenu(
             Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.vault_backup_action)) },
+                leadingIcon = { Icon(Icons.Outlined.Backup, contentDescription = null) },
+                enabled = canBackup,
+                onClick = {
+                    open = false
+                    onBackup()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.vault_restore_action)) },
+                leadingIcon = { Icon(Icons.Outlined.SettingsBackupRestore, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onRestoreBackup()
+                },
+            )
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.vault_change_pin)) },
                 leadingIcon = { Icon(Icons.Outlined.Password, contentDescription = null) },

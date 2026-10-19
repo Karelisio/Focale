@@ -121,8 +121,8 @@ class VaultRepository @Inject constructor(
     private suspend fun encrypt(item: MediaItem): VaultItemEntity {
         if (!storage.hasRoomFor(item.size)) throw IOException("Espace insuffisant")
         val base = UUID.randomUUID().toString()
-        val file = storage.file(base + MEDIA_SUFFIX)
-        val thumbFile = storage.file(base + THUMB_SUFFIX)
+        val file = storage.file(base + VaultStorage.MEDIA_SUFFIX)
+        val thumbFile = storage.file(base + VaultStorage.THUMB_SUFFIX)
         try {
             val written = resolver.openInputStream(item.uri)?.use { crypto.encrypt(it, file) }
                 ?: throw IOException("Lecture impossible : ${item.uri}")
@@ -182,8 +182,6 @@ class VaultRepository @Inject constructor(
 
     private companion object {
         const val TAG = "VaultRepository"
-        const val MEDIA_SUFFIX = ".bin"
-        const val THUMB_SUFFIX = ".thumb"
         const val THUMB_SIZE = 512
         const val THUMB_QUALITY = 85
         const val BUFFER = 256 * 1024
