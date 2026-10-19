@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Éditeur : outil Dessin -->
+    <string name="editor_draw">Dessin</string>
+    <string name="draw_pen">Stylo</string>
+    <string name="draw_highlighter">Surligneur</string>
+    <string name="draw_line">Ligne</string>
+    <string name="draw_arrow">Flèche</string>
+    <string name="draw_rectangle">Rectangle</string>
+    <string name="draw_ellipse">Ellipse</string>
+    <string name="draw_eraser">Gomme</string>
+    <string name="draw_thickness">Épaisseur</string>
+    <string name="draw_color_primary">Couleur du thème</string>
+    <string name="draw_color_secondary">Couleur secondaire du thème</string>
+    <string name="draw_color_tertiary">Couleur tertiaire du thème</string>
+    <string name="draw_color_black">Noir</string>
+    <string name="draw_color_white">Blanc</string>
+    <string name="draw_color_red">Rouge</string>
+    <string name="draw_color_yellow">Jaune</string>
+    <string name="draw_color_green">Vert</string>
+    <string name="draw_color_blue">Bleu</string>
+</resources>

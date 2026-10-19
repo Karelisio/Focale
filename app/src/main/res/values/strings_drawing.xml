@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Éditeur : outil Dessin -->
+    <string name="editor_draw">Draw</string>
+    <string name="draw_pen">Pen</string>
+    <string name="draw_highlighter">Highlighter</string>
+    <string name="draw_line">Line</string>
+    <string name="draw_arrow">Arrow</string>
+    <string name="draw_rectangle">Rectangle</string>
+    <string name="draw_ellipse">Ellipse</string>
+    <string name="draw_eraser">Eraser</string>
+    <string name="draw_thickness">Thickness</string>
+    <string name="draw_color_primary">Theme color</string>
+    <string name="draw_color_secondary">Secondary theme color</string>
+    <string name="draw_color_tertiary">Tertiary theme color</string>
+    <string name="draw_color_black">Black</string>
+    <string name="draw_color_white">White</string>
+    <string name="draw_color_red">Red</string>
+    <string name="draw_color_yellow">Yellow</string>
+    <string name="draw_color_green">Green</string>
+    <string name="draw_color_blue">Blue</string>
+</resources>
