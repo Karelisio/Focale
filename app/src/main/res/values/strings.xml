@@ -257,4 +257,41 @@
     <string name="settings_analysis_charging">Only while charging</string>
     <string name="settings_analysis_charging_summary">Saves battery on large libraries</string>
     <string name="info_labels">Detected on this device</string>
+
+    <!-- Éditeur -->
+    <string name="action_edit">Edit</string>
+    <string name="action_close">Close</string>
+    <string name="editor_title">Edit</string>
+    <string name="editor_crop">Crop</string>
+    <string name="editor_filters">Filters</string>
+    <string name="editor_adjust">Adjust</string>
+    <string name="editor_undo">Undo</string>
+    <string name="editor_redo">Redo</string>
+    <string name="editor_rotate">Rotate</string>
+    <string name="editor_flip">Flip</string>
+    <string name="editor_aspect_free">Free</string>
+    <string name="editor_aspect_original">Original</string>
+    <string name="editor_save">Save</string>
+    <string name="editor_save_copy">Save as copy</string>
+    <string name="editor_save_replace">Replace original</string>
+    <string name="editor_saved_copy">Copy saved</string>
+    <string name="editor_saved_replace">Original replaced</string>
+    <string name="editor_failed">The photo could not be saved</string>
+    <string name="editor_discard_title">Discard changes?</string>
+    <string name="editor_discard_message">Your edits will be lost.</string>
+    <string name="editor_discard">Discard</string>
+    <string name="filter_none">Original</string>
+    <string name="filter_vivid">Vivid</string>
+    <string name="filter_mono">B&amp;W</string>
+    <string name="filter_sepia">Sepia</string>
+    <string name="filter_warm">Warm</string>
+    <string name="filter_cool">Cool</string>
+    <string name="filter_vintage">Vintage</string>
+    <string name="filter_dramatic">Dramatic</string>
+    <string name="filter_fade">Fade</string>
+    <string name="filter_noir">Noir</string>
+    <string name="adjust_brightness">Brightness</string>
+    <string name="adjust_contrast">Contrast</string>
+    <string name="adjust_saturation">Saturation</string>
+    <string name="adjust_warmth">Warmth</string>
 </resources>

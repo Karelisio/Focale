@@ -273,4 +273,41 @@
     <string name="settings_analysis_charging">Uniquement en charge</string>
     <string name="settings_analysis_charging_summary">Économise la batterie sur les grandes bibliothèques</string>
     <string name="info_labels">Détecté sur l\'appareil</string>
+
+    <!-- Éditeur -->
+    <string name="action_edit">Modifier</string>
+    <string name="action_close">Fermer</string>
+    <string name="editor_title">Modifier</string>
+    <string name="editor_crop">Recadrer</string>
+    <string name="editor_filters">Filtres</string>
+    <string name="editor_adjust">Réglages</string>
+    <string name="editor_undo">Annuler</string>
+    <string name="editor_redo">Rétablir</string>
+    <string name="editor_rotate">Pivoter</string>
+    <string name="editor_flip">Miroir</string>
+    <string name="editor_aspect_free">Libre</string>
+    <string name="editor_aspect_original">Original</string>
+    <string name="editor_save">Enregistrer</string>
+    <string name="editor_save_copy">Enregistrer une copie</string>
+    <string name="editor_save_replace">Remplacer l\'original</string>
+    <string name="editor_saved_copy">Copie enregistrée</string>
+    <string name="editor_saved_replace">Original remplacé</string>
+    <string name="editor_failed">La photo n\'a pas pu être enregistrée</string>
+    <string name="editor_discard_title">Abandonner les modifications ?</string>
+    <string name="editor_discard_message">Vos retouches seront perdues.</string>
+    <string name="editor_discard">Abandonner</string>
+    <string name="filter_none">Original</string>
+    <string name="filter_vivid">Éclatant</string>
+    <string name="filter_mono">N&amp;B</string>
+    <string name="filter_sepia">Sépia</string>
+    <string name="filter_warm">Chaud</string>
+    <string name="filter_cool">Froid</string>
+    <string name="filter_vintage">Vintage</string>
+    <string name="filter_dramatic">Dramatique</string>
+    <string name="filter_fade">Délavé</string>
+    <string name="filter_noir">Noir</string>
+    <string name="adjust_brightness">Luminosité</string>
+    <string name="adjust_contrast">Contraste</string>
+    <string name="adjust_saturation">Saturation</string>
+    <string name="adjust_warmth">Chaleur</string>
 </resources>

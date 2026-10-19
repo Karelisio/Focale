@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material.icons.outlined.Wallpaper
@@ -91,7 +92,9 @@ import app.focale.ml.LabelDictionary
 import app.focale.ui.actions.MediaActionsHost
 import app.focale.ui.components.isNavTransitionRunning
 import app.focale.ui.components.sharedMedia
+import app.focale.ui.navigation.EditorRoute
 import app.focale.ui.navigation.LocalMainChrome
+import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.theme.PhotoTheme
 import coil3.compose.AsyncImage
 import coil3.memory.MemoryCache
@@ -119,6 +122,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val chrome = LocalMainChrome.current
+    val rootNav = LocalRootNavController.current
     val items = viewModel.pages.collectAsLazyPagingItems()
     val initialIndex by viewModel.initialIndex.collectAsStateWithLifecycle()
     val current by viewModel.current.collectAsStateWithLifecycle()
@@ -211,6 +215,9 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     viewModel.loadDetails()
                 },
                 onTrash = { viewModel.onCurrent { trash(it) } },
+                onEdit = item?.takeIf { !it.isVideo && !it.isGif }?.let { editable ->
+                    { rootNav.navigate(EditorRoute(editable.id)) }
+                },
                 menu = { dismiss ->
                     ViewerMenuItem(Icons.Outlined.LibraryAdd, stringResource(R.string.action_add_to_album)) {
                         dismiss()
@@ -419,6 +426,7 @@ private fun ViewerToolbar(
     onToggleFavorite: () -> Unit,
     onInfo: () -> Unit,
     onTrash: () -> Unit,
+    onEdit: (() -> Unit)?,
     menu: @Composable (dismiss: () -> Unit) -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -441,6 +449,11 @@ private fun ViewerToolbar(
                 imageVector = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                 contentDescription = stringResource(if (isFavorite) R.string.action_unfavorite else R.string.action_favorite),
             )
+        }
+        if (onEdit != null) {
+            IconButton(onClick = onEdit, shapes = IconButtonDefaults.shapes()) {
+                Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.action_edit))
+            }
         }
         IconButton(onClick = onInfo, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.action_info))

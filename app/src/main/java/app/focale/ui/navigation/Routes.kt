@@ -14,6 +14,10 @@ data object MainRoute
 @Serializable
 data class ViewerRoute(val query: String, val mediaId: Long)
 
+/** Éditeur photo. */
+@Serializable
+data class EditorRoute(val mediaId: Long)
+
 // ── Destinations des onglets ─────────────────────────────────────────────────────
 
 @Serializable
