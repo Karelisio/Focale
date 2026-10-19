@@ -57,8 +57,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
 import androidx.compose.ui.unit.toIntRect
@@ -111,6 +113,8 @@ fun MediaGrid(
 ) {
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val leftPaddingPx = with(density) { contentPadding.calculateLeftPadding(layoutDirection).roundToPx() }
     val selectionMode = selection.isNotEmpty()
     val currentSelection by rememberUpdatedState(selection)
     val autoScrollSpeed = remember { mutableFloatStateOf(0f) }
@@ -151,6 +155,7 @@ fun MediaGrid(
                     state = state,
                     items = items,
                     leadingItemCount = leadingItemCount,
+                    leftPaddingPx = leftPaddingPx,
                     haptics = haptics,
                     selection = { currentSelection },
                     onSelectionChange = onSelectionChange,
@@ -376,24 +381,33 @@ private const val ZOOM_STEP = 1.28f
 /**
  * Sélection par appui long puis glissement : la plage entre le premier élément touché
  * et l'élément sous le doigt est ajoutée à la sélection initiale.
+ *
+ * Les positions des cases (`LazyGridItemInfo.offset`) excluent les marges internes de la
+ * grille : le point touché est ramené dans ce repère, sinon la sélection serait décalée
+ * de la hauteur de la barre supérieure (une rangée plus bas que le doigt).
  */
 private fun Modifier.dragToSelect(
     state: LazyGridState,
     items: LazyPagingItems<GridItem>,
     leadingItemCount: Int,
+    leftPaddingPx: Int,
     haptics: HapticFeedback,
     selection: () -> Set<Long>,
     onSelectionChange: (Set<Long>) -> Unit,
     autoScrollThreshold: Float,
     onAutoScroll: (Float) -> Unit,
-): Modifier = pointerInput(items, leadingItemCount) {
+): Modifier = pointerInput(items, leadingItemCount, leftPaddingPx) {
     var initialIndex: Int? = null
     var currentIndex: Int? = null
     var baseSelection: Set<Long> = emptySet()
 
-    fun indexAt(position: Offset): Int? = state.layoutInfo.visibleItemsInfo.firstOrNull { info ->
-        info.size.toIntRect().contains(position.round() - info.offset)
-    }?.index?.minus(leadingItemCount)?.takeIf { it >= 0 && it < items.itemCount }
+    fun indexAt(position: Offset): Int? {
+        val layoutInfo = state.layoutInfo
+        val point = position.round() - IntOffset(leftPaddingPx, layoutInfo.beforeContentPadding)
+        return layoutInfo.visibleItemsInfo.firstOrNull { info ->
+            info.size.toIntRect().contains(point - info.offset)
+        }?.index?.minus(leadingItemCount)?.takeIf { it >= 0 && it < items.itemCount }
+    }
 
     fun mediaIdAt(index: Int): Long? = (items.peek(index) as? GridItem.Media)?.item?.id
 

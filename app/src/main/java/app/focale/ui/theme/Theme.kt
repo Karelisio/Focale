@@ -32,9 +32,13 @@ data class ThemeConfig(
     val darkTheme: Boolean,
     val amoled: Boolean,
     val colorFromPhoto: Boolean,
+    /** Couleurs du fond d'écran (Material You) effectivement utilisées. */
+    val dynamicColor: Boolean,
 )
 
-val LocalThemeConfig = staticCompositionLocalOf { ThemeConfig(darkTheme = false, amoled = false, colorFromPhoto = true) }
+val LocalThemeConfig = staticCompositionLocalOf {
+    ThemeConfig(darkTheme = false, amoled = false, colorFromPhoto = true, dynamicColor = false)
+}
 
 /** Thème racine : Material You dynamique + Expressive (formes, typo, mouvement à ressorts). */
 @Composable
@@ -61,7 +65,7 @@ fun FocaleTheme(
     }
 
     CompositionLocalProvider(
-        LocalThemeConfig provides ThemeConfig(darkTheme, amoled, settings.colorFromPhoto),
+        LocalThemeConfig provides ThemeConfig(darkTheme, amoled, settings.colorFromPhoto, useDynamic),
     ) {
         MaterialExpressiveTheme(
             colorScheme = animateColorScheme(colorScheme),
@@ -88,16 +92,50 @@ fun PhotoTheme(
     val config = LocalThemeConfig.current
     val dark = forceDark || config.darkTheme
     val baseScheme = MaterialTheme.colorScheme
-    val target = remember(seed, dark, config.amoled, config.colorFromPhoto, baseScheme) {
+    val materialYouDark = rememberMaterialYouDarkScheme()
+    val target = remember(seed, dark, config.amoled, config.colorFromPhoto, baseScheme, materialYouDark) {
         when {
             seed != null && config.colorFromPhoto ->
                 seededColorScheme(seed, dark, PaletteStyle.Vibrant).let { if (dark && config.amoled) it.toAmoled() else it }
-            forceDark && !config.darkTheme -> seededColorScheme(FocaleSeed, true, PaletteStyle.TonalSpot)
+            forceDark && !config.darkTheme -> materialYouDark
             else -> baseScheme
         }
     }
     MaterialExpressiveTheme(
         colorScheme = animateColorScheme(target),
+        motionScheme = MaterialTheme.motionScheme,
+        shapes = MaterialTheme.shapes,
+        typography = MaterialTheme.typography,
+        content = content,
+    )
+}
+
+/**
+ * Variante sombre des couleurs Material You de l'appareil (fond d'écran), ou de Focale
+ * si les couleurs dynamiques sont indisponibles ou désactivées.
+ */
+@Composable
+fun rememberMaterialYouDarkScheme(): ColorScheme {
+    val config = LocalThemeConfig.current
+    val context = LocalContext.current
+    return remember(config.dynamicColor, config.amoled, context) {
+        val base = if (config.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            dynamicDarkColorScheme(context)
+        } else {
+            seededColorScheme(FocaleSeed, true, PaletteStyle.TonalSpot)
+        }
+        if (config.amoled) base.toAmoled() else base
+    }
+}
+
+/**
+ * Habillage de la visionneuse (barres d'outils) : toujours sombre et aux couleurs
+ * Material You de l'appareil, même quand la photo teinte le reste de l'écran.
+ */
+@Composable
+fun ViewerChromeTheme(content: @Composable () -> Unit) {
+    MaterialExpressiveTheme(
+        colorScheme = rememberMaterialYouDarkScheme(),
         motionScheme = MaterialTheme.motionScheme,
         shapes = MaterialTheme.shapes,
         typography = MaterialTheme.typography,

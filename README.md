@@ -71,8 +71,17 @@ architecture (`arm64-v8a` pour la plupart des téléphones récents) plus un APK
 
 | Variante | Réseau |
 |---|---|
-| `standard` | Permission `INTERNET` uniquement pour le fond de carte OpenStreetMap, **désactivé par défaut** |
-| `strict` | Aucune permission `INTERNET` : la carte n'utilise que le fond hors ligne |
+| `standard` | `INTERNET` pour le fond de carte OpenStreetMap (**désactivé par défaut**) et les mises à jour intégrées (recherche quotidienne sur GitHub, désactivable) |
+| `strict` | Aucune permission `INTERNET` : carte hors ligne, mises à jour manuelles |
+
+### Mises à jour intégrées
+
+La variante `standard` interroge l'API publique des versions GitHub (au plus une fois par
+jour, au passage au premier plan, ou depuis Réglages → Mises à jour). L'APK de
+l'architecture de l'appareil est téléchargé, contrôlé (taille et SHA-256 publiés par
+GitHub) puis installé par `PackageInstaller` : Android exige la même signature et une
+version plus récente. Le numéro de version vient du tag (`v1.2.3` → `versionCode` 1002003) ;
+publier une mise à jour revient donc à créer une version GitHub `vX.Y.Z` plus élevée.
 
 ### Signature release
 
@@ -92,8 +101,8 @@ ou définissez les variables d'environnement `FOCALE_STORE_FILE`,
 
 Le workflow [`.github/workflows/android.yml`](.github/workflows/android.yml) exécute tests
 et lint puis assemble les APK (standard et strict) à chaque push ; ils sont téléchargeables
-dans les artefacts de l'exécution. Un tag `v*` crée une version GitHub avec les APK
-release. Pour signer en CI, ajoutez les secrets `FOCALE_KEYSTORE_BASE64` (keystore encodé
+dans les artefacts de l'exécution. Une version GitHub publiée (tag `vX.Y.Z`) reçoit les
+APK release signés. Pour signer en CI, ajoutez les secrets `FOCALE_KEYSTORE_BASE64` (keystore encodé
 en base64), `FOCALE_STORE_PASSWORD`, `FOCALE_KEY_ALIAS` et `FOCALE_KEY_PASSWORD`.
 
 ## Stack

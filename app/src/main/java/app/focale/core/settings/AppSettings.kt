@@ -32,6 +32,8 @@ data class AppSettings(
     val slideshowIntervalSeconds: Int = 5,
     /** Délai (s) avant reverrouillage du coffre une fois l'application en arrière-plan. */
     val vaultAutoLockSeconds: Int = 0,
+    /** Recherche quotidienne d'une nouvelle version sur GitHub (variante standard). */
+    val autoCheckUpdates: Boolean = true,
 ) {
     companion object {
         const val MIN_COLUMNS = 2

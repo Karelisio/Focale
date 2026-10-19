@@ -33,11 +33,11 @@ import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LibraryAdd
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Wallpaper
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -96,6 +96,7 @@ import app.focale.ui.navigation.EditorRoute
 import app.focale.ui.navigation.LocalMainChrome
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.theme.PhotoTheme
+import app.focale.ui.theme.ViewerChromeTheme
 import coil3.compose.AsyncImage
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
@@ -195,7 +196,16 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
             exit = fadeOut() + slideOutVertically { -it / 2 },
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            if (item != null) ViewerTopBar(item = item, onBack = onBack)
+            if (item != null) {
+                ViewerTopBar(
+                    item = item,
+                    onBack = onBack,
+                    onInfo = {
+                        showInfo = true
+                        viewModel.loadDetails()
+                    },
+                )
+            }
         }
         AnimatedVisibility(
             visible = chromeVisible && item != null,
@@ -209,10 +219,6 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                 onToggleFavorite = {
                     haptics.performHapticFeedback(if (isFavorite) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
                     viewModel.toggleFavorite()
-                },
-                onInfo = {
-                    showInfo = true
-                    viewModel.loadDetails()
                 },
                 onTrash = { viewModel.onCurrent { trash(it) } },
                 onEdit = item?.takeIf { !it.isVideo && !it.isGif }?.let { editable ->
@@ -388,62 +394,75 @@ private fun HeroImage(item: MediaItem) {
     }
 }
 
+/** Barre supérieure : retour, date et album, détails. */
 @Composable
-private fun ViewerTopBar(item: MediaItem, onBack: () -> Unit) {
+private fun ViewerTopBar(item: MediaItem, onBack: () -> Unit, onInfo: () -> Unit) = ViewerChromeTheme {
     val context = LocalContext.current
+    val colors = MaterialTheme.colorScheme
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
+            .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.5f), Color.Transparent)))
             .statusBarsPadding()
             .padding(horizontal = 4.dp, vertical = 8.dp),
     ) {
         IconButton(onClick = onBack, shapes = IconButtonDefaults.shapes()) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = Color.White)
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = colors.onSurface)
         }
         Column(Modifier.weight(1f).padding(start = 4.dp)) {
             Text(
                 text = Formatters.dateTime(context, item.dateTaken),
                 style = MaterialTheme.typography.titleMediumEmphasized,
-                color = Color.White,
+                color = colors.onSurface,
                 maxLines = 1,
             )
             Text(
                 text = item.bucketName,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.8f),
+                color = colors.onSurfaceVariant,
                 maxLines = 1,
             )
+        }
+        IconButton(onClick = onInfo, shapes = IconButtonDefaults.shapes()) {
+            Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.action_info), tint = colors.onSurface)
         }
     }
 }
 
+/**
+ * Barre d'actions sobre : conteneur tonal translucide aux couleurs Material You de
+ * l'appareil (pas celles de la photo), icônes au trait, favori coloré une fois actif.
+ */
 @Composable
 private fun ViewerToolbar(
     isFavorite: Boolean,
     onShare: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onInfo: () -> Unit,
     onTrash: () -> Unit,
     onEdit: (() -> Unit)?,
     menu: @Composable (dismiss: () -> Unit) -> Unit,
-) {
+) = ViewerChromeTheme {
     var menuOpen by remember { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
     HorizontalFloatingToolbar(
         expanded = true,
-        colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
+        colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+            toolbarContainerColor = colors.surfaceContainer.copy(alpha = 0.9f),
+            toolbarContentColor = colors.onSurfaceVariant,
+        ),
         modifier = Modifier
             .navigationBarsPadding()
             .padding(bottom = 16.dp),
     ) {
         IconButton(onClick = onShare, shapes = IconButtonDefaults.shapes()) {
-            Icon(Icons.Rounded.Share, contentDescription = stringResource(R.string.action_share))
+            Icon(Icons.Outlined.Share, contentDescription = stringResource(R.string.action_share))
         }
         IconToggleButton(
             checked = isFavorite,
             onCheckedChange = { onToggleFavorite() },
             shapes = IconButtonDefaults.toggleableShapes(),
+            colors = IconButtonDefaults.iconToggleButtonColors(checkedContentColor = colors.primary),
         ) {
             Icon(
                 imageVector = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
@@ -454,9 +473,6 @@ private fun ViewerToolbar(
             IconButton(onClick = onEdit, shapes = IconButtonDefaults.shapes()) {
                 Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.action_edit))
             }
-        }
-        IconButton(onClick = onInfo, shapes = IconButtonDefaults.shapes()) {
-            Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.action_info))
         }
         IconButton(onClick = onTrash, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.Outlined.DeleteOutline, contentDescription = stringResource(R.string.action_trash))

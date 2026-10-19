@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Update
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,13 +21,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.BuildConfig
 import app.focale.R
 import app.focale.core.settings.AppSettings
 import app.focale.ui.components.Choice
 import app.focale.ui.components.ConnectedChoiceGroup
+import app.focale.ui.update.UpdateControls
+import app.focale.ui.update.UpdateViewModel
+import app.focale.ui.update.updateStatusText
 
 /** Sections ajoutées par les fonctionnalités (fichiers, vie privée, analyse, carte, coffre). */
 fun LazyListScope.settingsExtraSections(settings: AppSettings, viewModel: SettingsViewModel) {
@@ -162,6 +168,38 @@ private fun FilesSection() {
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 },
+            )
+        }
+    }
+}
+
+/** Version installée, recherche et installation des mises à jour (variante standard). */
+@Composable
+fun UpdatesSection(
+    settings: AppSettings,
+    viewModel: SettingsViewModel,
+    updates: UpdateViewModel = hiltViewModel(),
+) {
+    if (!updates.supported) return
+    val state by updates.state.collectAsStateWithLifecycle()
+    SettingsGroup(stringResource(R.string.update_title)) {
+        item { shapes ->
+            SettingsCustom(
+                title = stringResource(R.string.about_version, BuildConfig.VERSION_NAME),
+                subtitle = updateStatusText(state),
+                shapes = shapes,
+            ) {
+                UpdateControls(state = state, onCheck = updates::check, onInstall = updates::install)
+            }
+        }
+        item { shapes ->
+            SettingsSwitch(
+                title = stringResource(R.string.update_auto),
+                subtitle = stringResource(R.string.update_auto_summary),
+                icon = Icons.Outlined.Update,
+                checked = settings.autoCheckUpdates,
+                onCheckedChange = viewModel::setAutoCheckUpdates,
+                shapes = shapes,
             )
         }
     }

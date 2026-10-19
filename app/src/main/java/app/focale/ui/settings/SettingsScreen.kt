@@ -69,6 +69,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             item { VideoSection(settings, viewModel) }
             settingsExtraSections(settings, viewModel)
             item { LanguageSection() }
+            item { UpdatesSection(settings, viewModel) }
             item { Spacer(Modifier.height(32.dp)) }
         }
     }

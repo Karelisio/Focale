@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Widgets
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
@@ -26,6 +27,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -39,6 +42,8 @@ import app.focale.ui.more.AboutScreen
 import app.focale.ui.more.MoreScreen
 import app.focale.ui.settings.SettingsScreen
 import app.focale.ui.timeline.TimelineScreen
+import app.focale.ui.update.UpdateViewModel
+import app.focale.update.UpdateState
 import kotlin.reflect.KClass
 
 /** Onglets principaux. */
@@ -60,8 +65,9 @@ enum class TopLevelDestination(
  * tablette et écran déplié ([NavigationSuiteScaffold] adaptatif).
  */
 @Composable
-fun MainScaffold() {
+fun MainScaffold(updates: UpdateViewModel = hiltViewModel()) {
     val tabsNav = rememberNavController()
+    val updateState by updates.state.collectAsStateWithLifecycle()
     val chrome = LocalMainChrome.current
     val haptics = LocalHapticFeedback.current
     val backStackEntry by tabsNav.currentBackStackEntryAsState()
@@ -88,6 +94,12 @@ fun MainScaffold() {
                     icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = null) },
                     label = { Text(stringResource(tab.label)) },
                     navigationSuiteType = suiteType,
+                    // Mise à jour disponible : pastille sur l'onglet Plus, qui la propose.
+                    badge = if (tab == TopLevelDestination.MORE && updateState is UpdateState.Available) {
+                        { Badge() }
+                    } else {
+                        null
+                    },
                 )
             }
         },

@@ -23,6 +23,7 @@ import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.ThemeMode
 import app.focale.ui.navigation.FocaleApp
 import app.focale.ui.theme.FocaleTheme
+import app.focale.update.UpdateRepository
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,7 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var consentRequester: ConsentRequester
     @Inject lateinit var accessManager: MediaAccessManager
+    @Inject lateinit var updateRepository: UpdateRepository
 
     /** Média à ouvrir dans la visionneuse (appui sur le widget), consommé par l'interface. */
     private val openMediaRequests = MutableStateFlow<Long?>(null)
@@ -57,6 +59,15 @@ class MainActivity : FragmentActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 consentRequester.requests.collect { sender ->
                     consentLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                }
+            }
+        }
+        // Confirmation d'une mise à jour, affichée dès que Focale est visible.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                updateRepository.confirmations.collect { confirmation ->
+                    runCatching { startActivity(confirmation) }
+                        .onFailure { updateRepository.onInstallFailed(aborted = false) }
                 }
             }
         }

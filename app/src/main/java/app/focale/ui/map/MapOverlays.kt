@@ -13,6 +13,10 @@ import android.icu.text.CompactDecimalFormat
 import android.util.LruCache
 import android.util.TypedValue
 import android.view.MotionEvent
+import androidx.compose.material3.ColorScheme
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import app.focale.core.database.GeoPhoto
 import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.image.MediaThumbnail
@@ -71,7 +75,10 @@ class BasemapOverlay(basemap: Basemap, density: Float) : Overlay() {
         }
     }
 
+    private var water = 0
+
     fun setColors(land: Int, water: Int, border: Int) {
+        this.water = water
         // Le contour prend la couleur du remplissage : pas de liseré entre polygones voisins.
         lands.forEach { it.fill(land) }
         lakes.forEach { it.fill(water) }
@@ -79,6 +86,9 @@ class BasemapOverlay(basemap: Basemap, density: Float) : Overlay() {
     }
 
     override fun draw(canvas: Canvas, projection: Projection) {
+        // osmdroid détourne MapView.setBackgroundColor vers le fond des tuiles en chargement,
+        // désactivées hors ligne : la mer est donc peinte ici, sous les terres.
+        canvas.drawColor(water)
         val layers = if (projection.zoomLevel < DETAIL_ZOOM) simple else detailed
         for (overlay in layers) overlay.draw(canvas, projection)
     }
@@ -334,3 +344,22 @@ class PhotoClusterOverlay(
 /** Taille de texte en sp convertie en pixels (mise à l'échelle non linéaire comprise). */
 private fun Context.sp(value: Float): Float =
     TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value, resources.displayMetrics)
+
+/** Couleurs de la carte hors ligne, dérivées du schéma Material You courant. */
+internal data class MapPalette(val land: Int, val water: Int, val border: Int, val label: Int) {
+    companion object {
+        fun from(scheme: ColorScheme): MapPalette {
+            val dark = scheme.surface.luminance() < 0.5f
+            // Terres claires sur une mer teintée par la couleur principale, contraste suffisant
+            // dans les trois modes (clair, sombre, noir pur).
+            val land = if (dark) lerp(scheme.surfaceContainerHighest, scheme.onSurface, 0.14f) else scheme.surfaceContainerLowest
+            val water = if (dark) lerp(scheme.surfaceContainerLowest, scheme.primary, 0.12f) else lerp(scheme.surfaceContainerHigh, scheme.primary, 0.25f)
+            return MapPalette(
+                land = land.toArgb(),
+                water = water.toArgb(),
+                border = scheme.outlineVariant.toArgb(),
+                label = scheme.onSurfaceVariant.toArgb(),
+            )
+        }
+    }
+}

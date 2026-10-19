@@ -37,7 +37,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
@@ -263,20 +262,24 @@ private fun PhotoMap(
         labelOverlay = labels
     }
 
-    val water = lerp(colors.surfaceContainerLow, colors.primary, 0.10f).toArgb()
-    val land = colors.surfaceContainerHighest.toArgb()
+    val palette = remember(colors) { MapPalette.from(colors) }
     val dark = colors.surface.luminance() < 0.5f
     SideEffect {
-        mapView.setBackgroundColor(water)
-        basemapOverlay?.setColors(land = land, water = water, border = colors.outlineVariant.toArgb())
-        labelOverlay?.setColors(label = colors.onSurfaceVariant.toArgb(), background = land)
+        basemapOverlay?.setColors(land = palette.land, water = palette.water, border = palette.border)
+        labelOverlay?.setColors(label = palette.label, background = palette.land)
         clusters.setColors(
             ringColor = colors.surface.toArgb(),
             placeholderColor = colors.primaryContainer.toArgb(),
             badgeColor = colors.primary.toArgb(),
             badgeTextColor = colors.onPrimary.toArgb(),
         )
-        if (online) mapView.overlayManager.tilesOverlay.setColorFilter(if (dark) TilesOverlay.INVERT_COLORS else null)
+        if (online) {
+            mapView.overlayManager.tilesOverlay.apply {
+                setColorFilter(if (dark) TilesOverlay.INVERT_COLORS else null)
+                setLoadingBackgroundColor(palette.water)
+                setLoadingLineColor(palette.water)
+            }
+        }
         mapView.invalidate()
     }
 

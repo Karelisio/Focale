@@ -1,0 +1,94 @@
+package app.focale.update
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ReleaseParserTest {
+
+    private val release = ReleaseParser.parse(RELEASE_JSON)
+
+    @Test
+    fun `versions are compared numerically`() {
+        assertTrue(AppVersion.isNewer("v1.10.0", "1.9.3"))
+        assertTrue(AppVersion.isNewer("2.0.0", "1.99.99"))
+        assertTrue(AppVersion.isNewer("1.0.1", "1.0.0-debug"))
+        assertFalse(AppVersion.isNewer("v1.0.0", "1.0.0"))
+        assertFalse(AppVersion.isNewer("1.0.0", "1.1.0"))
+        assertFalse(AppVersion.isNewer("nightly", "1.0.0"))
+    }
+
+    @Test
+    fun `release from the GitHub API is parsed`() {
+        assertEquals("v1.2.0", release.tagName)
+        assertEquals(4, release.assets.size)
+        assertFalse(release.draft || release.prerelease)
+    }
+
+    @Test
+    fun `apk matching the device architecture is preferred`() {
+        val update = ReleaseParser.updateFrom(release, current = "1.1.0", abis = listOf("arm64-v8a", "armeabi-v7a", "armeabi"))!!
+        assertEquals("1.2.0", update.version)
+        assertEquals("https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-standard-arm64-v8a-release.apk", update.apkUrl)
+        assertEquals(25_162_099L, update.apkSize)
+        assertEquals("ce90d922dbbe8b73494dbbb6717cedb87620c2aa13ec997352c838305ec4f510", update.sha256)
+        assertEquals("https://github.com/Karelisio/Focale/releases/tag/v1.2.0", update.pageUrl)
+    }
+
+    @Test
+    fun `universal apk is used for other architectures and never the strict variant`() {
+        val update = ReleaseParser.updateFrom(release, current = "1.1.0", abis = listOf("riscv64"))!!
+        assertEquals("https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-standard-universal-release.apk", update.apkUrl)
+        assertNull(update.sha256)
+    }
+
+    @Test
+    fun `no update when the release is not newer, is a preview or has no apk`() {
+        assertNull(ReleaseParser.updateFrom(release, current = "1.2.0", abis = listOf("arm64-v8a")))
+        assertNull(ReleaseParser.updateFrom(release.copy(prerelease = true), current = "1.1.0", abis = listOf("arm64-v8a")))
+        assertNull(ReleaseParser.updateFrom(release.copy(assets = emptyList()), current = "1.1.0", abis = listOf("arm64-v8a")))
+    }
+
+    private companion object {
+        /** Extrait d'une réponse réelle de `releases/latest` (champs inutiles en partie conservés). */
+        val RELEASE_JSON = """
+            {
+              "tag_name": "v1.2.0",
+              "target_commitish": "main",
+              "name": "focale 1.2.0",
+              "draft": false,
+              "prerelease": false,
+              "html_url": "https://github.com/Karelisio/Focale/releases/tag/v1.2.0",
+              "assets": [
+                {
+                  "id": 656108883,
+                  "name": "app-standard-arm64-v8a-release.apk",
+                  "content_type": "application/vnd.android.package-archive",
+                  "size": 25162099,
+                  "digest": "sha256:CE90D922DBBE8B73494DBBB6717CEDB87620C2AA13EC997352C838305EC4F510",
+                  "browser_download_url": "https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-standard-arm64-v8a-release.apk",
+                  "uploader": { "login": "github-actions[bot]" }
+                },
+                {
+                  "name": "app-standard-universal-release.apk",
+                  "size": 56842611,
+                  "digest": null,
+                  "browser_download_url": "https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-standard-universal-release.apk"
+                },
+                {
+                  "name": "app-strict-arm64-v8a-release.apk",
+                  "size": 25145255,
+                  "browser_download_url": "https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-strict-arm64-v8a-release.apk"
+                },
+                {
+                  "name": "app-strict-universal-release.apk",
+                  "size": 56825767,
+                  "browser_download_url": "https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-strict-universal-release.apk"
+                }
+              ]
+            }
+        """.trimIndent()
+    }
+}

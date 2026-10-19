@@ -50,6 +50,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setOnlineMapTiles(enabled: Boolean) = edit { it[Keys.ONLINE_MAP] = enabled }
     suspend fun setSlideshowInterval(seconds: Int) = edit { it[Keys.SLIDESHOW_INTERVAL] = seconds.coerceIn(2, 30) }
     suspend fun setVaultAutoLockSeconds(seconds: Int) = edit { it[Keys.VAULT_AUTO_LOCK] = seconds.coerceAtLeast(0) }
+    suspend fun setAutoCheckUpdates(enabled: Boolean) = edit { it[Keys.AUTO_UPDATES] = enabled }
 
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         dataStore.edit(block)
@@ -74,6 +75,7 @@ class SettingsRepository @Inject constructor(
             onlineMapTiles = prefs[Keys.ONLINE_MAP] ?: defaults.onlineMapTiles,
             slideshowIntervalSeconds = prefs[Keys.SLIDESHOW_INTERVAL] ?: defaults.slideshowIntervalSeconds,
             vaultAutoLockSeconds = prefs[Keys.VAULT_AUTO_LOCK] ?: defaults.vaultAutoLockSeconds,
+            autoCheckUpdates = prefs[Keys.AUTO_UPDATES] ?: defaults.autoCheckUpdates,
         )
     }
 
@@ -96,5 +98,6 @@ class SettingsRepository @Inject constructor(
         val ONLINE_MAP = booleanPreferencesKey("online_map_tiles")
         val SLIDESHOW_INTERVAL = intPreferencesKey("slideshow_interval")
         val VAULT_AUTO_LOCK = intPreferencesKey("vault_auto_lock")
+        val AUTO_UPDATES = booleanPreferencesKey("auto_check_updates")
     }
 }

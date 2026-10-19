@@ -50,6 +50,9 @@ import app.focale.R
 import app.focale.ui.navigation.AboutRoute
 import app.focale.ui.navigation.LocalTabsNavController
 import app.focale.ui.navigation.SettingsRoute
+import app.focale.ui.update.UpdateBanner
+import app.focale.ui.update.UpdateViewModel
+import app.focale.update.update
 
 /** Raccourci de l'onglet Plus. */
 data class MoreEntry(
@@ -64,9 +67,10 @@ data class MoreEntry(
 
 /** Onglet Plus : fonctionnalités secondaires (favoris, corbeille, coffre…) et réglages. */
 @Composable
-fun MoreScreen(viewModel: MoreViewModel = hiltViewModel()) {
+fun MoreScreen(viewModel: MoreViewModel = hiltViewModel(), updates: UpdateViewModel = hiltViewModel()) {
     val tabsNav = LocalTabsNavController.current
     val counts by viewModel.counts.collectAsStateWithLifecycle()
+    val updateState by updates.state.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val entries = moreEntries(counts, tabsNav)
 
@@ -92,6 +96,11 @@ fun MoreScreen(viewModel: MoreViewModel = hiltViewModel()) {
             ),
             modifier = Modifier.fillMaxSize(),
         ) {
+            if (updateState.update != null) {
+                item(key = "update", span = { GridItemSpan(maxLineSpan) }) {
+                    UpdateBanner(state = updateState, onCheck = updates::check, onInstall = updates::install)
+                }
+            }
             items(entries, key = { it.title }) { entry -> FeatureTile(entry) }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(

@@ -22,6 +22,19 @@ fun signingValue(key: String): String? =
 
 val hasReleaseSigning = signingValue("STORE_FILE") != null
 
+// Version : tag « vX.Y.Z » d'une version GitHub (CI), à défaut la version de développement.
+// Le code de version en découle (1.2.3 → 1002003) et croît d'une version à l'autre, ce
+// qu'exigent les mises à jour.
+val appVersionName: String = System.getenv("GITHUB_REF_NAME")
+    ?.removePrefix("v")
+    ?.takeIf { Regex("""\d+\.\d+\.\d+""").matches(it) }
+    ?: "1.1.0"
+val appVersionCode: Int = appVersionName.split('.').map(String::toInt)
+    .let { (major, minor, patch) -> major * 1_000_000 + minor * 1_000 + patch }
+
+// Dépôt GitHub interrogé par les mises à jour intégrées : celui de la CI, sinon l'original.
+val updateRepository: String = System.getenv("GITHUB_REPOSITORY")?.takeIf { it.isNotBlank() } ?: "Karelisio/Focale"
+
 android {
     namespace = "app.focale"
     compileSdk = 37
@@ -30,8 +43,8 @@ android {
         applicationId = "app.focale"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -66,20 +79,22 @@ android {
         }
     }
 
-    // « standard » : fond de carte OpenStreetMap activable (seul usage réseau, désactivé par défaut).
-    // « strict »   : aucune permission INTERNET, la carte n'utilise que le fond hors ligne.
+    // « standard » : fond de carte OpenStreetMap activable et mises à jour depuis GitHub.
+    // « strict »   : aucune permission INTERNET, carte hors ligne, mises à jour manuelles.
     flavorDimensions += "network"
     productFlavors {
         create("standard") {
             dimension = "network"
             isDefault = true
             buildConfigField("boolean", "ONLINE_MAP_AVAILABLE", "true")
+            buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
         }
         create("strict") {
             dimension = "network"
             applicationIdSuffix = ".strict"
             versionNameSuffix = "-strict"
             buildConfigField("boolean", "ONLINE_MAP_AVAILABLE", "false")
+            buildConfigField("String", "UPDATE_REPOSITORY", "\"\"")
         }
     }
 

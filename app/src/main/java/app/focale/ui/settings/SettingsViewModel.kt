@@ -36,4 +36,5 @@ class SettingsViewModel @Inject constructor(
     fun setOnlineMapTiles(enabled: Boolean) = update { setOnlineMapTiles(enabled) }
     fun setSlideshowInterval(seconds: Int) = update { setSlideshowInterval(seconds) }
     fun setVaultAutoLock(seconds: Int) = update { setVaultAutoLockSeconds(seconds) }
+    fun setAutoCheckUpdates(enabled: Boolean) = update { setAutoCheckUpdates(enabled) }
 }

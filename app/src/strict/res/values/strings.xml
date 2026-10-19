@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_offline_body">Focale has no account, no analytics and no cloud. Your photos, labels and locations are processed on this device only. This version cannot access the network at all: the map uses only its offline background and updates are installed manually.</string>
+</resources>

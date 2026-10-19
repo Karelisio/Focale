@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_offline_body">Focale n\'a ni compte, ni statistiques, ni cloud. Vos photos, étiquettes et lieux sont traités uniquement sur cet appareil. Cette version n\'a aucun accès au réseau : la carte utilise uniquement son fond hors ligne et les mises à jour s\'installent manuellement.</string>
+</resources>

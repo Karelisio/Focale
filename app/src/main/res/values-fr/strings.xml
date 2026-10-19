@@ -93,7 +93,7 @@
     <string name="about_title">À propos</string>
     <string name="about_version">Version %1$s</string>
     <string name="about_offline_title" formatted="false">100 % hors ligne</string>
-    <string name="about_offline_body">Focale n\'a ni compte, ni statistiques, ni cloud. Vos photos, étiquettes et lieux sont traités uniquement sur cet appareil. Le fond de carte OpenStreetMap, facultatif et désactivé par défaut, est le seul usage du réseau.</string>
+    <string name="about_offline_body">Focale n\'a ni compte, ni statistiques, ni cloud. Vos photos, étiquettes et lieux sont traités uniquement sur cet appareil. Le réseau ne sert qu\'à rechercher les mises à jour sur GitHub (désactivable) et au fond de carte OpenStreetMap facultatif, désactivé par défaut.</string>
     <string name="about_credits_title">Crédits</string>
     <string name="about_credits_body">Google Sans Flex (SIL Open Font License) · Noms de lieux : GeoNames (CC BY 4.0) · Carte hors ligne : Natural Earth (domaine public) · Tuiles : © contributeurs OpenStreetMap (ODbL) · Étiquetage sur l\'appareil : ML Kit · AndroidX, Coil, telephoto, MaterialKolor, osmdroid, Tink (Apache 2.0).</string>
 
@@ -429,5 +429,24 @@
     <string name="settings_slideshow_interval">Durée par photo</string>
     <string name="settings_seconds">%d s</string>
     <string name="settings_online_map">Fond de carte en ligne</string>
-    <string name="settings_online_map_summary">Télécharge les tuiles OpenStreetMap : seul usage du réseau par Focale. Désactivé, la carte reste entièrement hors ligne.</string>
+    <string name="settings_online_map_summary">Télécharge les tuiles OpenStreetMap. Désactivé, la carte reste entièrement hors ligne.</string>
+    <!-- Mises à jour intégrées -->
+    <string name="update_title">Mises à jour</string>
+    <string name="update_available_title">Mise à jour disponible</string>
+    <string name="update_status_idle">Rechercher une version plus récente sur GitHub</string>
+    <string name="update_status_checking">Recherche…</string>
+    <string name="update_status_up_to_date">Focale est à jour</string>
+    <string name="update_status_available">Version %1$s · %2$s</string>
+    <string name="update_status_downloading">Téléchargement… %1$d\u00A0%%</string>
+    <string name="update_status_installing">Installation… Focale va se fermer et se mettre à jour.</string>
+    <string name="update_error_network">GitHub est injoignable. Réessayez plus tard.</string>
+    <string name="update_error_integrity">Le fichier téléchargé est corrompu. Réessayez.</string>
+    <string name="update_error_install">Android a refusé la mise à jour. Installez-la depuis GitHub.</string>
+    <string name="update_action_check">Rechercher</string>
+    <string name="update_action_install">Installer</string>
+    <string name="update_action_retry">Réessayer</string>
+    <string name="update_action_notes">Nouveautés</string>
+    <string name="update_action_github">Ouvrir GitHub</string>
+    <string name="update_auto">Rechercher automatiquement</string>
+    <string name="update_auto_summary">Une fois par jour, sur GitHub. Aucune autre donnée n\'est envoyée.</string>
 </resources>

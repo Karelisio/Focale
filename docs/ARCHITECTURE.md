@@ -10,7 +10,7 @@ cible, les choix techniques structurants et le découpage du développement.
 
 | Principe | Conséquence concrète |
 |---|---|
-| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. La seule connexion réseau possible est le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement ; la variante `strict` retire même la permission `INTERNET`. |
+| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. Les seules connexions réseau sont le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement, et la recherche quotidienne de mises à jour sur GitHub (désactivable) ; la variante `strict` retire même la permission `INTERNET`. |
 | **Fluide avec 50 000+ médias** | MediaStore est indexé dans Room ; toutes les listes passent par Paging 3 (placeholders + sauts) ; les miniatures viennent du cache système de MediaStore (`loadThumbnail`) via un `Fetcher` Coil dédié. |
 | **MediaStore reste la source de vérité** | Room n'est qu'un miroir (index) + les métadonnées propres à l'app (favoris, albums virtuels, étiquettes ML, empreintes, coffre). |
 | **Material You partout** | Couleurs dynamiques du fond d'écran, palette maison en repli, thème « couleur depuis la photo » dans la visionneuse et les albums. |
@@ -313,4 +313,5 @@ logique pure : requêtes, regroupement, parsing de recherche, hash, flou, PIN…
 | `ACCESS_MEDIA_LOCATION` | coordonnées GPS non masquées des EXIF |
 | `MANAGE_MEDIA` (31+, facultatif) | opérations sans confirmation à chaque fois |
 | `USE_BIOMETRIC` | coffre-fort |
-| `INTERNET` (variante `standard` uniquement) | fond de carte OSM, sur activation explicite |
+| `INTERNET` (variante `standard` uniquement) | fond de carte OSM (sur activation explicite), mises à jour |
+| `REQUEST_INSTALL_PACKAGES`, `UPDATE_PACKAGES_WITHOUT_USER_ACTION` (`standard`) | installation des mises à jour, sans confirmation sur Android 12+ |
