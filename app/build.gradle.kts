@@ -251,6 +251,7 @@ dependencies {
     implementation(libs.media3.ui.compose)
     implementation(libs.media3.common)
     implementation(libs.media3.datasource)
+    implementation(libs.media3.transformer)
 
     implementation(libs.glance.appwidget)
     implementation(libs.glance.material3)

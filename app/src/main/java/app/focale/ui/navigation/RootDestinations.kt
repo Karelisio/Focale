@@ -15,6 +15,7 @@ import app.focale.ui.slideshow.SlideshowScreen
 import app.focale.ui.vault.VaultPickerScreen
 import app.focale.ui.vault.VaultScreen
 import app.focale.ui.vault.VaultViewerScreen
+import app.focale.ui.videoeditor.VideoEditorScreen
 
 /**
  * Destinations racine plein écran (éditeur, coffre-fort, diaporama…), au-dessus des
@@ -23,6 +24,9 @@ import app.focale.ui.vault.VaultViewerScreen
 fun NavGraphBuilder.additionalRootDestinations(rootNav: NavHostController) {
     fullScreen<EditorRoute> {
         EditorScreen(onClose = { rootNav.popBackStack() })
+    }
+    fullScreen<VideoEditorRoute> {
+        VideoEditorScreen(onClose = { rootNav.popBackStack() })
     }
     fullScreen<SlideshowRoute> {
         SlideshowScreen(onClose = { rootNav.popBackStack() })

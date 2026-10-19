@@ -45,9 +45,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -89,6 +92,9 @@ private fun VaultViewerContent(viewModel: VaultViewerViewModel, onBack: () -> Un
     val snackbarHostState = remember { SnackbarHostState() }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    // Largeur de la barre d'outils : la progression d'une vidéo s'aligne dessus.
+    var toolbarWidth by remember { mutableStateOf(Dp.Unspecified) }
+    val density = LocalDensity.current
     ImmersiveSystemBars(visible = chromeVisible)
 
     LaunchedEffect(viewModel) {
@@ -147,6 +153,7 @@ private fun VaultViewerContent(viewModel: VaultViewerViewModel, onBack: () -> Un
                     onTap = { chromeVisible = !chromeVisible },
                     mediaItem = { viewModel.mediaItemFor(item) },
                     poster = { VaultPoster(item) },
+                    controlsWidth = toolbarWidth,
                     playerFactory = viewModel::createPlayer,
                 )
             } else {
@@ -173,7 +180,8 @@ private fun VaultViewerContent(viewModel: VaultViewerViewModel, onBack: () -> Un
                 colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
                 modifier = Modifier
                     .navigationBarsPadding()
-                    .padding(bottom = 16.dp),
+                    .padding(bottom = 16.dp)
+                    .onSizeChanged { toolbarWidth = with(density) { it.width.toDp() } },
             ) {
                 TextButton(onClick = { current?.let(viewModel::restore) }, enabled = !busy) {
                     Icon(Icons.Outlined.RestorePage, contentDescription = null)

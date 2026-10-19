@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -68,11 +69,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -97,8 +101,10 @@ import app.focale.ui.components.sharedMedia
 import app.focale.ui.navigation.EditorRoute
 import app.focale.ui.navigation.LocalMainChrome
 import app.focale.ui.navigation.LocalRootNavController
+import app.focale.ui.navigation.VideoEditorRoute
 import app.focale.ui.theme.PhotoTheme
 import app.focale.ui.theme.ViewerChromeTheme
+import app.focale.video.MotionPhoto
 import coil3.compose.AsyncImage
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
@@ -136,11 +142,17 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val place by viewModel.place.collectAsStateWithLifecycle()
     val labels by viewModel.labels.collectAsStateWithLifecycle()
+    val motionPhoto by viewModel.motionPhoto.collectAsStateWithLifecycle()
+    // Nouvel état à chaque média : changer de page arrête la lecture d'une photo animée.
+    val motionState = remember(current?.id) { MotionPhotoState() }
 
     val snackbarHostState = remember { SnackbarHostState() }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
     var showInfo by rememberSaveable { mutableStateOf(false) }
     var zoomed by remember { mutableStateOf(false) }
+    // Largeur de la barre d'outils : la progression d'une vidéo s'aligne dessus.
+    var toolbarWidth by remember { mutableStateOf(Dp.Unspecified) }
+    val density = LocalDensity.current
     val transitionRunning = isNavTransitionRunning()
     val flickState = rememberFlickToDismissState(dismissThresholdRatio = 0.15f, rotateOnDrag = false)
 
@@ -179,6 +191,9 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     chromeVisible = chromeVisible,
                     autoplay = settings.autoplayVideos,
                     muted = settings.muteVideosByDefault,
+                    motionPhoto = motionPhoto,
+                    motionState = motionState,
+                    controlsWidth = toolbarWidth,
                     onToggleChrome = { chromeVisible = !chromeVisible },
                     onZoomChanged = { zoomed = it },
                     onPageChanged = { item ->
@@ -209,6 +224,11 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                         showInfo = true
                         viewModel.loadDetails()
                     },
+                    actions = {
+                        if (motionPhoto?.mediaId == item.id) {
+                            MotionPhotoChip(playing = motionState.isPlaying, onClick = motionState::toggle)
+                        }
+                    },
                 )
             }
         }
@@ -219,6 +239,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             ViewerToolbar(
+                modifier = Modifier.onSizeChanged { toolbarWidth = with(density) { it.width.toDp() } },
                 isFavorite = isFavorite,
                 onShare = { viewModel.onCurrent { share(it) } },
                 onToggleFavorite = {
@@ -226,8 +247,10 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     viewModel.toggleFavorite()
                 },
                 onTrash = { viewModel.onCurrent { trash(it) } },
-                onEdit = item?.takeIf { !it.isVideo && !it.isGif }?.let { editable ->
-                    { rootNav.navigate(EditorRoute(editable.id)) }
+                onEdit = item?.takeIf { !it.isGif }?.let { editable ->
+                    {
+                        rootNav.navigate(if (editable.isVideo) VideoEditorRoute(editable.id) else EditorRoute(editable.id))
+                    }
                 },
                 menu = { dismiss ->
                     ViewerMenuItem(Icons.Outlined.LibraryAdd, stringResource(R.string.action_add_to_album)) {
@@ -298,6 +321,9 @@ private fun ViewerPager(
     chromeVisible: Boolean,
     autoplay: Boolean,
     muted: Boolean,
+    motionPhoto: MotionPhoto?,
+    motionState: MotionPhotoState,
+    controlsWidth: Dp,
     onToggleChrome: () -> Unit,
     onZoomChanged: (Boolean) -> Unit,
     onPageChanged: (MediaItem) -> Unit,
@@ -329,13 +355,20 @@ private fun ViewerPager(
                 startMuted = muted,
                 controlsVisible = chromeVisible,
                 onTap = onToggleChrome,
+                controlsWidth = controlsWidth,
             )
-            else -> ZoomablePhoto(
-                item = item,
-                isCurrent = isCurrent,
-                onTap = onToggleChrome,
-                onZoomChanged = { if (isCurrent) onZoomChanged(it) },
-            )
+            else -> MotionPhotoBox(
+                motionPhoto = motionPhoto?.takeIf { isCurrent && it.mediaId == item.id },
+                state = motionState,
+                muted = muted,
+            ) {
+                ZoomablePhoto(
+                    item = item,
+                    isCurrent = isCurrent,
+                    onTap = onToggleChrome,
+                    onZoomChanged = { if (isCurrent) onZoomChanged(it) },
+                )
+            }
         }
     }
 }
@@ -400,9 +433,14 @@ private fun HeroImage(item: MediaItem) {
     }
 }
 
-/** Barre supérieure : retour, date et album, détails. */
+/** Barre supérieure : retour, date et album, [actions] propres au média (photo animée…), détails. */
 @Composable
-private fun ViewerTopBar(item: MediaItem, onBack: () -> Unit, onInfo: () -> Unit) = ViewerChromeTheme {
+private fun ViewerTopBar(
+    item: MediaItem,
+    onBack: () -> Unit,
+    onInfo: () -> Unit,
+    actions: @Composable () -> Unit = {},
+) = ViewerChromeTheme {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     Row(
@@ -430,6 +468,7 @@ private fun ViewerTopBar(item: MediaItem, onBack: () -> Unit, onInfo: () -> Unit
                 maxLines = 1,
             )
         }
+        actions()
         IconButton(onClick = onInfo, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.action_info), tint = colors.onSurface)
         }
@@ -439,15 +478,17 @@ private fun ViewerTopBar(item: MediaItem, onBack: () -> Unit, onInfo: () -> Unit
 /**
  * Barre d'actions sobre : conteneur tonal translucide aux couleurs Material You de
  * l'appareil (pas celles de la photo), icônes au trait, favori coloré une fois actif.
+ * Ses mesures ([ViewerChromeMetrics]) sont celles des commandes vidéo qui s'empilent dessus.
  */
 @Composable
-private fun ViewerToolbar(
+internal fun ViewerToolbar(
     isFavorite: Boolean,
     onShare: () -> Unit,
     onToggleFavorite: () -> Unit,
     onTrash: () -> Unit,
     onEdit: (() -> Unit)?,
     menu: @Composable (dismiss: () -> Unit) -> Unit,
+    modifier: Modifier = Modifier,
 ) = ViewerChromeTheme {
     var menuOpen by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
@@ -459,7 +500,10 @@ private fun ViewerToolbar(
         ),
         modifier = Modifier
             .navigationBarsPadding()
-            .padding(bottom = 16.dp),
+            .padding(horizontal = ViewerChromeMetrics.ScreenOffset)
+            .padding(bottom = ViewerChromeMetrics.ScreenOffset)
+            .widthIn(max = ViewerChromeMetrics.BarMaxWidth)
+            .then(modifier),
     ) {
         IconButton(onClick = onShare, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.Outlined.Share, contentDescription = stringResource(R.string.action_share))

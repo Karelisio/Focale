@@ -18,6 +18,10 @@ data class ViewerRoute(val query: String, val mediaId: Long)
 @Serializable
 data class EditorRoute(val mediaId: Long)
 
+/** Montage vidéo simple : coupe du début et de la fin, son coupé, enregistré en copie. */
+@Serializable
+data class VideoEditorRoute(val mediaId: Long)
+
 /** Diaporama des médias de [query], à partir de [startId] (premier média si absent). */
 @Serializable
 data class SlideshowRoute(val query: String, val startId: Long? = null)

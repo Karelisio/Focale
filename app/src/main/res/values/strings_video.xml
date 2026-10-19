@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Montage vidéo -->
+    <string name="video_editor_title">Edit video</string>
+    <string name="video_editor_save_copy">Save copy</string>
+    <string name="video_editor_saved">Copy saved</string>
+    <string name="video_editor_failed">The video could not be saved</string>
+    <string name="video_editor_unavailable">This video cannot be edited</string>
+    <string name="video_editor_too_short">Too short to trim</string>
+    <string name="video_editor_mute">Mute</string>
+    <string name="video_editor_exporting">Saving copy…</string>
+    <string name="video_editor_trim_description">Kept from %1$s to %2$s</string>
+    <string name="video_editor_start_earlier">Start earlier</string>
+    <string name="video_editor_start_later">Start later</string>
+    <string name="video_editor_end_earlier">End earlier</string>
+    <string name="video_editor_end_later">End later</string>
+
+    <!-- Photos animées -->
+    <string name="motion_photo_chip">Motion</string>
+    <string name="motion_photo_badge">Motion photo</string>
+</resources>
