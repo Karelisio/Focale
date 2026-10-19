@@ -26,6 +26,11 @@ fun NavHostController.openViewer(query: MediaQuery, item: MediaItem) {
     navigate(ViewerRoute(RouteCodec.encode(query), item.id)) { launchSingleTop = true }
 }
 
+/** Lance le diaporama des médias de [query], à partir de [startId] si fourni. */
+fun NavHostController.openSlideshow(query: MediaQuery, startId: Long? = null) {
+    navigate(SlideshowRoute(RouteCodec.encode(query), startId)) { launchSingleTop = true }
+}
+
 /** Ouvre une grille générique (album, favoris, catégorie…). */
 fun NavHostController.openCollection(
     title: String,

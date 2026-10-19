@@ -26,10 +26,15 @@ data class PlaceStat(
 
 data class HashRow(val id: Long, val phash: Long, val size: Long, val width: Int, val height: Int)
 
-data class GeoPoint(
+/** Média géolocalisé, tel qu'affiché sur la carte. */
+data class GeoPhoto(
     @ColumnInfo(name = "media_id") val mediaId: Long,
     val latitude: Double,
     val longitude: Double,
+    @ColumnInfo(name = "media_type") val mediaType: Int,
+    @ColumnInfo(name = "date_taken") val dateTaken: Long,
+    @ColumnInfo(name = "date_modified") val dateModified: Long,
+    val place: String?,
 )
 
 @Dao
@@ -131,10 +136,13 @@ interface AnalysisDao {
 
     @Query(
         """
-        SELECT a.media_id AS media_id, a.latitude AS latitude, a.longitude AS longitude
+        SELECT a.media_id AS media_id, a.latitude AS latitude, a.longitude AS longitude,
+               m.media_type AS media_type, m.date_taken AS date_taken,
+               m.date_modified AS date_modified, a.place AS place
         FROM media_analysis a JOIN media m ON m.id = a.media_id
         WHERE m.is_trashed = 0 AND a.latitude IS NOT NULL AND a.longitude IS NOT NULL
+        ORDER BY m.date_taken DESC
         """,
     )
-    fun observeGeoPoints(): Flow<List<GeoPoint>>
+    fun observeGeoPhotos(): Flow<List<GeoPhoto>>
 }

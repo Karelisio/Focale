@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -14,6 +15,7 @@ import app.focale.R
 import app.focale.core.model.MediaQuery
 import app.focale.ui.navigation.CollectionKind
 import app.focale.ui.navigation.LocalRootNavController
+import app.focale.ui.navigation.MapRoute
 import app.focale.ui.navigation.TrashRoute
 import app.focale.ui.navigation.VaultRoute
 import app.focale.ui.navigation.openCollection
@@ -42,6 +44,15 @@ fun moreEntries(counts: MoreCounts, tabsNav: NavHostController): List<MoreEntry>
             containerColor = colors.secondaryContainer,
             contentColor = colors.onSecondaryContainer,
             onClick = { rootNav.navigate(VaultRoute) { launchSingleTop = true } },
+        ),
+        MoreEntry(
+            title = stringResource(R.string.map_title),
+            subtitle = stringResource(R.string.map_subtitle),
+            icon = Icons.Outlined.Map,
+            shape = MaterialShapes.Clover4Leaf,
+            containerColor = colors.primaryContainer,
+            contentColor = colors.onPrimaryContainer,
+            onClick = { tabsNav.navigate(MapRoute) { launchSingleTop = true } },
         ),
         MoreEntry(
             title = stringResource(R.string.collection_trash),

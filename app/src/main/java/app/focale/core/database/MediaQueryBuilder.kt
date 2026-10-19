@@ -28,6 +28,21 @@ object MediaQueryBuilder {
         )
     }
 
+    /**
+     * Couverture représentative : de préférence une photo (ni capture ni GIF), la plus
+     * nette selon l'analyse, puis la plus récente.
+     */
+    fun bestCover(query: MediaQuery): SimpleSQLiteQuery {
+        val args = mutableListOf<Any?>()
+        val where = where(query, args)
+        return SimpleSQLiteQuery(
+            "SELECT m.* FROM media m LEFT JOIN media_analysis a ON a.media_id = m.id WHERE $where " +
+                "ORDER BY (m.media_type = $MEDIA_TYPE_IMAGE AND m.is_screenshot = 0 AND m.is_gif = 0) DESC, " +
+                "COALESCE(a.blur_score, 0) DESC, m.date_taken DESC LIMIT 1",
+            args.toTypedArray(),
+        )
+    }
+
     /** Identifiants seuls, dans l'ordre de tri (« tout sélectionner »). */
     fun ids(query: MediaQuery): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
@@ -127,6 +142,14 @@ object MediaQueryBuilder {
         if (query.favoritesOnly) clauses += "m.id IN (SELECT media_id FROM favorite)"
         if (query.geotaggedOnly) {
             clauses += "m.id IN (SELECT media_id FROM media_analysis WHERE latitude IS NOT NULL)"
+        }
+        query.area?.let { area ->
+            clauses += "m.id IN (SELECT media_id FROM media_analysis " +
+                "WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?)"
+            args += area.south
+            args += area.north
+            args += area.west
+            args += area.east
         }
         query.dateFrom?.let {
             clauses += "m.date_taken >= ?"

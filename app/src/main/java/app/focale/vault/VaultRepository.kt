@@ -14,6 +14,7 @@ import app.focale.core.model.MediaItem
 import app.focale.data.MediaOperations
 import app.focale.data.MediaRepository
 import app.focale.data.OperationResult
+import app.focale.widget.WidgetRefresher
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -43,6 +44,7 @@ class VaultRepository @Inject constructor(
     private val storage: VaultStorage,
     private val operations: MediaOperations,
     private val syncManager: MediaSyncManager,
+    private val widgets: WidgetRefresher,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -70,6 +72,7 @@ class VaultRepository @Inject constructor(
         val kept = imported.filter { (item, _) -> stillExists(item) }
         kept.forEach { (_, entity) -> discard(entity) }
         val moved = imported.size - kept.size
+        if (moved > 0) widgets.refresh()
         when {
             moved == items.size -> OperationResult.Success(moved)
             moved > 0 -> OperationResult.Partial(moved, items.size - moved)

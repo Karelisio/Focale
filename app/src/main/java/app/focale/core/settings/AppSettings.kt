@@ -28,7 +28,8 @@ data class AppSettings(
     val analysisOnlyWhileCharging: Boolean = false,
     /** Fond de carte OpenStreetMap en ligne (seul usage du réseau, désactivé par défaut). */
     val onlineMapTiles: Boolean = false,
-    val slideshowIntervalSeconds: Int = 4,
+    /** Durée d'affichage de chaque photo du diaporama. */
+    val slideshowIntervalSeconds: Int = 5,
     /** Délai (s) avant reverrouillage du coffre une fois l'application en arrière-plan. */
     val vaultAutoLockSeconds: Int = 0,
 ) {

@@ -11,6 +11,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import app.focale.ui.components.LocalNavAnimatedVisibilityScope
 import app.focale.ui.editor.EditorScreen
+import app.focale.ui.slideshow.SlideshowScreen
 import app.focale.ui.vault.VaultPickerScreen
 import app.focale.ui.vault.VaultScreen
 import app.focale.ui.vault.VaultViewerScreen
@@ -22,6 +23,9 @@ import app.focale.ui.vault.VaultViewerScreen
 fun NavGraphBuilder.additionalRootDestinations(rootNav: NavHostController) {
     fullScreen<EditorRoute> {
         EditorScreen(onClose = { rootNav.popBackStack() })
+    }
+    fullScreen<SlideshowRoute> {
+        SlideshowScreen(onClose = { rootNav.popBackStack() })
     }
     fullScreen<VaultRoute> {
         VaultScreen(

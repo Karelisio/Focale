@@ -66,6 +66,10 @@ interface MediaDao {
     @Query("SELECT COUNT(*) FROM media WHERE is_trashed = 0")
     fun observeTotalCount(): Flow<Int>
 
+    /** Date de prise de vue la plus ancienne (souvenirs), null si la bibliothèque est vide. */
+    @Query("SELECT MIN(date_taken) FROM media WHERE is_trashed = 0 AND date_taken > 0")
+    suspend fun oldestDateTaken(): Long?
+
     @Query("SELECT COUNT(*) FROM media")
     suspend fun totalCount(): Int
 

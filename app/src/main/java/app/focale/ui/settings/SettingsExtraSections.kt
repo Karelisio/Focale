@@ -11,6 +11,7 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.PermMedia
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import app.focale.BuildConfig
 import app.focale.R
 import app.focale.core.settings.AppSettings
 import app.focale.ui.components.Choice
@@ -28,10 +30,49 @@ import app.focale.ui.components.ConnectedChoiceGroup
 
 /** Sections ajoutées par les fonctionnalités (fichiers, vie privée, analyse, carte, coffre). */
 fun LazyListScope.settingsExtraSections(settings: AppSettings, viewModel: SettingsViewModel) {
+    item { SlideshowSection(settings, viewModel) }
+    if (BuildConfig.ONLINE_MAP_AVAILABLE) {
+        item { MapSection(settings, viewModel) }
+    }
     item { PrivacySection(settings, viewModel) }
     item { AnalysisSection(settings, viewModel) }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         item { FilesSection() }
+    }
+}
+
+@Composable
+private fun SlideshowSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val choices = SLIDESHOW_INTERVALS.map { Choice(it, stringResource(R.string.settings_seconds, it)) }
+    SettingsGroup(stringResource(R.string.action_slideshow)) {
+        item { shapes ->
+            SettingsCustom(title = stringResource(R.string.settings_slideshow_interval), shapes = shapes) {
+                ConnectedChoiceGroup(
+                    choices = choices,
+                    selected = settings.slideshowIntervalSeconds,
+                    onSelect = viewModel::setSlideshowInterval,
+                )
+            }
+        }
+    }
+}
+
+private val SLIDESHOW_INTERVALS = listOf(3, 5, 10)
+
+/** Fond de carte en ligne : seul usage du réseau, désactivé par défaut. */
+@Composable
+private fun MapSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    SettingsGroup(stringResource(R.string.map_title)) {
+        item { shapes ->
+            SettingsSwitch(
+                title = stringResource(R.string.settings_online_map),
+                subtitle = stringResource(R.string.settings_online_map_summary),
+                icon = Icons.Outlined.Public,
+                checked = settings.onlineMapTiles,
+                onCheckedChange = viewModel::setOnlineMapTiles,
+                shapes = shapes,
+            )
+        }
     }
 }
 

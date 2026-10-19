@@ -18,6 +18,10 @@ data class ViewerRoute(val query: String, val mediaId: Long)
 @Serializable
 data class EditorRoute(val mediaId: Long)
 
+/** Diaporama des médias de [query], à partir de [startId] (premier média si absent). */
+@Serializable
+data class SlideshowRoute(val query: String, val startId: Long? = null)
+
 /** Coffre-fort : création du code, déverrouillage et contenu chiffré. */
 @Serializable
 data object VaultRoute
@@ -66,6 +70,9 @@ data object TrashRoute
 
 @Serializable
 data object CleanupRoute
+
+@Serializable
+data object MapRoute
 
 @Serializable
 data object SettingsRoute

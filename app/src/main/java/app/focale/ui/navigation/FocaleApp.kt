@@ -8,22 +8,35 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
+import app.focale.core.model.MediaQuery
 import app.focale.ui.components.LocalNavAnimatedVisibilityScope
 import app.focale.ui.components.LocalSharedTransitionScope
 import app.focale.ui.viewer.ViewerScreen
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Racine de l'interface : un NavHost plein écran (onglets, visionneuse…) enveloppé
  * dans un [SharedTransitionLayout] pour les transitions grille → visionneuse.
  */
 @Composable
-fun FocaleApp() {
+fun FocaleApp(openMediaRequests: StateFlow<Long?>, onOpenMediaHandled: () -> Unit) {
     val rootNav = rememberNavController()
     val chrome = remember { MainChromeState() }
+    val openMedia by openMediaRequests.collectAsStateWithLifecycle()
+
+    // Appui sur le widget : ouvre la photo dans la visionneuse, au sein de la timeline.
+    LaunchedEffect(openMedia) {
+        val mediaId = openMedia ?: return@LaunchedEffect
+        rootNav.navigate(ViewerRoute(RouteCodec.encode(MediaQuery.Timeline), mediaId)) { launchSingleTop = true }
+        onOpenMediaHandled()
+    }
 
     SharedTransitionLayout {
         CompositionLocalProvider(

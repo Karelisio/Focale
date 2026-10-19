@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -32,6 +33,8 @@ import app.focale.ui.components.MediaPermissionScreen
 import app.focale.ui.components.PartialAccessBanner
 import app.focale.ui.components.SortSheet
 import app.focale.ui.components.rememberMediaPermissionLauncher
+import app.focale.ui.navigation.LocalTabsNavController
+import app.focale.ui.navigation.openCollection
 
 /** Onglet Photos : timeline de toute la bibliothèque. */
 @Composable
@@ -55,6 +58,10 @@ private fun TimelineContent(viewModel: TimelineViewModel, partialAccess: Boolean
     val histogram by viewModel.histogram.collectAsStateWithLifecycle()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
+    val memories by viewModel.memories.collectAsStateWithLifecycle()
+    val tabsNav = LocalTabsNavController.current
+    val resources = LocalResources.current
+    val showMemories = memories.isNotEmpty() && filter == MediaFilter.ALL
     val manageSelection = rememberMediaPermissionLauncher { viewModel.refreshAccess() }
     var showSort by rememberSaveable { mutableStateOf(false) }
 
@@ -68,7 +75,7 @@ private fun TimelineContent(viewModel: TimelineViewModel, partialAccess: Boolean
         )
     }
 
-    val leadingCount = if (partialAccess) 2 else 1
+    val leadingCount = 1 + (if (partialAccess) 1 else 0) + (if (showMemories) 1 else 0)
     MediaGridScaffold(
         items = items,
         query = query,
@@ -102,6 +109,21 @@ private fun TimelineContent(viewModel: TimelineViewModel, partialAccess: Boolean
             if (partialAccess) {
                 item(key = "partial", span = { GridItemSpan(maxLineSpan) }) {
                     PartialAccessBanner(onManage = manageSelection)
+                }
+            }
+            if (showMemories) {
+                item(key = "memories", span = { GridItemSpan(maxLineSpan) }) {
+                    MemoriesCarousel(
+                        memories = memories,
+                        onOpen = { memory ->
+                            val title = resources.getQuantityString(
+                                R.plurals.memories_years_ago,
+                                memory.yearsAgo,
+                                memory.yearsAgo,
+                            )
+                            tabsNav.openCollection(title, memory.query)
+                        },
+                    )
                 }
             }
             item(key = "filters", span = { GridItemSpan(maxLineSpan) }) {

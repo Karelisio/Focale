@@ -34,6 +34,15 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   biométrie, reverrouillage automatique, captures d'écran interdites.
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
+- **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir
+  des médias pris la même semaine les années précédentes.
+- **Carte** des photos géolocalisées (osmdroid), regroupées en vignettes selon le zoom,
+  sur un fond vectoriel hors ligne aux couleurs du thème ; fond OpenStreetMap en ligne
+  en option (variante `standard`).
+- **Diaporama** en fondu enchaîné avec effet Ken Burns, depuis la visionneuse ou
+  n'importe quel album.
+- **Widget** « Souvenir » (Glance, couleurs Material You) : une photo du jour, renouvelée
+  toutes les quatre heures, qui s'ouvre dans la visionneuse.
 
 Le détail de l'architecture et du découpage est dans
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -97,3 +106,15 @@ ML Kit (modèle embarqué) · osmdroid · Tink · Glance.
 
 - Police **Google Sans Flex** : SIL Open Font License 1.1
   (`app/src/main/assets/licenses/google_sans_flex_OFL.txt`).
+- Noms de lieux du géocodage hors ligne : **GeoNames**, CC BY 4.0
+  (<https://www.geonames.org>), compilés par `tools/geonames/build_cities.py`.
+- Fond de carte hors ligne : **Natural Earth**, domaine public
+  (<https://www.naturalearthdata.com>), compilé par `tools/basemap/build_basemap.py`.
+- Tuiles en ligne (optionnelles) : © contributeurs **OpenStreetMap**, données sous
+  licence ODbL (<https://www.openstreetmap.org/copyright>) ; l'attribution est affichée
+  sur la carte.
+- Étiquetage d'images : modèle **ML Kit** embarqué, soumis aux conditions d'utilisation
+  de ML Kit.
+
+Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
+carte) à partir des données sources ; ils ne sont pas nécessaires à la compilation.

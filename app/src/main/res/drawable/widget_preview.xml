@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Aperçu du widget dans le sélecteur : paysage stylisé et légende. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="160dp"
+    android:height="160dp"
+    android:viewportWidth="160"
+    android:viewportHeight="160">
+    <path
+        android:fillColor="#FFFFDBD0"
+        android:pathData="M24,0h112a24,24 0,0 1,24 24v112a24,24 0,0 1,-24 24h-112a24,24 0,0 1,-24 -24v-112a24,24 0,0 1,24 -24z" />
+    <path
+        android:fillColor="#FFFFB59E"
+        android:pathData="M112,40m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0" />
+    <path
+        android:fillColor="#FFE8603C"
+        android:pathData="M0,112L46,66L82,102L104,80L160,136V136a24,24 0,0 1,-24 24h-112a24,24 0,0 1,-24 -24z" />
+    <path
+        android:fillColor="#99000000"
+        android:pathData="M0,118h160v18a24,24 0,0 1,-24 24h-112a24,24 0,0 1,-24 -24z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16,128h64a4,4 0,0 1,0 8h-64a4,4 0,0 1,0 -8z" />
+    <path
+        android:fillColor="#CCFFFFFF"
+        android:pathData="M16,142h40a3,3 0,0 1,0 6h-40a3,3 0,0 1,0 -6z" />
+</vector>

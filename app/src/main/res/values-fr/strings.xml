@@ -390,4 +390,44 @@
     <string name="settings_strip_metadata">Retirer les métadonnées au partage</string>
     <string name="settings_strip_metadata_summary">Photos partagées sans données EXIF ni localisation ; la localisation est aussi retirée des vidéos MP4 et WebM</string>
     <string name="share_preparing">Préparation du partage…</string>
+
+    <!-- Carte -->
+    <string name="map_title">Carte</string>
+    <string name="map_subtitle">Où vos photos ont été prises</string>
+    <plurals name="map_photo_count">
+        <item quantity="one">%d élément géolocalisé</item>
+        <item quantity="many">%d éléments géolocalisés</item>
+        <item quantity="other">%d éléments géolocalisés</item>
+    </plurals>
+    <string name="map_geotagged_title">Géolocalisés</string>
+    <string name="map_show_grid">Afficher en grille</string>
+    <string name="map_fit">Afficher toutes les photos</string>
+    <string name="map_empty_title">Aucune photo géolocalisée</string>
+    <string name="map_empty_message">Les photos dotées d’une position apparaissent ici au fil de l’analyse sur l’appareil.</string>
+    <string name="map_analysis_off">Activez l’analyse sur l’appareil dans les réglages pour placer vos photos sur la carte.</string>
+    <string name="map_attribution_osm">© contributeurs OpenStreetMap</string>
+    <string name="map_attribution_offline">Carte hors ligne · Natural Earth</string>
+
+    <!-- Souvenirs et diaporama -->
+    <string name="memories_title">Souvenirs</string>
+    <plurals name="memories_years_ago">
+        <item quantity="one">Il y a %d an</item>
+        <item quantity="many">Il y a %d ans</item>
+        <item quantity="other">Il y a %d ans</item>
+    </plurals>
+    <string name="action_slideshow">Diaporama</string>
+    <string name="slideshow_previous">Photo précédente</string>
+    <string name="slideshow_next">Photo suivante</string>
+
+    <!-- Widget -->
+    <string name="widget_name">Souvenir</string>
+    <string name="widget_description">Une photo de votre bibliothèque, souvenirs en priorité, renouvelée plusieurs fois par jour</string>
+    <string name="widget_favorite">Favori</string>
+    <string name="widget_empty">Ouvrez Focale pour afficher vos souvenirs ici</string>
+
+    <!-- Réglages : diaporama et carte -->
+    <string name="settings_slideshow_interval">Durée par photo</string>
+    <string name="settings_seconds">%d s</string>
+    <string name="settings_online_map">Fond de carte en ligne</string>
+    <string name="settings_online_map_summary">Télécharge les tuiles OpenStreetMap : seul usage du réseau par Focale. Désactivé, la carte reste entièrement hors ligne.</string>
 </resources>

@@ -229,6 +229,23 @@ exposées par un `FileProvider` et purgées au bout d'une heure.
 - vidéos MP4 / 3GP / WebM : remultiplexage des pistes audio et vidéo
   (`MediaExtractor` → `MediaMuxer`), sans la localisation du conteneur.
 
+### 6.8 Souvenirs, carte, diaporama et widget
+- **Souvenirs** : pour chaque année passée (40 au plus), fenêtre du même jour ± 3 jours
+  (`MemoryWindows`) ; couverture choisie par SQL : photo hors capture, la plus nette
+  selon l'analyse. Recalcul quand la bibliothèque change et à minuit.
+- **Carte** : `AnalysisDao.observeGeoPhotos()` ; regroupement par grille de Mercator à
+  chaque niveau de zoom entier (`PhotoClustering`, linéaire, hors thread principal) ;
+  un appui ouvre la photo, ou la grille de la zone (`MediaQuery.area`). Fond vectoriel
+  embarqué (`assets/geo/basemap.bin`, format FBM1 : terres, lacs, frontières en deux
+  niveaux de détail, noms des pays FR/EN). Hors ligne, la vue n'a aucun module de
+  tuiles : aucune requête réseau n'est possible.
+- **Diaporama** : même requête que la grille d'origine (photos seules si elle est
+  mixte), pagination identique à la visionneuse, préchargement de la photo suivante,
+  `keepScreenOn`.
+- **Widget** : Glance, photo choisie par `WidgetPhotoPicker` (souvenir, sinon favori,
+  sinon photo récente), stable sur une période de 4 h ; renouvellement par WorkManager
+  tant qu'une instance existe, et immédiatement après un déplacement vers le coffre.
+
 ---
 
 ## 7. Interface

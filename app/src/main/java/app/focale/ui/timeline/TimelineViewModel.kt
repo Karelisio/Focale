@@ -17,6 +17,8 @@ import app.focale.core.permissions.MediaAccessManager
 import app.focale.core.settings.SettingsRepository
 import app.focale.data.DateGrouping
 import app.focale.data.MediaRepository
+import app.focale.data.Memory
+import app.focale.data.MemoriesRepository
 import app.focale.data.toGridItems
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.components.GridSelection
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -41,6 +44,7 @@ class TimelineViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val accessManager: MediaAccessManager,
     private val syncManager: MediaSyncManager,
+    memoriesRepository: MemoriesRepository,
     val actions: MediaActions,
 ) : ViewModel() {
 
@@ -88,6 +92,15 @@ class TimelineViewModel @Inject constructor(
 
     val histogram: StateFlow<List<DateBucket>> = query
         .flatMapLatest { mediaRepository.observeHistogram(it, GroupLevel.MONTH) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Souvenirs du jour, recalculés quand la bibliothèque ou la date change. */
+    val memories: StateFlow<List<Memory>> = combine(
+        settingsRepository.settings.map { it.showMemories }.distinctUntilChanged(),
+        mediaRepository.observeCount(MediaQuery.Timeline),
+        memoriesRepository.today,
+    ) { show, _, day -> if (show) day else null }
+        .mapLatest { day -> if (day != null) memoriesRepository.memories(day) else emptyList() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val gridSelection = GridSelection(viewModelScope, mediaRepository)

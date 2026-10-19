@@ -49,6 +49,10 @@ object Formatters {
         return SimpleDateFormat(pattern, locale).format(Date(epochMs))
     }
 
+    /** Date du jour, ex. « 14 juil. 2023 » (souvenirs, widget). */
+    fun dayMonthYear(context: Context, epochMs: Long, locale: Locale = currentLocale(context)): String =
+        format(epochMs, "dMMMyyyy", locale)
+
     /** Date courte pour la bulle de défilement rapide, ex. « juil. 2023 ». */
     fun monthYear(context: Context, epochMs: Long, locale: Locale = currentLocale(context)): String =
         format(epochMs, "MMMyyyy", locale)

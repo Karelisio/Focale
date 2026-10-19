@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
@@ -37,6 +38,8 @@ import app.focale.ui.components.EmptyState
 import app.focale.ui.components.MediaGridScaffold
 import app.focale.ui.components.SortSheet
 import app.focale.ui.navigation.CollectionKind
+import app.focale.ui.navigation.LocalRootNavController
+import app.focale.ui.navigation.openSlideshow
 import app.focale.ui.theme.PhotoTheme
 
 /** Grille d'un album (dossier ou virtuel), des favoris ou d'une catégorie. */
@@ -51,6 +54,7 @@ fun CollectionScreen(onBack: () -> Unit, viewModel: CollectionViewModel = hiltVi
 
 @Composable
 private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit) {
+    val rootNav = LocalRootNavController.current
     val items = viewModel.items.collectAsLazyPagingItems()
     val title by viewModel.title.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -138,6 +142,11 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
                     }
                 },
                 actions = {
+                    if (count > 0) {
+                        IconButton(onClick = { rootNav.openSlideshow(query) }, shapes = IconButtonDefaults.shapes()) {
+                            Icon(Icons.Outlined.Slideshow, contentDescription = stringResource(R.string.action_slideshow))
+                        }
+                    }
                     IconButton(onClick = { showSort = true }, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Rounded.Tune, contentDescription = stringResource(R.string.sort_title))
                     }

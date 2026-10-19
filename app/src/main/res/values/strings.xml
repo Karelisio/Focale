@@ -369,4 +369,42 @@
     <string name="settings_strip_metadata">Remove metadata when sharing</string>
     <string name="settings_strip_metadata_summary">Photos are shared without EXIF data or location; location is also removed from MP4 and WebM videos</string>
     <string name="share_preparing">Preparing to share…</string>
+
+    <!-- Carte -->
+    <string name="map_title">Map</string>
+    <string name="map_subtitle">Where your photos were taken</string>
+    <plurals name="map_photo_count">
+        <item quantity="one">%d geotagged item</item>
+        <item quantity="other">%d geotagged items</item>
+    </plurals>
+    <string name="map_geotagged_title">Geotagged</string>
+    <string name="map_show_grid">Show as grid</string>
+    <string name="map_fit">Show all photos</string>
+    <string name="map_empty_title">No geotagged photos yet</string>
+    <string name="map_empty_message">Photos with a location appear here as the on-device analysis progresses.</string>
+    <string name="map_analysis_off">Turn on the on-device analysis in the settings to place your photos on the map.</string>
+    <string name="map_attribution_osm">© OpenStreetMap contributors</string>
+    <string name="map_attribution_offline">Offline map · Natural Earth</string>
+
+    <!-- Souvenirs et diaporama -->
+    <string name="memories_title">Memories</string>
+    <plurals name="memories_years_ago">
+        <item quantity="one">%d year ago</item>
+        <item quantity="other">%d years ago</item>
+    </plurals>
+    <string name="action_slideshow">Slideshow</string>
+    <string name="slideshow_previous">Previous photo</string>
+    <string name="slideshow_next">Next photo</string>
+
+    <!-- Widget -->
+    <string name="widget_name">Memory</string>
+    <string name="widget_description">A photo from your library, memories first, refreshed several times a day</string>
+    <string name="widget_favorite">Favorite</string>
+    <string name="widget_empty">Open Focale to show your memories here</string>
+
+    <!-- Réglages : diaporama et carte -->
+    <string name="settings_slideshow_interval">Time per photo</string>
+    <string name="settings_seconds">%d s</string>
+    <string name="settings_online_map">Online map background</string>
+    <string name="settings_online_map_summary">Downloads OpenStreetMap tiles: Focale’s only network use. When off, the map stays fully offline.</string>
 </resources>

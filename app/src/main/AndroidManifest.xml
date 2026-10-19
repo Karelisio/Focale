@@ -70,6 +70,19 @@
                 tools:node="remove" />
         </provider>
 
+        <!-- Widget « Souvenir » (Glance). -->
+        <receiver
+            android:name=".widget.MemoryWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/memory_widget_info" />
+        </receiver>
+
         <!-- Copies temporaires sans métadonnées, partagées à la place des originaux. -->
         <provider
             android:name="androidx.core.content.FileProvider"

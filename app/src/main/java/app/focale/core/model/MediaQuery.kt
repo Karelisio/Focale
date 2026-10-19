@@ -38,6 +38,11 @@ data class SearchTerm(
     val text: String? = null,
 )
 
+/** Zone géographique en degrés, bornes incluses (regroupement de la carte). */
+@Serializable
+@Immutable
+data class GeoArea(val south: Double, val west: Double, val north: Double, val east: Double)
+
 /**
  * Description complète d'une liste de médias : filtres + tri.
  *
@@ -66,6 +71,8 @@ data class MediaQuery(
     val mediaIds: List<Long>? = null,
     /** Restreint aux médias géolocalisés (carte). */
     val geotaggedOnly: Boolean = false,
+    /** Médias pris dans cette zone (groupe de la carte). */
+    val area: GeoArea? = null,
     val sort: MediaSort = MediaSort(),
 ) {
     companion object {

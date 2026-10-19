@@ -1,5 +1,6 @@
 package app.focale
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
@@ -24,6 +25,7 @@ import app.focale.ui.navigation.FocaleApp
 import app.focale.ui.theme.FocaleTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -36,6 +38,9 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var consentRequester: ConsentRequester
     @Inject lateinit var accessManager: MediaAccessManager
 
+    /** Média à ouvrir dans la visionneuse (appui sur le widget), consommé par l'interface. */
+    private val openMediaRequests = MutableStateFlow<Long?>(null)
+
     /** Lance les dialogues système de consentement (suppression, modification…). */
     private val consentLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         consentRequester.complete(result.resultCode == RESULT_OK)
@@ -45,6 +50,8 @@ class MainActivity : FragmentActivity() {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Après une recréation, la visionneuse déjà ouverte est restaurée par la navigation.
+        if (savedInstanceState == null) handleIntent(intent)
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -70,13 +77,31 @@ class MainActivity : FragmentActivity() {
                 onDispose {}
             }
             FocaleTheme(settings) {
-                FocaleApp()
+                FocaleApp(
+                    openMediaRequests = openMediaRequests,
+                    onOpenMediaHandled = { openMediaRequests.value = null },
+                )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
         accessManager.refresh()
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action != ACTION_OPEN_MEDIA) return
+        intent.getLongExtra(EXTRA_MEDIA_ID, -1L).takeIf { it >= 0 }?.let { openMediaRequests.value = it }
+    }
+
+    companion object {
+        const val ACTION_OPEN_MEDIA = "app.focale.action.OPEN_MEDIA"
+        const val EXTRA_MEDIA_ID = "media_id"
     }
 }
