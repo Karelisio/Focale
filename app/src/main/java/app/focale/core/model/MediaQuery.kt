@@ -24,13 +24,17 @@ data class MediaSort(
 /**
  * Terme de recherche résolu : un mot saisi par l'utilisateur et ce à quoi il correspond.
  * Un média satisfait le terme s'il porte l'une des [labels], si son lieu contient
- * [place] ou si son nom de fichier contient [text].
+ * [place] (forme normalisée), s'il a été pris dans l'un des [countries] ou si son nom
+ * de fichier contient [text].
  */
 @Serializable
 @Immutable
 data class SearchTerm(
     val labels: List<String> = emptyList(),
     val place: String? = null,
+    /** Vrai : [place] doit être le nom exact du lieu (choix d'un lieu dans la liste). */
+    val exactPlace: Boolean = false,
+    val countries: List<String> = emptyList(),
     val text: String? = null,
 )
 
@@ -56,6 +60,8 @@ data class MediaQuery(
     val dateFrom: Long? = null,
     /** Borne supérieure exclue (ms). */
     val dateTo: Long? = null,
+    /** Mois de l'année (1-12), toutes années confondues (« juillet »). */
+    val month: Int? = null,
     /** Sous-ensemble explicite (groupe de doublons, souvenir…). */
     val mediaIds: List<Long>? = null,
     /** Restreint aux médias géolocalisés (carte). */

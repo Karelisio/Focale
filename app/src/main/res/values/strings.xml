@@ -212,4 +212,49 @@
     <string name="settings_manage_media">Media management</string>
     <string name="settings_manage_media_on">Allowed: no confirmation is asked when moving or deleting</string>
     <string name="settings_manage_media_off">Allow Focale to move and delete media without asking every time</string>
+
+    <!-- Recherche -->
+    <string name="action_clear">Clear</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_remove">Remove</string>
+    <string name="search_placeholder">Search your photos</string>
+    <string name="search_hint">Try “beach”, “dog 2023”, “Paris”, “July”, “videos”… Everything is searched on your device.</string>
+    <string name="search_for">Search for “%1$s”</string>
+    <string name="search_places">Places</string>
+    <string name="search_things">Things</string>
+    <string name="search_selfies">Selfies</string>
+    <string name="search_analysis_title">Analyzing your library</string>
+    <string name="search_analysis_progress">Analyzed on this device: %1$d / %2$d</string>
+    <string name="search_analysis_off_title">Smart search is off</string>
+    <string name="search_analysis_off_message">Enable the on-device analysis to search by content (beach, dog…), by place, and to find duplicates.</string>
+    <string name="search_analysis_enable">Turn on</string>
+
+    <!-- Nettoyage -->
+    <string name="cleanup_title">Cleanup</string>
+    <string name="cleanup_summary">Duplicates and blurry photos</string>
+    <string name="cleanup_duplicates">Duplicates</string>
+    <string name="cleanup_blurry">Blurry</string>
+    <string name="cleanup_searching">Looking for similar photos…</string>
+    <string name="cleanup_no_duplicates">No duplicates found</string>
+    <string name="cleanup_no_blurry">No blurry photos found</string>
+    <string name="cleanup_analysis_note">Results improve as the on-device analysis progresses.</string>
+    <string name="cleanup_best">Best</string>
+    <string name="cleanup_select_suggested">Select suggestions</string>
+    <string name="cleanup_sensitivity">Sensitivity</string>
+    <plurals name="cleanup_similar">
+        <item quantity="one">%d similar photo</item>
+        <item quantity="other">%d similar photos</item>
+    </plurals>
+    <plurals name="cleanup_trash">
+        <item quantity="one">Move %d to trash</item>
+        <item quantity="other">Move %d to trash</item>
+    </plurals>
+
+    <!-- Réglages : analyse -->
+    <string name="settings_analysis">Smart search</string>
+    <string name="settings_analysis_enabled">On-device analysis</string>
+    <string name="settings_analysis_enabled_summary">Labels, places, duplicates and blur, computed locally with ML Kit</string>
+    <string name="settings_analysis_charging">Only while charging</string>
+    <string name="settings_analysis_charging_summary">Saves battery on large libraries</string>
+    <string name="info_labels">Detected on this device</string>
 </resources>

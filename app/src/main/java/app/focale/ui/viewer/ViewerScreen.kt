@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
@@ -85,6 +86,8 @@ import app.focale.core.image.ThumbnailSizes
 import app.focale.core.image.thumbnail
 import app.focale.core.model.MediaItem
 import app.focale.core.util.Formatters
+import app.focale.ml.CountryResolver
+import app.focale.ml.LabelDictionary
 import app.focale.ui.actions.MediaActionsHost
 import app.focale.ui.components.isNavTransitionRunning
 import app.focale.ui.components.sharedMedia
@@ -122,6 +125,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val place by viewModel.place.collectAsStateWithLifecycle()
+    val labels by viewModel.labels.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
@@ -250,9 +255,14 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
 
     val infoItem = current
     if (showInfo && infoItem != null) {
+        val locale = LocalConfiguration.current.locales[0]
         MediaInfoSheet(
             item = infoItem,
             details = details?.takeIf { it.item.id == infoItem.id },
+            placeName = place?.let { (name, country) ->
+                if (country.isBlank()) name else "$name, ${CountryResolver.displayName(country, locale)}"
+            },
+            labels = labels.map { LabelDictionary.displayName(it, locale) },
             onDismiss = {
                 showInfo = false
                 viewModel.clearDetails()

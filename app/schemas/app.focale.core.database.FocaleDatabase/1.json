@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "90fa77cdd8e6b735eb968fd43dd0b29e",
+    "identityHash": "ee8bdaeebf16789a1e04e0347643eade",
     "entities": [
       {
         "tableName": "media",
@@ -296,7 +296,7 @@
       },
       {
         "tableName": "media_analysis",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `phash` INTEGER, `blur_score` REAL, `latitude` REAL, `longitude` REAL, `place` TEXT, `country` TEXT, PRIMARY KEY(`media_id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `phash` INTEGER, `blur_score` REAL, `latitude` REAL, `longitude` REAL, `place` TEXT, `place_key` TEXT, `country` TEXT, PRIMARY KEY(`media_id`))",
         "fields": [
           {
             "fieldPath": "mediaId",
@@ -342,6 +342,11 @@
             "affinity": "TEXT"
           },
           {
+            "fieldPath": "placeKey",
+            "columnName": "place_key",
+            "affinity": "TEXT"
+          },
+          {
             "fieldPath": "country",
             "columnName": "country",
             "affinity": "TEXT"
@@ -355,13 +360,13 @@
         },
         "indices": [
           {
-            "name": "index_media_analysis_place",
+            "name": "index_media_analysis_place_key",
             "unique": false,
             "columnNames": [
-              "place"
+              "place_key"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_analysis_place` ON `${TABLE_NAME}` (`place`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_analysis_place_key` ON `${TABLE_NAME}` (`place_key`)"
           },
           {
             "name": "index_media_analysis_country",
@@ -371,6 +376,15 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_media_analysis_country` ON `${TABLE_NAME}` (`country`)"
+          },
+          {
+            "name": "index_media_analysis_blur_score",
+            "unique": false,
+            "columnNames": [
+              "blur_score"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_analysis_blur_score` ON `${TABLE_NAME}` (`blur_score`)"
           }
         ]
       },
@@ -622,7 +636,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '90fa77cdd8e6b735eb968fd43dd0b29e')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ee8bdaeebf16789a1e04e0347643eade')"
     ]
   }
 }

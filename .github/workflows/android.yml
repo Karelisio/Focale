@@ -48,12 +48,23 @@ jobs:
             echo "FOCALE_STORE_FILE=$RUNNER_TEMP/focale.jks" >> "$GITHUB_ENV"
           fi
 
-      - name: Assemblage des APK
+      # Une invocation par variante release : deux passes R8 simultanées saturent la mémoire.
+      - name: APK release (standard)
         env:
           FOCALE_STORE_PASSWORD: ${{ secrets.FOCALE_STORE_PASSWORD }}
           FOCALE_KEY_ALIAS: ${{ secrets.FOCALE_KEY_ALIAS }}
           FOCALE_KEY_PASSWORD: ${{ secrets.FOCALE_KEY_PASSWORD }}
-        run: ./gradlew assembleStandardRelease assembleStrictRelease assembleStandardDebug
+        run: ./gradlew assembleStandardRelease
+
+      - name: APK release (strict, sans réseau)
+        env:
+          FOCALE_STORE_PASSWORD: ${{ secrets.FOCALE_STORE_PASSWORD }}
+          FOCALE_KEY_ALIAS: ${{ secrets.FOCALE_KEY_ALIAS }}
+          FOCALE_KEY_PASSWORD: ${{ secrets.FOCALE_KEY_PASSWORD }}
+        run: ./gradlew assembleStrictRelease
+
+      - name: APK debug
+        run: ./gradlew assembleStandardDebug
 
       - name: Publication des artefacts
         uses: actions/upload-artifact@v5

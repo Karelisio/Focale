@@ -3,6 +3,7 @@ package app.focale.ui.viewer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,10 +49,11 @@ fun MediaInfoSheet(
     details: MediaDetails?,
     onDismiss: () -> Unit,
     placeName: String? = null,
+    labels: List<String> = emptyList(),
     onShowOnMap: ((Double, Double) -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        MediaInfoContent(item, details, placeName, onShowOnMap)
+        MediaInfoContent(item, details, placeName, labels, onShowOnMap)
     }
 }
 
@@ -59,6 +62,7 @@ fun MediaInfoContent(
     item: MediaItem,
     details: MediaDetails?,
     placeName: String?,
+    labels: List<String>,
     onShowOnMap: ((Double, Double) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
@@ -124,6 +128,18 @@ fun MediaInfoContent(
                 subtitle = String.format(Locale.ROOT, "%.5f, %.5f", lat, lon),
                 onClick = onShowOnMap?.let { { it(lat, lon) } },
             )
+        }
+        if (labels.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.info_labels),
+                style = MaterialTheme.typography.titleSmallEmphasized,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                labels.forEach { label ->
+                    SuggestionChip(onClick = {}, label = { Text(label) }, shape = MaterialTheme.shapes.large)
+                }
+            }
         }
         Spacer(Modifier.height(16.dp))
     }

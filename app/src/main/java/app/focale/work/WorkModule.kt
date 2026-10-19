@@ -21,4 +21,9 @@ object WorkModule {
     @IntoSet
     fun trashPurge(workManager: Lazy<WorkManager>): AppInitializer =
         AppInitializer { TrashPurgeWorker.schedule(workManager.get()) }
+
+    @Provides
+    @IntoSet
+    fun analysis(scheduler: Lazy<AnalysisScheduler>): AppInitializer =
+        AppInitializer { scheduler.get().start() }
 }

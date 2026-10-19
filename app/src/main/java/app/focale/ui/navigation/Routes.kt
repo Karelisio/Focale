@@ -49,6 +49,9 @@ data class CollectionRoute(
 data object TrashRoute
 
 @Serializable
+data object CleanupRoute
+
+@Serializable
 data object SettingsRoute
 
 @Serializable

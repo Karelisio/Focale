@@ -38,12 +38,26 @@ class MediaQueryBuilderTest {
     fun `un terme de recherche combine étiquettes, lieu et nom de fichier par OU`() {
         val args = mutableListOf<Any?>()
         val where = MediaQueryBuilder.where(
-            MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog", "Cat"), place = "Paris", text = "IMG_1"))),
+            MediaQuery(
+                terms = listOf(
+                    SearchTerm(labels = listOf("Dog", "Cat"), place = "paris", countries = listOf("FR"), text = "IMG_1"),
+                ),
+            ),
             args,
         )
         assertTrue(where.contains("label IN (?,?)"))
+        assertTrue(where.contains("(' ' || place_key) LIKE ?"))
+        assertTrue(where.contains("country IN (?)"))
         assertTrue(where.contains(" OR "))
-        assertEquals(listOf<Any?>("Dog", "Cat", "%Paris%", "PARIS", "%IMG\\_1%"), args)
+        assertEquals(listOf<Any?>("Dog", "Cat", "% paris%", "FR", "%IMG\\_1%"), args)
+    }
+
+    @Test
+    fun `le filtre de mois compare le mois local sur deux chiffres`() {
+        val args = mutableListOf<Any?>()
+        val where = MediaQueryBuilder.where(MediaQuery(month = 7), args)
+        assertTrue(where.contains("strftime('%m'"))
+        assertEquals(listOf<Any?>("07"), args)
     }
 
     @Test

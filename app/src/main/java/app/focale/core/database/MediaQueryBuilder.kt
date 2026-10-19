@@ -136,6 +136,10 @@ object MediaQueryBuilder {
             clauses += "m.date_taken < ?"
             args += it
         }
+        query.month?.let {
+            clauses += "strftime('%m', m.date_taken / 1000, 'unixepoch', 'localtime') = ?"
+            args += it.toString().padStart(2, '0')
+        }
         query.mediaIds?.let { ids ->
             // Identifiants numériques : insérés littéralement pour éviter la limite de
             // 999 paramètres de SQLite sur les anciennes versions d'Android.
@@ -153,11 +157,19 @@ object MediaQueryBuilder {
             args.addAll(term.labels)
         }
         term.place?.takeIf { it.isNotBlank() }?.let { place ->
-            val pattern = likePattern(place)
-            alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE " +
-                "place LIKE ? ESCAPE '\\' OR country = ?)"
-            args += pattern
-            args += place.uppercase()
+            if (term.exactPlace) {
+                alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE place_key = ?)"
+                args += place
+            } else {
+                // Préfixe d'un mot du lieu : « malo » trouve « saint malo », « nice » ne trouve pas « venice ».
+                alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE (' ' || place_key) LIKE ? ESCAPE '\\')"
+                args += "% " + likePattern(place).removePrefix("%")
+            }
+        }
+        if (term.countries.isNotEmpty()) {
+            alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE country IN " +
+                "(${term.countries.joinToString(",") { "?" }}))"
+            args.addAll(term.countries)
         }
         term.text?.takeIf { it.isNotBlank() }?.let { text ->
             alternatives += "m.display_name LIKE ? ESCAPE '\\'"

@@ -7,6 +7,8 @@ import android.provider.MediaStore
 import android.provider.Settings
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,8 +25,36 @@ import app.focale.core.settings.AppSettings
 
 /** Sections ajoutées par les fonctionnalités (fichiers, vie privée, analyse, carte, coffre). */
 fun LazyListScope.settingsExtraSections(settings: AppSettings, viewModel: SettingsViewModel) {
+    item { AnalysisSection(settings, viewModel) }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         item { FilesSection() }
+    }
+}
+
+@Composable
+private fun AnalysisSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    SettingsGroup(stringResource(R.string.settings_analysis)) {
+        item { shapes ->
+            SettingsSwitch(
+                title = stringResource(R.string.settings_analysis_enabled),
+                subtitle = stringResource(R.string.settings_analysis_enabled_summary),
+                icon = Icons.Outlined.AutoAwesome,
+                checked = settings.analysisEnabled,
+                onCheckedChange = viewModel::setAnalysisEnabled,
+                shapes = shapes,
+            )
+        }
+        item { shapes ->
+            SettingsSwitch(
+                title = stringResource(R.string.settings_analysis_charging),
+                subtitle = stringResource(R.string.settings_analysis_charging_summary),
+                icon = Icons.Outlined.BatteryChargingFull,
+                checked = settings.analysisOnlyWhileCharging,
+                enabled = settings.analysisEnabled,
+                onCheckedChange = viewModel::setAnalysisOnlyWhileCharging,
+                shapes = shapes,
+            )
+        }
     }
 }
 

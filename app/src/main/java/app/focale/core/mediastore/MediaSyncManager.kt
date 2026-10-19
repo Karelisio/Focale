@@ -23,7 +23,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -63,6 +67,11 @@ class MediaSyncManager @Inject constructor(
     private val _state = MutableStateFlow<SyncState>(SyncState.Idle)
     val state: StateFlow<SyncState> = _state.asStateFlow()
 
+    private val _changes = MutableSharedFlow<Int>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** Émet le nombre de lignes modifiées après chaque synchronisation qui a changé l'index. */
+    val changes: SharedFlow<Int> = _changes.asSharedFlow()
+
     /** Lance une synchronisation en tâche de fond (ignorée si une autre est en cours). */
     fun requestSync() {
         scope.launch { sync() }
@@ -90,6 +99,7 @@ class MediaSyncManager @Inject constructor(
                     .onFailure { Log.w(TAG, "Synchronisation MediaStore impossible", it) }
                     .getOrDefault(0)
             } while (rerunRequested)
+            if (changed > 0) _changes.tryEmit(changed)
             changed
         } finally {
             _state.value = SyncState.Idle

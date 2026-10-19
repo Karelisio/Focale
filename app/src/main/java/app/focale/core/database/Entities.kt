@@ -109,7 +109,7 @@ data class AlbumMediaEntity(
 )
 
 /** Résultat de l'analyse d'un média (ML, empreinte, netteté, GPS). */
-@Entity(tableName = "media_analysis", indices = [Index("place"), Index("country")])
+@Entity(tableName = "media_analysis", indices = [Index("place_key"), Index("country"), Index("blur_score")])
 data class MediaAnalysisEntity(
     @PrimaryKey @ColumnInfo(name = "media_id") val mediaId: Long,
     /** `date_modified` du média au moment de l'analyse : une édition relance l'analyse. */
@@ -124,6 +124,8 @@ data class MediaAnalysisEntity(
     val longitude: Double?,
     /** Ville la plus proche (géocodage hors ligne). */
     val place: String?,
+    /** [place] normalisé (minuscules, sans accents) pour la recherche. */
+    @ColumnInfo(name = "place_key") val placeKey: String?,
     /** Code pays ISO 3166-1 alpha-2. */
     val country: String?,
 )

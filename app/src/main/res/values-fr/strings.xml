@@ -226,4 +226,51 @@
     <string name="settings_manage_media">Gestion des médias</string>
     <string name="settings_manage_media_on">Autorisée : aucune confirmation pour déplacer ou supprimer</string>
     <string name="settings_manage_media_off">Autoriser Focale à déplacer et supprimer des médias sans confirmation à chaque fois</string>
+
+    <!-- Recherche -->
+    <string name="action_clear">Effacer</string>
+    <string name="action_refresh">Actualiser</string>
+    <string name="action_remove">Retirer</string>
+    <string name="search_placeholder">Rechercher dans vos photos</string>
+    <string name="search_hint">Essayez « plage », « chien 2023 », « Paris », « juillet », « vidéos »… Tout est recherché sur votre appareil.</string>
+    <string name="search_for">Rechercher « %1$s »</string>
+    <string name="search_places">Lieux</string>
+    <string name="search_things">Choses</string>
+    <string name="search_selfies">Selfies</string>
+    <string name="search_analysis_title">Analyse de votre bibliothèque</string>
+    <string name="search_analysis_progress">Analysés sur l\'appareil : %1$d / %2$d</string>
+    <string name="search_analysis_off_title">Recherche intelligente désactivée</string>
+    <string name="search_analysis_off_message">Activez l\'analyse sur l\'appareil pour rechercher par contenu (plage, chien…), par lieu et détecter les doublons.</string>
+    <string name="search_analysis_enable">Activer</string>
+
+    <!-- Nettoyage -->
+    <string name="cleanup_title">Nettoyage</string>
+    <string name="cleanup_summary">Doublons et photos floues</string>
+    <string name="cleanup_duplicates">Doublons</string>
+    <string name="cleanup_blurry">Floues</string>
+    <string name="cleanup_searching">Recherche de photos similaires…</string>
+    <string name="cleanup_no_duplicates">Aucun doublon trouvé</string>
+    <string name="cleanup_no_blurry">Aucune photo floue trouvée</string>
+    <string name="cleanup_analysis_note">Les résultats s\'affinent au fil de l\'analyse sur l\'appareil.</string>
+    <string name="cleanup_best">Meilleure</string>
+    <string name="cleanup_select_suggested">Sélectionner les suggestions</string>
+    <string name="cleanup_sensitivity">Sensibilité</string>
+    <plurals name="cleanup_similar">
+        <item quantity="one">%d photo similaire</item>
+        <item quantity="many">%d photos similaires</item>
+        <item quantity="other">%d photos similaires</item>
+    </plurals>
+    <plurals name="cleanup_trash">
+        <item quantity="one">Mettre %d élément à la corbeille</item>
+        <item quantity="many">Mettre %d éléments à la corbeille</item>
+        <item quantity="other">Mettre %d éléments à la corbeille</item>
+    </plurals>
+
+    <!-- Réglages : analyse -->
+    <string name="settings_analysis">Recherche intelligente</string>
+    <string name="settings_analysis_enabled">Analyse sur l\'appareil</string>
+    <string name="settings_analysis_enabled_summary">Étiquettes, lieux, doublons et flou, calculés localement avec ML Kit</string>
+    <string name="settings_analysis_charging">Uniquement en charge</string>
+    <string name="settings_analysis_charging_summary">Économise la batterie sur les grandes bibliothèques</string>
+    <string name="info_labels">Détecté sur l\'appareil</string>
 </resources>

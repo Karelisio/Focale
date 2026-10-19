@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import app.focale.core.database.AnalysisDao
 import app.focale.core.image.SeedColorExtractor
 import app.focale.core.model.MediaItem
 import app.focale.core.settings.AppSettings
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -47,6 +49,7 @@ class ViewerViewModel @Inject constructor(
     private val detailsRepository: MediaDetailsRepository,
     private val seedExtractor: SeedColorExtractor,
     settingsRepository: SettingsRepository,
+    private val analysisDao: AnalysisDao,
     val actions: MediaActions,
 ) : ViewModel() {
 
@@ -87,6 +90,18 @@ class ViewerViewModel @Inject constructor(
         .distinctUntilChangedBy { it.id to it.dateModified }
         .mapLatest { seedExtractor.seedFor(it) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Lieu (géocodage hors ligne) et étiquettes ML Kit du média courant. */
+    val place: StateFlow<Pair<String, String>?> = _current
+        .distinctUntilChangedBy { it?.id }
+        .flatMapLatest { item -> item?.let { analysisDao.observe(it.id) } ?: flowOf(null) }
+        .map { analysis -> analysis?.place?.let { name -> name to analysis.country.orEmpty() } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val labels: StateFlow<List<String>> = _current
+        .distinctUntilChangedBy { it?.id }
+        .flatMapLatest { item -> item?.let { analysisDao.observeLabels(it.id) } ?: flowOf(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _details = MutableStateFlow<MediaDetails?>(null)
     val details: StateFlow<MediaDetails?> = _details.asStateFlow()

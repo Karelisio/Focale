@@ -17,6 +17,9 @@
         android:name="android.permission.MANAGE_MEDIA"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Variante standard uniquement : fond de carte OpenStreetMap, sur activation explicite.
+         La variante strict retire cette permission (src/strict/AndroidManifest.xml). -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".FocaleApplication"
@@ -43,6 +46,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Télémétrie ML Kit neutralisée : sans backend « cct », la bibliothèque datatransport
+             supprime ses lots d'événements au lieu de les envoyer. -->
+        <service
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="backend:com.google.android.datatransport.cct.CctBackendFactory"
+                tools:node="remove" />
+        </service>
 
         <!-- WorkManager est initialisé par l'application (HiltWorkerFactory). -->
         <provider
