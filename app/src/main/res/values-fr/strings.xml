@@ -459,6 +459,7 @@
     <plurals name="settings_hidden_folders_count">
         <item quantity="one">%d dossier masqué dans Photos</item>
         <item quantity="other">%d dossiers masqués dans Photos</item>
+        <item quantity="many">%d dossiers masqués dans Photos</item>
     </plurals>
     <!-- Nettoyage : captures et grosses vidéos -->
     <string name="cleanup_screenshots">Captures</string>
@@ -468,10 +469,12 @@
     <plurals name="cleanup_screenshots_summary">
         <item quantity="one">%1$d capture · %2$s</item>
         <item quantity="other">%1$d captures · %2$s</item>
+        <item quantity="many">%1$d captures · %2$s</item>
     </plurals>
     <plurals name="cleanup_large_videos_summary">
         <item quantity="one">%1$d vidéo de plus de 50 Mo · %2$s</item>
         <item quantity="other">%1$d vidéos de plus de 50 Mo · %2$s</item>
+        <item quantity="many">%1$d vidéos de plus de 50 Mo · %2$s</item>
     </plurals>
     <!-- Notes de version -->
     <string name="update_notes_title">Nouveautés de la version %1$s</string>
