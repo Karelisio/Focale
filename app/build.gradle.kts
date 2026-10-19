@@ -23,10 +23,10 @@ fun signingValue(key: String): String? =
 
 val hasReleaseSigning = signingValue("STORE_FILE") != null
 
-// Version : tag « vX.Y.Z » d'une version GitHub (CI), à défaut la version de développement.
-// Le code de version en découle (1.2.3 → 1002003) et croît d'une version à l'autre, ce
-// qu'exigent les mises à jour.
-val appVersionName: String = System.getenv("GITHUB_REF_NAME")
+// Version : lancement manuel de la CI (FOCALE_VERSION) ou tag « vX.Y.Z » d'une version
+// GitHub, à défaut la version de développement. Le code de version en découle
+// (1.2.3 → 1002003) et croît d'une version à l'autre, ce qu'exigent les mises à jour.
+val appVersionName: String = (System.getenv("FOCALE_VERSION")?.takeIf { it.isNotBlank() } ?: System.getenv("GITHUB_REF_NAME"))
     ?.removePrefix("v")
     ?.takeIf { Regex("""\d+\.\d+\.\d+""").matches(it) }
     ?: "1.1.0"
