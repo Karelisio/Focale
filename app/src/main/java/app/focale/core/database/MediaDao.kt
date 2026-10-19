@@ -43,6 +43,22 @@ interface MediaDao {
     @RawQuery(observedEntities = [MediaEntity::class])
     fun observeBuckets(query: SupportSQLiteQuery): Flow<List<BucketRow>>
 
+    // Recherche et personnes : suivent aussi les étapes d'analyse complémentaires (texte,
+    // visages, empreintes), dont les résultats s'affinent pendant que l'analyse avance ou
+    // que l'utilisateur réorganise ses personnes. La timeline n'est pas concernée.
+
+    @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
+    fun pagingSourceWithAnalysis(query: SupportSQLiteQuery): PagingSource<Int, MediaEntity>
+
+    @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
+    fun observeListWithAnalysis(query: SupportSQLiteQuery): Flow<List<MediaEntity>>
+
+    @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
+    fun observeCountWithAnalysis(query: SupportSQLiteQuery): Flow<Int>
+
+    @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
+    fun observeHistogramWithAnalysis(query: SupportSQLiteQuery): Flow<List<DateBucketRow>>
+
     @Query("SELECT * FROM media WHERE id = :id")
     suspend fun get(id: Long): MediaEntity?
 

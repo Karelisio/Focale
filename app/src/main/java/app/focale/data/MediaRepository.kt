@@ -37,14 +37,21 @@ class MediaRepository @Inject constructor(
         Pager(
             config = PAGING_CONFIG,
             initialKey = initialIndex,
-            pagingSourceFactory = { dao.pagingSource(MediaQueryBuilder.select(query)) },
+            pagingSourceFactory = {
+                val sql = MediaQueryBuilder.select(query)
+                if (query.followsAnalysis) dao.pagingSourceWithAnalysis(sql) else dao.pagingSource(sql)
+            },
         ).flow.map { data -> data.map(MediaEntity::toModel) }
 
     fun observeCount(query: MediaQuery): Flow<Int> =
-        dao.observeCount(MediaQueryBuilder.count(query)).distinctUntilChanged()
+        MediaQueryBuilder.count(query)
+            .let { if (query.followsAnalysis) dao.observeCountWithAnalysis(it) else dao.observeCount(it) }
+            .distinctUntilChanged()
 
     fun observeList(query: MediaQuery): Flow<List<MediaItem>> =
-        dao.observeList(MediaQueryBuilder.select(query)).map { rows -> rows.map(MediaEntity::toModel) }
+        MediaQueryBuilder.select(query)
+            .let { if (query.followsAnalysis) dao.observeListWithAnalysis(it) else dao.observeList(it) }
+            .map { rows -> rows.map(MediaEntity::toModel) }
 
     suspend fun list(query: MediaQuery, limit: Int? = null): List<MediaItem> = withContext(io) {
         dao.list(MediaQueryBuilder.select(query, limit)).map(MediaEntity::toModel)
@@ -59,7 +66,8 @@ class MediaRepository @Inject constructor(
     }
 
     fun observeHistogram(query: MediaQuery, level: GroupLevel): Flow<List<DateBucket>> =
-        dao.observeHistogram(MediaQueryBuilder.histogram(query, level))
+        MediaQueryBuilder.histogram(query, level)
+            .let { if (query.followsAnalysis) dao.observeHistogramWithAnalysis(it) else dao.observeHistogram(it) }
             .map { rows -> rows.map { DateBucket(it.periodStart, it.count) } }
             .distinctUntilChanged()
 
@@ -125,3 +133,10 @@ fun MediaEntity.toModel(): MediaItem {
         isScreenshot = isScreenshot,
     )
 }
+
+/**
+ * Requête dont le résultat dépend des étapes d'analyse complémentaires (recherche, personne) :
+ * observée aussi sur leurs tables.
+ */
+private val MediaQuery.followsAnalysis: Boolean
+    get() = terms.isNotEmpty() || personId != null
