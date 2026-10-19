@@ -7,6 +7,7 @@ description de la version GitHub.
 
 ## 1.3.0
 
+- Recherche en langage naturel : « chien sur la plage », « voiture rouge dans la neige »…
 - Personnes : les visages sont regroupés sur le téléphone ; nommez, fusionnez ou masquez
   des personnes depuis Albums, et cherchez-les par leur nom.
 - Texte des photos : recherche (« facture », « wifi »…) et copie depuis la visionneuse.
