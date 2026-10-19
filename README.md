@@ -97,8 +97,9 @@ architecture (`arm64-v8a` pour la plupart des téléphones récents) plus un APK
 1. Ajouter en tête de [`CHANGELOG.md`](CHANGELOG.md) une section `## X.Y.Z` (puces
    courtes, en français) : l'application l'affiche après la mise à jour et la CI la
    reprend comme description de la version GitHub.
-2. Sur GitHub : Releases → Draft a new release → tag `vX.Y.Z` → Publish. La CI y
-   ajoute les APK signés.
+2. Au choix : Actions → Android → Run workflow avec la version `X.Y.Z` (la CI crée la
+   version `vX.Y.Z` avec les APK signés et les notes), ou Releases → Draft a new release
+   → tag `vX.Y.Z` → Publish (la CI y ajoute les APK signés).
 
 ### Tests
 
