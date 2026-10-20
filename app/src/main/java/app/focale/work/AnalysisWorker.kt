@@ -48,6 +48,7 @@ class AnalysisWorker @AssistedInject constructor(
         val manual = inputData.getBoolean(KEY_MANUAL, false)
         val deadline = SystemClock.elapsedRealtime() + MAX_RUN_MS
         var processed = 0
+        var labelingUnavailable = false
         try {
             while (!isStopped) {
                 val batch = dao.pending(ImageAnalyzer.VERSION, BATCH_SIZE)
@@ -93,6 +94,7 @@ class AnalysisWorker @AssistedInject constructor(
                 if (unavailable != null && labeled == 0) {
                     Log.w(TAG, "Étiquetage indisponible", unavailable)
                     issues.report(AnalysisKind.LABELS, unavailable)
+                    labelingUnavailable = true
                     break
                 }
                 issues.clear(AnalysisKind.LABELS)
@@ -132,6 +134,11 @@ class AnalysisWorker @AssistedInject constructor(
                         return Result.success()
                     }
                 }
+            }
+            // Médias arrivés pendant les étapes : la planification « KEEP » d'une synchronisation
+            // terminée entre-temps a été ignorée, un passage de plus les analyse.
+            if (!isStopped && !labelingUnavailable && dao.pending(ImageAnalyzer.VERSION, 1).isNotEmpty()) {
+                scheduler.continueLater(manual)
             }
             return Result.success()
         } finally {

@@ -300,23 +300,21 @@ private fun FaceGrid(
                 face = face.face,
                 selected = selected,
                 selecting = selecting,
+                onClickLabel = if (selecting) null else openLabel,
+                onLongClickLabel = selectLabel,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSelectionChange(selection + id)
+                },
+                onClick = {
+                    if (selecting) {
+                        haptics.performHapticFeedback(if (selected) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
+                        onSelectionChange(if (selected) selection - id else selection + id)
+                    } else {
+                        onOpen(face)
+                    }
+                },
                 modifier = Modifier.animateItem(),
-                clickModifier = Modifier.combinedClickable(
-                    onClickLabel = if (selecting) null else openLabel,
-                    onLongClickLabel = selectLabel,
-                    onLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onSelectionChange(selection + id)
-                    },
-                    onClick = {
-                        if (selecting) {
-                            haptics.performHapticFeedback(if (selected) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
-                            onSelectionChange(if (selected) selection - id else selection + id)
-                        } else {
-                            onOpen(face)
-                        }
-                    },
-                ),
             )
         }
     }
@@ -328,7 +326,10 @@ private fun FaceCell(
     face: FaceThumbnail,
     selected: Boolean,
     selecting: Boolean,
-    clickModifier: Modifier,
+    onClickLabel: String?,
+    onLongClickLabel: String,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scale by animateFloatAsState(
@@ -344,7 +345,12 @@ private fun FaceCell(
                 .fillMaxSize()
                 .then(if (selected) Modifier.border(3.dp, ring, CircleShape) else Modifier)
                 .clip(CircleShape)
-                .then(clickModifier),
+                .combinedClickable(
+                    onClickLabel = onClickLabel,
+                    onLongClickLabel = onLongClickLabel,
+                    onLongClick = onLongClick,
+                    onClick = onClick,
+                ),
         ) {
             FaceAvatar(
                 face = face,
