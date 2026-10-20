@@ -12,5 +12,8 @@
     <string name="analysis_status_running">Analyse en cours…</string>
     <string name="analysis_status_waiting">En attente : batterie faible ou téléphone occupé</string>
     <string name="analysis_status_waiting_charging">En attente : l\'analyse ne tourne qu\'en charge</string>
+    <string name="analysis_status_failed">Interrompue : une analyse a échoué</string>
+    <string name="analysis_status_paused">En pause</string>
+    <string name="analysis_step_failed">Échec : %1$s</string>
     <string name="analysis_state">État de l\'analyse</string>
 </resources>

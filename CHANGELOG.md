@@ -5,6 +5,13 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.4.1
+
+- Analyse sur l'appareil réparée : dans les versions publiées, étiquettes, texte des photos
+  et visages échouaient sans le signaler. Toute la bibliothèque est analysée à nouveau.
+- En cas d'échec, l'avancement nomme l'analyse concernée et l'erreur, au lieu d'afficher
+  « En attente ».
+
 ## 1.4.0
 
 - Avancement détaillé de l'analyse dans Recherche et Réglages : étiquettes et lieux, texte

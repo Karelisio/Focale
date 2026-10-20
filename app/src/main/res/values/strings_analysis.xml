@@ -12,5 +12,8 @@
     <string name="analysis_status_running">Analyzing…</string>
     <string name="analysis_status_waiting">Waiting: battery low or phone busy</string>
     <string name="analysis_status_waiting_charging">Waiting: runs only while charging</string>
+    <string name="analysis_status_failed">Stopped: an analysis failed</string>
+    <string name="analysis_status_paused">Paused</string>
+    <string name="analysis_step_failed">Failed: %1$s</string>
     <string name="analysis_state">Analysis status</string>
 </resources>

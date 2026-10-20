@@ -76,6 +76,14 @@ jobs:
           FOCALE_KEY_PASSWORD: ${{ secrets.FOCALE_KEY_PASSWORD }}
         run: ./gradlew assembleStrictRelease
 
+      # R8 peut retirer le constructeur d'une classe que le manifeste nomme et qu'une
+      # bibliothèque instancie par réflexion (ML Kit) : l'APK démarre, l'analyse échoue.
+      - name: Contrôle des APK release
+        run: |
+          for apk in app/build/outputs/apk/*/release/*-universal-release.apk; do
+            python3 tools/release/check_constructors.py "$apk"
+          done
+
       - name: APK debug
         run: ./gradlew assembleStandardDebug
 

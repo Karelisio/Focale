@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.focale.R
 import app.focale.ml.AnalysisKind
+import app.focale.work.AnalysisPhase
 import app.focale.work.AnalysisStatus
 
 /** Carte de l'onglet Recherche : état de l'analyse tant qu'elle n'est pas terminée. */
@@ -71,14 +72,22 @@ fun AnalysisStatusContent(status: AnalysisStatus, onRunNow: () -> Unit, modifier
     val mainActive = status.running && status.main.analyzed < status.main.total
     val activeStep = if (status.running && !mainActive) status.steps.indexOfFirst { !it.complete } else -1
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val failures = status.failures
         AnalysisRow(
-            label = stringResource(R.string.analysis_step_main),
+            label = stringResource(AnalysisKind.LABELS.label),
             done = status.main.analyzed,
             total = status.main.total,
             active = mainActive,
+            failure = failures[AnalysisKind.LABELS],
         )
         status.steps.forEachIndexed { index, step ->
-            AnalysisRow(label = stringResource(step.kind.label), done = step.done, total = step.total, active = index == activeStep)
+            AnalysisRow(
+                label = stringResource(step.kind.label),
+                done = step.done,
+                total = step.total,
+                active = index == activeStep,
+                failure = failures[step.kind],
+            )
         }
         if (!status.complete && !status.running) {
             FilledTonalButton(onClick = onRunNow, shapes = ButtonDefaults.shapes(), modifier = Modifier.padding(top = 4.dp)) {
@@ -89,19 +98,21 @@ fun AnalysisStatusContent(status: AnalysisStatus, onRunNow: () -> Unit, modifier
     }
 }
 
-/** Phrase d'état : terminée, en cours ou en attente (avec sa cause probable). */
+/** Phrase d'état : terminée, en cours, interrompue par un échec, en attente (avec sa cause probable) ou en pause. */
 @Composable
 fun analysisStatusText(status: AnalysisStatus): String = stringResource(
     when {
         status.complete -> R.string.analysis_status_complete
         status.running -> R.string.analysis_status_running
-        status.onlyWhileCharging -> R.string.analysis_status_waiting_charging
-        else -> R.string.analysis_status_waiting
+        status.failures.isNotEmpty() -> R.string.analysis_status_failed
+        status.phase == AnalysisPhase.WAITING && status.onlyWhileCharging -> R.string.analysis_status_waiting_charging
+        status.phase == AnalysisPhase.WAITING -> R.string.analysis_status_waiting
+        else -> R.string.analysis_status_paused
     },
 )
 
 @Composable
-private fun AnalysisRow(label: String, done: Int, total: Int, active: Boolean) {
+private fun AnalysisRow(label: String, done: Int, total: Int, active: Boolean, failure: String?) {
     val fraction = if (total == 0) 1f else (done.toFloat() / total).coerceIn(0f, 1f)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -118,11 +129,19 @@ private fun AnalysisRow(label: String, done: Int, total: Int, active: Boolean) {
         } else {
             LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
         }
+        if (failure != null) {
+            Text(
+                text = stringResource(R.string.analysis_step_failed, failure),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 
 private val AnalysisKind.label: Int
     get() = when (this) {
+        AnalysisKind.LABELS -> R.string.analysis_step_main
         AnalysisKind.TEXT -> R.string.analysis_step_text
         AnalysisKind.FACES -> R.string.analysis_step_faces
         AnalysisKind.SEMANTIC -> R.string.analysis_step_semantic

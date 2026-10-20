@@ -14,15 +14,19 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 
 /** Résultat brut de l'analyse d'un média. */
 data class AnalysisResult(
-    val labels: List<Pair<String, Float>>,
+    /** Étiquettes ; null si l'étiquetage n'a pas eu lieu (image illisible) ou a échoué. */
+    val labels: List<Pair<String, Float>>?,
     val phash: Long?,
     val blurScore: Float?,
     val latitude: Double?,
     val longitude: Double?,
     val place: Place?,
+    /** Échec de l'étiquetage ML Kit, distinct d'une image sans étiquette. */
+    val labelError: Exception? = null,
 )
 
 /**
@@ -46,11 +50,17 @@ class ImageAnalyzer @Inject constructor(
     suspend fun analyze(item: MediaItem): AnalysisResult {
         val bitmap = loadBitmap(item)
         try {
+            var labelError: Exception? = null
             val labels = bitmap?.let { image ->
-                runCatching { labeler.process(InputImage.fromBitmap(image, 0)).await() }
-                    .getOrDefault(emptyList())
-                    .map { it.text to it.confidence }
-            }.orEmpty()
+                try {
+                    labeler.process(InputImage.fromBitmap(image, 0)).await().map { it.text to it.confidence }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    labelError = error
+                    null
+                }
+            }
             val phash = if (!item.isVideo && bitmap != null) {
                 ImageMetrics.dHash(ImageMetrics.grayscale(bitmap, ImageMetrics.HASH_WIDTH, ImageMetrics.HASH_HEIGHT))
             } else {
@@ -64,7 +74,7 @@ class ImageAnalyzer @Inject constructor(
             }
             val location = readLocation(item)
             val place = location?.let { (lat, lon) -> runCatching { geocoder.nearest(lat, lon) }.getOrNull() }
-            return AnalysisResult(labels, phash, blur, location?.first, location?.second, place)
+            return AnalysisResult(labels, phash, blur, location?.first, location?.second, place, labelError)
         } finally {
             bitmap?.recycle()
         }
@@ -96,8 +106,11 @@ class ImageAnalyzer @Inject constructor(
     }.getOrNull()
 
     companion object {
-        /** Version de l'algorithme : l'incrémenter relance l'analyse de toute la bibliothèque. */
-        const val VERSION = 1
+        /**
+         * Version de l'algorithme : l'incrémenter relance l'analyse de toute la bibliothèque.
+         * 2 : étiquetage réellement actif en release (ML Kit inopérant jusqu'à 1.4.0).
+         */
+        const val VERSION = 2
         private const val ANALYSIS_SIZE = 512
         private const val BLUR_SIDE = 384
         private const val LABEL_CONFIDENCE = 0.6f

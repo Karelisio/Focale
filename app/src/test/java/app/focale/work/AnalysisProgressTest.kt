@@ -89,17 +89,48 @@ class AnalysisProgressTest {
 
     @Test
     fun `l'état n'est complet que lorsque chaque étape est à jour`() {
-        val main = AnalysisProgress(analyzed = 10, total = 10, running = false)
+        val main = AnalysisProgress(analyzed = 10, total = 10)
         val partial = AnalysisStatus(
             main = main,
             steps = listOf(StepProgress(AnalysisKind.TEXT, 10, 10), StepProgress(AnalysisKind.FACES, 3, 8)),
-            running = false,
+            phase = AnalysisPhase.IDLE,
             onlyWhileCharging = true,
         )
         assertFalse(partial.complete)
         assertTrue(partial.copy(steps = listOf(StepProgress(AnalysisKind.FACES, 8, 8))).complete)
         // Bibliothèque vide : rien à faire.
-        assertTrue(AnalysisStatus(AnalysisProgress(0, 0, false), emptyList(), running = false, onlyWhileCharging = false).complete)
+        assertTrue(AnalysisStatus(AnalysisProgress(0, 0), emptyList(), AnalysisPhase.IDLE, onlyWhileCharging = false).complete)
+    }
+
+    @Test
+    fun `seuls les échecs des analyses inachevées sont affichés`() {
+        val status = AnalysisStatus(
+            main = AnalysisProgress(analyzed = 10, total = 10),
+            steps = listOf(StepProgress(AnalysisKind.TEXT, 0, 8), StepProgress(AnalysisKind.FACES, 8, 8)),
+            phase = AnalysisPhase.IDLE,
+            onlyWhileCharging = false,
+            issues = mapOf(
+                AnalysisKind.LABELS to "ancien échec",
+                AnalysisKind.TEXT to "MlKitException: indisponible",
+                AnalysisKind.FACES to "ancien échec",
+            ),
+        )
+        assertEquals(mapOf(AnalysisKind.TEXT to "MlKitException: indisponible"), status.failures)
+        assertEquals(
+            setOf(AnalysisKind.LABELS, AnalysisKind.TEXT),
+            status.copy(main = AnalysisProgress(analyzed = 4, total = 10)).failures.keys,
+        )
+    }
+
+    @Test
+    fun `un échec est décrit par sa cause première`() {
+        val error = IllegalStateException(
+            "Reconnaissance de texte indisponible",
+            IllegalArgumentException("Composant non enregistré\ndétails techniques"),
+        )
+        assertEquals("IllegalArgumentException: Composant non enregistré", AnalysisIssues.describe(error))
+        assertEquals("NullPointerException", AnalysisIssues.describe(NullPointerException()))
+        assertEquals(200, AnalysisIssues.describe(IllegalStateException("x".repeat(500))).length)
     }
 
     private fun media(

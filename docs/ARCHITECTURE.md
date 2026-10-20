@@ -235,6 +235,13 @@ Chaque étape expose aussi son avancement (`observeProgress`, mêmes critères q
 `AnalysisScheduler.status` le combine à celui de l'analyse principale pour l'onglet
 Recherche et les réglages. « Analyser maintenant » (`runNow`) lance un passage marqué
 manuel, qui ignore « en charge uniquement » jusqu'à la fin (ses continuations aussi).
+Un échec global (modèle indisponible, étiquetage en échec sur tout un lot) est noté par
+`AnalysisIssues` jusqu'au prochain lot réussi et affiché sous l'analyse concernée, avec
+l'état « interrompue » plutôt que « en attente ».
+
+Release : le mode strict de R8 (AGP 9) retire le constructeur des « registrars » ML Kit,
+instanciés par réflexion depuis le manifeste ; `proguard-rules.pro` le garde, et la CI
+vérifie les APK release avec `tools/release/check_constructors.py`.
 
 ### 6.6 Coffre-fort
 - Import : flux MediaStore → `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo)

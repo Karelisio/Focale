@@ -39,6 +39,7 @@ import app.focale.update.AppUpdate
 import app.focale.update.UpdateError
 import app.focale.update.UpdateState
 import app.focale.whatsnew.Changelog
+import app.focale.work.AnalysisPhase
 import app.focale.work.AnalysisProgress
 import app.focale.work.AnalysisStatus
 import app.focale.work.StepProgress
@@ -133,13 +134,13 @@ class ComponentScreenshotTest {
     }
 
     private val analysis = AnalysisStatus(
-        main = AnalysisProgress(analyzed = 4_812, total = 4_812, running = false),
+        main = AnalysisProgress(analyzed = 4_812, total = 4_812),
         steps = listOf(
             StepProgress(AnalysisKind.TEXT, done = 3_120, total = 4_506),
             StepProgress(AnalysisKind.FACES, done = 1_204, total = 3_877),
             StepProgress(AnalysisKind.SEMANTIC, done = 0, total = 4_506),
         ),
-        running = false,
+        phase = AnalysisPhase.WAITING,
         onlyWhileCharging = true,
     )
 
@@ -148,7 +149,18 @@ class ComponentScreenshotTest {
 
     @Test
     fun analyseEnCoursSombre() = capture(dark = true) {
-        AnalysisStatusCard(status = analysis.copy(running = true), onRunNow = {})
+        AnalysisStatusCard(status = analysis.copy(phase = AnalysisPhase.RUNNING), onRunNow = {})
+    }
+
+    @Test
+    fun analyseEnEchecClair() = capture(dark = false) {
+        AnalysisStatusCard(
+            status = analysis.copy(
+                phase = AnalysisPhase.IDLE,
+                issues = mapOf(AnalysisKind.TEXT to "MlKitException: Text recognizer unavailable"),
+            ),
+            onRunNow = {},
+        )
     }
 
     @Composable

@@ -12,6 +12,7 @@ import app.focale.core.database.MediaAnalysisEntity
 import app.focale.core.database.MediaLabelEntity
 import app.focale.core.settings.SettingsRepository
 import app.focale.data.toModel
+import app.focale.ml.AnalysisKind
 import app.focale.ml.AnalysisStep
 import app.focale.ml.ImageAnalyzer
 import app.focale.ml.LabelDictionary
@@ -37,6 +38,7 @@ class AnalysisWorker @AssistedInject constructor(
     private val geocoder: OfflineGeocoder,
     private val settings: SettingsRepository,
     private val scheduler: AnalysisScheduler,
+    private val issues: AnalysisIssues,
     private val steps: Set<@JvmSuppressWildcards AnalysisStep>,
 ) : CoroutineWorker(context, params) {
 
@@ -53,6 +55,8 @@ class AnalysisWorker @AssistedInject constructor(
 
                 val analyses = ArrayList<MediaAnalysisEntity>(batch.size)
                 val labels = ArrayList<MediaLabelEntity>()
+                var labeled = 0
+                var labelError: Exception? = null
                 for (entity in batch) {
                     if (isStopped) break
                     val result = try {
@@ -63,6 +67,8 @@ class AnalysisWorker @AssistedInject constructor(
                         Log.w(TAG, "Analyse impossible pour ${entity.id}", error)
                         null
                     }
+                    if (result?.labels != null) labeled++
+                    result?.labelError?.let { labelError = it }
                     // Même en cas d'échec, on mémorise le passage pour ne pas réessayer en boucle.
                     analyses += MediaAnalysisEntity(
                         mediaId = entity.id,
@@ -80,6 +86,16 @@ class AnalysisWorker @AssistedInject constructor(
                         labels += MediaLabelEntity(entity.id, label, confidence)
                     }
                 }
+                // Étiquetage en échec sur tout le lot : ML Kit est indisponible. Rien n'est
+                // enregistré, sans quoi ces photos resteraient sans étiquettes ; les étapes
+                // complémentaires passent quand même, la prochaine planification réessaiera.
+                val unavailable = labelError
+                if (unavailable != null && labeled == 0) {
+                    Log.w(TAG, "Étiquetage indisponible", unavailable)
+                    issues.report(AnalysisKind.LABELS, unavailable)
+                    break
+                }
+                issues.clear(AnalysisKind.LABELS)
                 dao.save(analyses, labels)
                 processed += analyses.size
                 setProgress(workDataOf(KEY_PROCESSED to processed))
@@ -93,16 +109,22 @@ class AnalysisWorker @AssistedInject constructor(
             for (step in steps.sortedBy { it.order }) {
                 while (!isStopped) {
                     val items = step.pending(STEP_BATCH_SIZE)
-                    if (items.isEmpty()) break
+                    if (items.isEmpty()) {
+                        issues.clear(step.kind)
+                        break
+                    }
                     try {
                         step.process(items)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
-                        // Échec global (modèle indisponible…) : on passe à l'étape suivante.
+                        // Échec global (modèle indisponible…) : noté pour l'affichage, puis
+                        // on passe à l'étape suivante.
                         Log.w(TAG, "Étape ${step.name} interrompue", error)
+                        issues.report(step.kind, error)
                         break
                     }
+                    issues.clear(step.kind)
                     processed += items.size
                     setProgress(workDataOf(KEY_PROCESSED to processed))
                     if (SystemClock.elapsedRealtime() > deadline) {

@@ -34,11 +34,22 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
-/** Avancement de l'analyse intelligente, affiché dans l'onglet Recherche. */
+/** Avancement de l'analyse principale (étiquettes, lieux, doublons, netteté). */
 @Immutable
-data class AnalysisProgress(val analyzed: Int, val total: Int, val running: Boolean) {
+data class AnalysisProgress(val analyzed: Int, val total: Int) {
     val done: Boolean get() = total > 0 && analyzed >= total
     val fraction: Float get() = if (total == 0) 1f else analyzed.toFloat() / total
+}
+
+/** État de la tâche d'analyse dans WorkManager. */
+enum class AnalysisPhase {
+    RUNNING,
+
+    /** Planifiée, en attente de ses conditions (batterie, charge) ou d'un passage précédent. */
+    WAITING,
+
+    /** Rien de planifié : terminée, interrompue par un échec, ou en attente d'un déclencheur. */
+    IDLE,
 }
 
 /** Avancement d'une étape complémentaire (texte, visages, recherche par le sens). */
@@ -53,12 +64,22 @@ data class StepProgress(val kind: AnalysisKind, val done: Int, val total: Int) {
 data class AnalysisStatus(
     val main: AnalysisProgress,
     val steps: List<StepProgress>,
-    /** Passage en cours (sinon en attente de ses conditions : batterie, charge). */
-    val running: Boolean,
+    val phase: AnalysisPhase,
     /** Réglage « uniquement en charge » : la cause probable d'une attente. */
     val onlyWhileCharging: Boolean,
+    /** Dernier échec de chaque analyse (voir [AnalysisIssues]). */
+    val issues: Map<AnalysisKind, String> = emptyMap(),
 ) {
-    val complete: Boolean get() = (main.total == 0 || main.done) && steps.all { it.complete }
+    val running: Boolean get() = phase == AnalysisPhase.RUNNING
+    val complete: Boolean get() = mainComplete && steps.all { it.complete }
+
+    /** Échecs des analyses encore inachevées : celui d'une analyse terminée ne compte plus. */
+    val failures: Map<AnalysisKind, String>
+        get() = issues.filterKeys { kind ->
+            if (kind == AnalysisKind.LABELS) !mainComplete else steps.any { it.kind == kind && !it.complete }
+        }
+
+    private val mainComplete: Boolean get() = main.total == 0 || main.done
 }
 
 /**
@@ -73,6 +94,7 @@ class AnalysisScheduler @Inject constructor(
     private val mediaDao: MediaDao,
     private val syncManager: MediaSyncManager,
     private val steps: Lazy<Set<@JvmSuppressWildcards AnalysisStep>>,
+    private val issues: AnalysisIssues,
     @ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -111,17 +133,20 @@ class AnalysisScheduler @Inject constructor(
         }
     }
 
-    val progress: Flow<AnalysisProgress> = combine(
+    private val mainProgress: Flow<AnalysisProgress> = combine(
         mediaDao.observeTotalCount(),
         analysisDao.observePendingCount(ImageAnalyzer.VERSION),
-        workManager.get().getWorkInfosForUniqueWorkFlow(NAME),
-    ) { total, pending, infos ->
-        AnalysisProgress(
-            analyzed = (total - pending).coerceAtLeast(0),
-            total = total,
-            running = infos.any { it.state == WorkInfo.State.RUNNING },
-        )
-    }
+    ) { total, pending -> AnalysisProgress(analyzed = (total - pending).coerceAtLeast(0), total = total) }
+
+    private val phase: Flow<AnalysisPhase> = workManager.get().getWorkInfosForUniqueWorkFlow(NAME)
+        .map { infos ->
+            when {
+                infos.any { it.state == WorkInfo.State.RUNNING } -> AnalysisPhase.RUNNING
+                infos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED } -> AnalysisPhase.WAITING
+                else -> AnalysisPhase.IDLE
+            }
+        }
+        .distinctUntilChanged()
 
     /** Avancement détaillé, mis à jour en direct (réglages, onglet Recherche). */
     val status: Flow<AnalysisStatus> = flow {
@@ -131,11 +156,13 @@ class AnalysisScheduler @Inject constructor(
         val stepsProgress = if (stepFlows.isEmpty()) flowOf(emptyList()) else combine(stepFlows) { it.toList() }
         emitAll(
             combine(
-                progress,
+                mainProgress,
                 stepsProgress,
+                phase,
                 settings.settings.map { it.analysisOnlyWhileCharging }.distinctUntilChanged(),
-            ) { main, steps, onlyWhileCharging ->
-                AnalysisStatus(main = main, steps = steps, running = main.running, onlyWhileCharging = onlyWhileCharging)
+                issues.issues,
+            ) { main, steps, phase, onlyWhileCharging, issues ->
+                AnalysisStatus(main = main, steps = steps, phase = phase, onlyWhileCharging = onlyWhileCharging, issues = issues)
             },
         )
     }

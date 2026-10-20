@@ -4,8 +4,8 @@ import app.focale.core.database.StepCounts
 import app.focale.core.model.MediaItem
 import kotlinx.coroutines.flow.Flow
 
-/** Nature d'une étape complémentaire, pour l'affichage de l'avancement. */
-enum class AnalysisKind { TEXT, FACES, SEMANTIC }
+/** Nature d'une analyse (principale : [LABELS]), pour l'affichage de l'avancement et des échecs. */
+enum class AnalysisKind { LABELS, TEXT, FACES, SEMANTIC }
 
 /**
  * Étape d'analyse complémentaire (texte, visages, empreintes sémantiques), exécutée par
