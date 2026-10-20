@@ -69,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.R
 import app.focale.core.image.thumbnail
 import app.focale.core.model.Album
+import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
 import app.focale.core.permissions.MediaAccess
 import app.focale.ui.actions.NameDialog
@@ -84,7 +85,10 @@ import app.focale.ui.people.peopleSection
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 
-/** Onglet Albums : collections automatiques, personnes, albums virtuels, dossiers de l'appareil. */
+/**
+ * Onglet Albums : collections automatiques, personnes, albums automatiques (contenu reconnu),
+ * albums virtuels, dossiers de l'appareil.
+ */
 @Composable
 fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel(), peopleViewModel: PeopleSectionViewModel = hiltViewModel()) {
     val access by viewModel.access.collectAsStateWithLifecycle()
@@ -96,6 +100,7 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel(), peopleViewModel: 
     val userAlbums by viewModel.userAlbums.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val hiddenFolders by viewModel.hiddenFolders.collectAsStateWithLifecycle()
+    val smartAlbums by viewModel.smartAlbums.collectAsStateWithLifecycle()
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val people by peopleViewModel.people.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -158,6 +163,7 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel(), peopleViewModel: 
                 onOpen = { tabsNav.navigate(PersonRoute(it.id)) { launchSingleTop = true } },
                 onSeeAll = { tabsNav.navigate(PeopleRoute) { launchSingleTop = true } },
             )
+            smartAlbumsSection(smartAlbums, onOpen = { album, title -> tabsNav.openCollection(title, album.query) })
             item(key = "user-header", span = { GridItemSpan(maxLineSpan) }) {
                 SectionHeader(stringResource(R.string.albums_mine))
             }
@@ -259,7 +265,7 @@ private fun CollectionChip(
 }
 
 @Composable
-private fun SectionHeader(title: String) {
+internal fun SectionHeader(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.headlineSmallEmphasized,
@@ -289,6 +295,19 @@ private fun EmptyAlbumsHint(onCreate: () -> Unit) {
 /** Carte d'album : couverture arrondie, nom et nombre d'éléments. */
 @Composable
 fun AlbumCard(album: Album, hiddenFromTimeline: Boolean = false, onClick: () -> Unit) {
+    AlbumCard(album.name, album.count, album.cover, hiddenFromTimeline = hiddenFromTimeline, onClick = onClick)
+}
+
+/** Carte d'album à partir de ses éléments ; [placeholder] tient lieu de couverture absente. */
+@Composable
+fun AlbumCard(
+    name: String,
+    count: Int,
+    cover: MediaItem?,
+    placeholder: ImageVector = Icons.Outlined.PhotoAlbum,
+    hiddenFromTimeline: Boolean = false,
+    onClick: () -> Unit,
+) {
     Column(Modifier.fillMaxWidth()) {
         Surface(
             onClick = onClick,
@@ -298,7 +317,6 @@ fun AlbumCard(album: Album, hiddenFromTimeline: Boolean = false, onClick: () -> 
                 .fillMaxWidth()
                 .aspectRatio(1f),
         ) {
-            val cover = album.cover
             if (cover != null) {
                 AsyncImage(
                     model = cover.thumbnail(),
@@ -309,7 +327,7 @@ fun AlbumCard(album: Album, hiddenFromTimeline: Boolean = false, onClick: () -> 
             } else {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        Icons.Outlined.PhotoAlbum,
+                        placeholder,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(40.dp),
@@ -332,14 +350,14 @@ fun AlbumCard(album: Album, hiddenFromTimeline: Boolean = false, onClick: () -> 
             }
         }
         Text(
-            text = album.name,
+            text = name,
             style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 4.dp, top = 8.dp),
         )
         Text(
-            text = pluralStringResource(R.plurals.media_count, album.count, album.count),
+            text = pluralStringResource(R.plurals.media_count, count, count),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp),

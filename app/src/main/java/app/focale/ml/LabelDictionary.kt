@@ -51,6 +51,12 @@ object LabelDictionary {
         else -> setOf(category)
     }
 
+    /** Étiquettes canoniques de [category], sous-catégories comprises. */
+    fun labelsOf(category: LabelCategory): List<String> {
+        val all = expand(category)
+        return entries.filter { it.category in all }.map { it.en }
+    }
+
     private val searchIndex: List<Pair<LabelEntry, List<String>>> = entries.map { entry ->
         entry to (listOf(entry.en, entry.fr) + entry.synonyms).map(::normalize).distinct()
     }
@@ -72,10 +78,7 @@ object LabelDictionary {
         if (term.length < 2) return emptySet()
         val singular = singular(term)
         val result = mutableSetOf<String>()
-        (categoryKeywords[term] ?: categoryKeywords[singular])?.let { categories ->
-            val all = categories.flatMap(::expand).toSet()
-            entries.filter { it.category in all }.mapTo(result) { it.en }
-        }
+        (categoryKeywords[term] ?: categoryKeywords[singular])?.forEach { result += labelsOf(it) }
         for ((entry, names) in searchIndex) {
             if (names.any { name -> matches(name, term) || (singular != term && matches(name, singular)) }) {
                 result += entry.en
