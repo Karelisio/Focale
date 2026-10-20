@@ -2,6 +2,7 @@ package app.focale.ui.people
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,10 +23,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.Merge
+import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
@@ -95,19 +103,29 @@ fun personLabel(person: Person): String = person.name ?: stringResource(R.string
 
 /**
  * Personne dans une grille : vignette pleine largeur, nom et nombre de photos. Une
- * personne masquée (affichée sur demande) est atténuée.
+ * personne masquée (affichée sur demande) est atténuée, une personne épinglée marquée
+ * d'une pastille.
  */
 @Composable
-fun PersonGridTile(person: Person, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PersonGridTile(
+    person: Person,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .clip(MaterialTheme.shapes.large)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = onLongClickLabel)
             .alpha(if (person.hidden) HIDDEN_ALPHA else 1f)
             .padding(6.dp),
     ) {
-        FaceAvatar(person.cover, Modifier.fillMaxWidth().aspectRatio(1f))
+        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+            FaceAvatar(person.cover, Modifier.fillMaxSize())
+            if (person.pinned) PinnedBadge(Modifier.align(Alignment.TopEnd))
+        }
         PersonName(person, Modifier.fillMaxWidth().padding(top = 8.dp))
         Text(
             text = if (person.hidden) {
@@ -168,7 +186,10 @@ fun PeopleRow(
                     .clickable { onOpen(person) }
                     .padding(vertical = 6.dp),
             ) {
-                FaceAvatar(person.cover, Modifier.size(avatarSize))
+                Box(Modifier.size(avatarSize)) {
+                    FaceAvatar(person.cover, Modifier.fillMaxSize())
+                    if (person.pinned) PinnedBadge(Modifier.align(Alignment.TopEnd))
+                }
                 PersonName(person, Modifier.fillMaxWidth().padding(top = 8.dp, start = 2.dp, end = 2.dp))
             }
         }
@@ -224,6 +245,101 @@ fun LazyGridScope.peopleSection(
             }
             PeopleRow(people, onOpen, Modifier.padding(top = 4.dp))
         }
+    }
+}
+
+/** Pastille discrète d'une personne épinglée, sur le coin de sa vignette. */
+@Composable
+private fun PinnedBadge(modifier: Modifier = Modifier) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(26.dp)
+            .background(MaterialTheme.colorScheme.surface, CircleShape)
+            .padding(2.dp)
+            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+    ) {
+        Icon(
+            Icons.Rounded.PushPin,
+            contentDescription = stringResource(R.string.people_pinned),
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(14.dp),
+        )
+    }
+}
+
+/**
+ * Carte « Est-ce la même personne ? » : deux personnes aux visages proches. « Fusionner »
+ * rassemble leurs photos sous [target] ; un appui sur une vignette ouvre la personne.
+ */
+@Composable
+fun MergeSuggestionCard(
+    target: Person,
+    source: Person,
+    onMerge: () -> Unit,
+    onDifferent: () -> Unit,
+    onOpen: (Person) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                text = stringResource(R.string.people_suggestion_title),
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                SuggestedPerson(target, onOpen, Modifier.weight(1f))
+                SuggestedPerson(source, onOpen, Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onDifferent, shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.people_suggestion_different), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Button(onClick = onMerge, shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Outlined.Merge, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Text(
+                        text = stringResource(R.string.people_merge_action),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = ButtonDefaults.IconSpacing),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Une des deux personnes de la suggestion : vignette, nom ou « Sans nom », nombre de photos. */
+@Composable
+private fun SuggestedPerson(person: Person, onOpen: (Person) -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .clip(MaterialTheme.shapes.large)
+            .clickable { onOpen(person) }
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+    ) {
+        FaceAvatar(person.cover, Modifier.size(88.dp))
+        Text(
+            text = person.name ?: stringResource(R.string.people_suggestion_unnamed),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (person.name == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+        Text(
+            text = pluralStringResource(R.plurals.people_photo_count, person.photoCount, person.photoCount),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 

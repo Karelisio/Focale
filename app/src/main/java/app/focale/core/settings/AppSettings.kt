@@ -5,6 +5,9 @@ import app.focale.core.model.GroupMode
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/** Ordre de la liste des personnes ; les personnes épinglées restent en tête. */
+enum class PeopleSort { PHOTOS, NAME, RECENT }
+
 /** Réglages utilisateur persistés (DataStore). */
 @Immutable
 data class AppSettings(
@@ -36,6 +39,8 @@ data class AppSettings(
     val autoCheckUpdates: Boolean = true,
     /** Dossiers (BUCKET_ID) masqués de la timeline, des souvenirs et du widget. */
     val hiddenFolders: Set<Long> = emptySet(),
+    /** Ordre de l'écran Personnes et de la rangée Personnes de l'onglet Albums. */
+    val peopleSort: PeopleSort = PeopleSort.PHOTOS,
 ) {
     companion object {
         const val MIN_COLUMNS = 2

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Liste des personnes : tri, épinglage, suggestions de fusion -->
+    <string name="people_sort">Sort</string>
+    <string name="people_sort_photos">Most photos</string>
+    <string name="people_sort_name">Name</string>
+    <string name="people_sort_recent">Recent</string>
+    <string name="people_pin">Pin to top</string>
+    <string name="people_unpin">Unpin</string>
+    <string name="people_pinned">Pinned</string>
+    <string name="people_suggestion_title">Same person?</string>
+    <string name="people_suggestion_unnamed">No name</string>
+    <string name="people_suggestion_different">Not the same</string>
+</resources>

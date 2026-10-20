@@ -4,10 +4,13 @@ import androidx.compose.runtime.Immutable
 import app.focale.core.database.FaceDao
 import app.focale.core.database.FaceThumbRow
 import app.focale.core.database.PersonEntity
+import app.focale.core.database.PersonListRow
 import app.focale.core.database.PersonRow
 import app.focale.core.di.IoDispatcher
 import app.focale.core.mediastore.MediaStoreSource
+import app.focale.core.settings.PeopleSort
 import app.focale.data.MediaRepository
+import java.text.Collator
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
@@ -25,6 +28,8 @@ data class Person(
     val hidden: Boolean,
     val photoCount: Int,
     val cover: FaceThumbnail?,
+    /** Épinglée en tête de la liste ; renseigné par la liste triée (`observePeople(sort)`). */
+    val pinned: Boolean = false,
 )
 
 /** Photos retirées d'une personne, avec de quoi annuler le retrait. */
@@ -93,6 +98,29 @@ class PeopleRepository @Inject constructor(
         }
     }
 
+    // ── Liste triée, épinglage, refus de fusion ──────────────────────────────────────
+
+    /** Personnes visibles dans l'ordre [sort], épinglées en tête ; masquées comprises sur demande. */
+    fun observePeople(sort: PeopleSort, includeHidden: Boolean = false): Flow<List<Person>> =
+        dao.observePeopleList(includeHidden, MIN_PHOTOS).distinctUntilChanged()
+            .mapLatest { rows ->
+                val covers = rows.mapNotNull { it.coverFaceId }.chunked(MediaRepository.MAX_SQL_ARGS)
+                    .flatMap { dao.thumbs(it) }
+                    .associateBy { it.id }
+                sortPeople(rows, sort).map { row ->
+                    Person(row.id, row.name, row.hidden, row.photoCount, row.coverFaceId?.let(covers::get)?.toThumbnail(), row.pinned)
+                }
+            }
+            .flowOn(io)
+
+    /** Épingle une personne en tête de la liste, ou l'en retire (sans effet sur le regroupement). */
+    suspend fun setPinned(id: Long, pinned: Boolean) = withContext(io) { dao.setPinned(id, pinned) }
+
+    /** « Pas la même » : la fusion de [a] et [b] ne sera plus suggérée. */
+    suspend fun refuseMerge(a: Long, b: Long) {
+        if (a != b) withContext(io) { dao.refuse(minOf(a, b), maxOf(a, b)) }
+    }
+
     private suspend fun <T> edit(block: suspend () -> T): T = withContext(io) {
         try {
             block()
@@ -122,4 +150,22 @@ class PeopleRepository @Inject constructor(
         /** Nombre de photos à partir duquel une personne sans nom est proposée. */
         const val MIN_PHOTOS = 3
     }
+}
+
+/**
+ * Ordre de la liste : épinglées d'abord, puis [sort] ; à égalité, les plus présentes. Par
+ * nom : ni casse ni accents (langue de l'appareil), personnes sans nom à la fin.
+ */
+internal fun sortPeople(rows: List<PersonListRow>, sort: PeopleSort): List<PersonListRow> {
+    val order: Comparator<PersonListRow> = when (sort) {
+        PeopleSort.PHOTOS -> compareByDescending { it.photoCount }
+        PeopleSort.NAME -> {
+            val collator = Collator.getInstance().apply { strength = Collator.PRIMARY }
+            compareBy(nullsLast(collator)) { it.name }
+        }
+        PeopleSort.RECENT -> compareByDescending { it.latestTaken }
+    }
+    return rows.sortedWith(
+        compareByDescending<PersonListRow> { it.pinned }.then(order).thenByDescending { it.photoCount }.thenBy { it.id },
+    )
 }

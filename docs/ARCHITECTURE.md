@@ -140,7 +140,8 @@ Index : `date_taken`, `bucket_id`, `media_type`.
 | `trash_item` | corbeille applicative (API 29 uniquement) |
 | `vault_item` | entrées du coffre (fichiers chiffrés) |
 | `search_history` | recherches récentes |
-| `face_scan` / `face` / `person` | visages détectés, empreintes SFace et personnes |
+| `face_scan` / `face` / `person` | visages détectés, empreintes SFace et personnes (nom, vignette, masquée, épinglée) |
+| `person_refusal` | paires de personnes déclarées distinctes (« Pas la même ») |
 
 Les tables d'analyse ne référencent pas `media` par clé étrangère (l'index est
 reconstruisible) : leurs lignes orphelines sont purgées après synchronisation. Les
@@ -302,6 +303,23 @@ modifiés ; une personne sans nom n'est proposée qu'à partir de trois photos. 
 rondes : `FaceThumbnailFetcher` Coil (découpe dans la miniature MediaStore, sinon décodage
 réduit de la région utile de l'original). Recherche : `SearchTerm.personIds`. La télémétrie
 d'ONNX Runtime est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
+
+#### Liste des personnes
+- **Tri** (réglage `peopleSort`) : plus de photos, nom (`Collator` primaire : ni casse ni
+  accents, personnes sans nom à la fin) ou photo la plus récente. `FaceDao.observePeopleList`
+  fournit l'épinglage et la date la plus récente, `PeopleRepository` trie ; les personnes
+  épinglées (`person.pinned`, appui long) restent en tête, dans l'écran comme dans la rangée
+  de l'onglet Albums.
+- **« Est-ce la même personne ? »** (`MergeSuggestions`) : paires de personnes visibles dont
+  les centroïdes (moyenne normalisée des empreintes de leurs visages) ont une similarité d'au
+  moins 0,38, un peu sous le seuil de rattachement (0,42) : la moyenne de nombreux visages est
+  peu bruitée. Une carte en tête de l'écran Personnes les propose une à une, les plus
+  probables d'abord, sans les paires refusées ni deux personnes nommées différemment ; la
+  cible est la personne nommée, sinon la plus présente. Recalcul hors thread principal à
+  chaque changement des personnes ou des refus (flux Room) : seules les personnes dont les
+  visages ont changé (nombre et somme de leurs identifiants) relisent leurs empreintes, par
+  tranches. Les refus (`person_refusal`, clé ordonnée) référencent `person` par clé étrangère
+  et disparaissent avec l'une ou l'autre personne (fusion, suppression).
 
 ---
 

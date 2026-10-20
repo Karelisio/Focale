@@ -13,7 +13,14 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
+    /** Version 3 : personnes épinglées et paires refusées des suggestions de fusion. */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            CHANGES_V3.forEach(db::execSQL)
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 
     private val CREATE_V2 = listOf(
         "CREATE TABLE IF NOT EXISTS `media_text` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `text` TEXT NOT NULL, `text_key` TEXT NOT NULL, PRIMARY KEY(`media_id`))",
@@ -23,5 +30,11 @@ object DatabaseMigrations {
         "CREATE INDEX IF NOT EXISTS `index_face_person_id` ON `face` (`person_id`)",
         "CREATE TABLE IF NOT EXISTS `person` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT, `cover_face_id` INTEGER, `hidden` INTEGER NOT NULL, `created_at` INTEGER NOT NULL)",
         "CREATE TABLE IF NOT EXISTS `media_embedding` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `vector` BLOB, PRIMARY KEY(`media_id`))",
+    )
+
+    private val CHANGES_V3 = listOf(
+        "ALTER TABLE `person` ADD COLUMN `pinned` INTEGER NOT NULL DEFAULT 0",
+        "CREATE TABLE IF NOT EXISTS `person_refusal` (`person_low` INTEGER NOT NULL, `person_high` INTEGER NOT NULL, PRIMARY KEY(`person_low`, `person_high`), FOREIGN KEY(`person_low`) REFERENCES `person`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`person_high`) REFERENCES `person`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "CREATE INDEX IF NOT EXISTS `index_person_refusal_person_high` ON `person_refusal` (`person_high`)",
     )
 }
