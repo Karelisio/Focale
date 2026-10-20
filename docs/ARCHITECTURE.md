@@ -40,7 +40,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Chiffrement | Tink `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo), keyset protégé par Android Keystore |
 | Authentification | androidx.biometric (biométrie forte ou identifiants de l'appareil) + code PIN (PBKDF2) |
 | Widget | Glance (`GlanceTheme` = couleurs dynamiques du système) |
-| CI | GitHub Actions : tests unitaires, lint, APK debug + release |
+| CI | GitHub Actions : tests unitaires, lint, APK debug + release, test de fumée de l'APK release sur émulateur |
 
 ---
 
@@ -241,7 +241,10 @@ l'état « interrompue » plutôt que « en attente ».
 
 Release : le mode strict de R8 (AGP 9) retire le constructeur des « registrars » ML Kit,
 instanciés par réflexion depuis le manifeste ; `proguard-rules.pro` le garde, et la CI
-vérifie les APK release avec `tools/release/check_constructors.py`.
+vérifie les APK release avec `tools/release/check_constructors.py`. Le job `smoke` exécute
+ensuite l'APK release universel sur un émulateur (API 34, `google_apis`) : deux images de
+test (texte, visage), puis attente que la base contienne étiquettes, texte « facture » et
+visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend.
 
 ### 6.6 Coffre-fort
 - Import : flux MediaStore → `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo)

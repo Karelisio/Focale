@@ -104,9 +104,52 @@ jobs:
             app/build/test-results/
           if-no-files-found: ignore
 
+  # L'APK release universel (standard) installé sur un émulateur doit analyser deux images :
+  # étiquettes, texte et visages. En 1.4.0, R8 cassait l'analyse en release seulement.
+  smoke:
+    name: Test de fumée (émulateur)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: focale-apk-${{ github.sha }}
+          path: apk
+
+      - name: APK à tester
+        run: |
+          apk=$(find apk -name app-standard-universal-release.apk -print -quit)
+          if [ -z "$apk" ]; then
+            echo "::error::app-standard-universal-release.apk absent de l'artefact"
+            exit 1
+          fi
+          echo "SMOKE_APK=$apk" >> "$GITHUB_ENV"
+
+      - name: KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Image google_apis (sans Play Store) : adb root, pour lire la base de l'application.
+      - name: Analyse sur émulateur
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          ram-size: 3072M
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash tools/release/smoke_test.sh "$SMOKE_APK"
+
   release:
     name: Version GitHub
-    needs: build
+    needs: [build, smoke]
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
     runs-on: ubuntu-latest
     permissions:

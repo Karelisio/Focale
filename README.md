@@ -139,6 +139,13 @@ dans les artefacts de l'exécution. Une version GitHub publiée (tag `vX.Y.Z`) r
 APK release signés. Pour signer en CI, ajoutez les secrets `FOCALE_KEYSTORE_BASE64` (keystore encodé
 en base64), `FOCALE_STORE_PASSWORD`, `FOCALE_KEY_ALIAS` et `FOCALE_KEY_PASSWORD`.
 
+Un test de fumée installe ensuite l'APK release universel (standard) sur un émulateur
+Android 14 et vérifie que l'analyse enregistre étiquettes, texte et visages pour deux images
+de test ([`tools/release/smoke_test.sh`](tools/release/smoke_test.sh)) ; la publication d'une
+version en dépend. En local, avec un émulateur `google_apis` démarré (Focale y est
+réinstallé, ses données effacées) :
+`tools/release/smoke_test.sh app/build/outputs/apk/standard/release/app-standard-universal-release.apk`.
+
 ## Stack
 
 Kotlin 2.4 · AGP 9 · Compose (Material 3 1.5, adaptive) · Hilt · Coroutines/Flow ·
