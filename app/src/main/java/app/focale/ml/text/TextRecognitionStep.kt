@@ -2,14 +2,17 @@ package app.focale.ml.text
 
 import android.util.Log
 import app.focale.core.database.MediaTextEntity
+import app.focale.core.database.StepCounts
 import app.focale.core.database.TextDao
 import app.focale.core.model.MediaItem
 import app.focale.data.toModel
+import app.focale.ml.AnalysisKind
 import app.focale.ml.AnalysisStep
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Étape « texte » : lit le texte des photos (captures d'écran d'abord, voir
@@ -27,6 +30,10 @@ class TextRecognitionStep @Inject constructor(
     override val name: String = "texte"
 
     override val order: Int = 10
+
+    override val kind: AnalysisKind = AnalysisKind.TEXT
+
+    override fun observeProgress(): Flow<StepCounts> = dao.observeProgress(VERSION)
 
     override suspend fun pending(limit: Int): List<MediaItem> = dao.pending(VERSION, limit).map { it.toModel() }
 

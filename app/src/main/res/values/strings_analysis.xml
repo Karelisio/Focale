@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Avancement détaillé de l'analyse sur l'appareil -->
+    <string name="analysis_step_main">Labels and places</string>
+    <string name="analysis_step_text">Text in photos</string>
+    <string name="analysis_step_faces">Faces</string>
+    <string name="analysis_step_semantic">Search by meaning</string>
+    <string name="analysis_step_done">Done</string>
+    <string name="analysis_count">%1$,d / %2$,d</string>
+    <string name="analysis_run_now">Analyze now</string>
+    <string name="analysis_status_complete">Your whole library has been analyzed</string>
+    <string name="analysis_status_running">Analyzing…</string>
+    <string name="analysis_status_waiting">Waiting: battery low or phone busy</string>
+    <string name="analysis_status_waiting_charging">Waiting: runs only while charging</string>
+    <string name="analysis_state">Analysis status</string>
+</resources>

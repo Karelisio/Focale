@@ -3,6 +3,7 @@ package app.focale.core.database
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
+import kotlinx.coroutines.flow.Flow
 
 /** Texte reconnu dans les photos (OCR). */
 @Dao
@@ -22,6 +23,17 @@ interface TextDao {
         """,
     )
     suspend fun pending(version: Int, limit: Int): List<MediaEntity>
+
+    /** Avancement en direct : photos concernées par [pending] et photos déjà lues. */
+    @Query(
+        """
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(t.media_id IS NOT NULL AND t.analyzed_modified = m.date_modified AND t.version >= :version), 0) AS done
+        FROM media m LEFT JOIN media_text t ON t.media_id = m.id
+        WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
+        """,
+    )
+    fun observeProgress(version: Int): Flow<StepCounts>
 
     @Upsert
     suspend fun upsert(texts: List<MediaTextEntity>)

@@ -28,6 +28,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.BuildConfig
 import app.focale.R
 import app.focale.core.settings.AppSettings
+import app.focale.ui.analysis.AnalysisStatusContent
+import app.focale.ui.analysis.analysisStatusText
 import app.focale.ui.components.Choice
 import app.focale.ui.components.ConnectedChoiceGroup
 import app.focale.ui.update.UpdateControls
@@ -120,7 +122,20 @@ private fun PrivacySection(settings: AppSettings, viewModel: SettingsViewModel) 
 
 @Composable
 private fun AnalysisSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    val status by viewModel.analysisStatus.collectAsStateWithLifecycle()
     SettingsGroup(stringResource(R.string.settings_analysis)) {
+        val current = status
+        if (settings.analysisEnabled && current != null) {
+            item { shapes ->
+                SettingsCustom(
+                    title = stringResource(R.string.analysis_state),
+                    subtitle = analysisStatusText(current),
+                    shapes = shapes,
+                ) {
+                    AnalysisStatusContent(status = current, onRunNow = viewModel::runAnalysisNow)
+                }
+            }
+        }
         item { shapes ->
             SettingsSwitch(
                 title = stringResource(R.string.settings_analysis_enabled),

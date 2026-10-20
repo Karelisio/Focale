@@ -7,15 +7,18 @@ import android.util.Log
 import android.util.Size
 import app.focale.core.database.EmbeddingDao
 import app.focale.core.database.MediaEmbeddingEntity
+import app.focale.core.database.StepCounts
 import app.focale.core.di.DefaultDispatcher
 import app.focale.core.di.IoDispatcher
 import app.focale.core.model.MediaItem
 import app.focale.data.toModel
+import app.focale.ml.AnalysisKind
 import app.focale.ml.AnalysisStep
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
 /**
@@ -36,6 +39,10 @@ class EmbeddingStep @Inject constructor(
     override val name: String = "empreintes"
 
     override val order: Int = 30
+
+    override val kind: AnalysisKind = AnalysisKind.SEMANTIC
+
+    override fun observeProgress(): Flow<StepCounts> = dao.observeProgress(ClipModels.VERSION)
 
     private var encoder: ClipImageEncoder? = null
 

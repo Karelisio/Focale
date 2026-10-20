@@ -238,7 +238,6 @@
     <string name="search_things">Choses</string>
     <string name="search_selfies">Selfies</string>
     <string name="search_analysis_title">Analyse de votre bibliothèque</string>
-    <string name="search_analysis_progress">Analysés sur l\'appareil : %1$d / %2$d</string>
     <string name="search_analysis_off_title">Recherche intelligente désactivée</string>
     <string name="search_analysis_off_message">Activez l\'analyse sur l\'appareil pour rechercher par contenu (plage, chien…), par lieu et détecter les doublons.</string>
     <string name="search_analysis_enable">Activer</string>

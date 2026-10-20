@@ -224,7 +224,6 @@
     <string name="search_things">Things</string>
     <string name="search_selfies">Selfies</string>
     <string name="search_analysis_title">Analyzing your library</string>
-    <string name="search_analysis_progress">Analyzed on this device: %1$d / %2$d</string>
     <string name="search_analysis_off_title">Smart search is off</string>
     <string name="search_analysis_off_message">Enable the on-device analysis to search by content (beach, dog…), by place, and to find duplicates.</string>
     <string name="search_analysis_enable">Turn on</string>

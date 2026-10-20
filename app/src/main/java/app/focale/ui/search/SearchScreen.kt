@@ -96,6 +96,7 @@ import app.focale.data.ThingSuggestion
 import app.focale.ml.CountryResolver
 import app.focale.ml.LabelDictionary
 import app.focale.people.Person
+import app.focale.ui.analysis.AnalysisStatusCard
 import app.focale.ui.components.MediaPermissionScreen
 import app.focale.ui.navigation.CleanupRoute
 import app.focale.ui.navigation.CollectionKind
@@ -105,7 +106,6 @@ import app.focale.ui.navigation.openCollection
 import app.focale.ui.people.PeopleRow
 import app.focale.ui.people.matchingPeople
 import app.focale.ui.people.peopleSuggestions
-import app.focale.work.AnalysisProgress
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 
@@ -122,7 +122,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
     val places by viewModel.places.collectAsStateWithLifecycle()
     val people by viewModel.people.collectAsStateWithLifecycle()
     val recent by viewModel.recent.collectAsStateWithLifecycle()
-    val progress by viewModel.progress.collectAsStateWithLifecycle()
+    val analysisStatus by viewModel.analysisStatus.collectAsStateWithLifecycle()
     val analysisEnabled by viewModel.analysisEnabled.collectAsStateWithLifecycle()
     val searching by viewModel.searching.collectAsStateWithLifecycle()
     val locale = LocalConfiguration.current.locales[0]
@@ -206,13 +206,16 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
             ),
             modifier = Modifier.fillMaxSize(),
         ) {
-            val currentProgress = progress
+            val status = analysisStatus
             if (!analysisEnabled) {
                 item(key = "analysis-off", span = { GridItemSpan(maxLineSpan) }) {
                     AnalysisDisabledCard(onEnable = viewModel::enableAnalysis)
                 }
-            } else if (currentProgress != null && !currentProgress.done && currentProgress.total > 0) {
-                item(key = "progress", span = { GridItemSpan(maxLineSpan) }) { AnalysisProgressCard(currentProgress) }
+            } else if (status != null && !status.complete) {
+                // Tant qu'une analyse n'est pas finie : avancement de chacune et « Analyser maintenant ».
+                item(key = "progress", span = { GridItemSpan(maxLineSpan) }) {
+                    AnalysisStatusCard(status = status, onRunNow = viewModel::runAnalysisNow)
+                }
             }
 
             item(key = "categories", span = { GridItemSpan(maxLineSpan) }) {
@@ -494,26 +497,6 @@ private fun ThingTile(name: String, cover: MediaItem?, onClick: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 4.dp, top = 6.dp),
         )
-    }
-}
-
-@Composable
-private fun AnalysisProgressCard(progress: AnalysisProgress) {
-    Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) {
-        Column(Modifier.fillMaxWidth().padding(20.dp)) {
-            Text(
-                stringResource(R.string.search_analysis_title),
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Text(
-                stringResource(R.string.search_analysis_progress, progress.analyzed, progress.total),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-            )
-            LinearWavyProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth())
-        }
     }
 }
 

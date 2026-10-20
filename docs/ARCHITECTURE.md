@@ -231,6 +231,10 @@ par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).
 exécute les `AnalysisStep` fournies par multiliaison (texte, visages, empreintes).
 Chacune tient son avancement dans sa table (version et `date_modified` analysés) :
 elle reprend où elle s'était arrêtée et recalcule après une évolution ou une édition.
+Chaque étape expose aussi son avancement (`observeProgress`, mêmes critères que sa file) :
+`AnalysisScheduler.status` le combine à celui de l'analyse principale pour l'onglet
+Recherche et les réglages. « Analyser maintenant » (`runNow`) lance un passage marqué
+manuel, qui ignore « en charge uniquement » jusqu'à la fin (ses continuations aussi).
 
 ### 6.6 Coffre-fort
 - Import : flux MediaStore → `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo)

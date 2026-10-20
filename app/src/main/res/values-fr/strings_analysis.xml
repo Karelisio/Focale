@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Avancement détaillé de l'analyse sur l'appareil -->
+    <string name="analysis_step_main">Étiquettes et lieux</string>
+    <string name="analysis_step_text">Texte des photos</string>
+    <string name="analysis_step_faces">Visages</string>
+    <string name="analysis_step_semantic">Recherche par le sens</string>
+    <string name="analysis_step_done">Terminé</string>
+    <string name="analysis_count">%1$,d / %2$,d</string>
+    <string name="analysis_run_now">Analyser maintenant</string>
+    <string name="analysis_status_complete">Toute la bibliothèque est analysée</string>
+    <string name="analysis_status_running">Analyse en cours…</string>
+    <string name="analysis_status_waiting">En attente : batterie faible ou téléphone occupé</string>
+    <string name="analysis_status_waiting_charging">En attente : l\'analyse ne tourne qu\'en charge</string>
+    <string name="analysis_state">État de l\'analyse</string>
+</resources>

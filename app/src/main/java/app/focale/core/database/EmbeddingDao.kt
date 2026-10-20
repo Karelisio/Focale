@@ -3,6 +3,7 @@ package app.focale.core.database
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
+import kotlinx.coroutines.flow.Flow
 
 /** Empreinte valide d'une photo, telle que chargée pour la recherche. */
 class StoredEmbedding(
@@ -25,6 +26,17 @@ interface EmbeddingDao {
         """,
     )
     suspend fun pending(version: Int, limit: Int): List<MediaEntity>
+
+    /** Avancement en direct : photos concernées par [pending] et photos déjà traitées. */
+    @Query(
+        """
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(e.media_id IS NOT NULL AND e.analyzed_modified = m.date_modified AND e.version >= :version), 0) AS done
+        FROM media m LEFT JOIN media_embedding e ON e.media_id = m.id
+        WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
+        """,
+    )
+    fun observeProgress(version: Int): Flow<StepCounts>
 
     @Upsert
     suspend fun upsert(embeddings: List<MediaEmbeddingEntity>)

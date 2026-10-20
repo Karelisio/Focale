@@ -71,3 +71,9 @@ data class MediaEmbeddingEntity(
     /** Flottants 32 bits petit-boutistes, de norme 1 ; null si le calcul a échoué. */
     val vector: ByteArray?,
 )
+
+/** Avancement d'une étape d'analyse : photos concernées et photos à jour. */
+data class StepCounts(
+    val total: Int,
+    val done: Int,
+)

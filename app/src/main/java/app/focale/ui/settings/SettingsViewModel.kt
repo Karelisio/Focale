@@ -8,6 +8,8 @@ import app.focale.core.settings.AppSettings
 import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.ThemeMode
 import app.focale.data.AlbumRepository
+import app.focale.work.AnalysisScheduler
+import app.focale.work.AnalysisStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -19,9 +21,16 @@ import kotlinx.coroutines.launch
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
     albumRepository: AlbumRepository,
+    private val analysisScheduler: AnalysisScheduler,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = repository.current
+
+    /** Avancement détaillé de l'analyse sur l'appareil. */
+    val analysisStatus: StateFlow<AnalysisStatus?> = analysisScheduler.status
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun runAnalysisNow() = analysisScheduler.runNow()
 
     /** Dossiers de l'appareil, pour choisir ceux masqués de la timeline. */
     val folders: StateFlow<List<Album.Folder>> = albumRepository.observeFolders()

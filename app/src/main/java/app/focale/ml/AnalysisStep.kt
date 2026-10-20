@@ -1,6 +1,11 @@
 package app.focale.ml
 
+import app.focale.core.database.StepCounts
 import app.focale.core.model.MediaItem
+import kotlinx.coroutines.flow.Flow
+
+/** Nature d'une étape complémentaire, pour l'affichage de l'avancement. */
+enum class AnalysisKind { TEXT, FACES, SEMANTIC }
 
 /**
  * Étape d'analyse complémentaire (texte, visages, empreintes sémantiques), exécutée par
@@ -16,6 +21,12 @@ interface AnalysisStep {
 
     /** Ordre d'exécution, croissant. */
     val order: Int get() = 0
+
+    /** Nature de l'étape (libellé de son avancement). */
+    val kind: AnalysisKind
+
+    /** Avancement en direct : photos concernées et photos traitées par la version actuelle. */
+    fun observeProgress(): Flow<StepCounts>
 
     /** Prochain lot de médias à traiter ; vide quand l'étape est à jour. */
     suspend fun pending(limit: Int): List<MediaItem>

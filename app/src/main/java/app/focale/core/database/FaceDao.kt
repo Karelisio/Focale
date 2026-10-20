@@ -70,6 +70,18 @@ interface FaceDao {
     )
     suspend fun pending(version: Int, limit: Int): List<MediaEntity>
 
+    /** Avancement en direct : photos concernées par [pending] et photos déjà analysées. */
+    @Query(
+        """
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(s.media_id IS NOT NULL AND s.analyzed_modified = m.date_modified AND s.version >= :version), 0) AS done
+        FROM media m LEFT JOIN face_scan s ON s.media_id = m.id
+        WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
+          AND m.is_screenshot = 0 AND m.is_gif = 0
+        """,
+    )
+    fun observeProgress(version: Int): Flow<StepCounts>
+
     @Query("SELECT * FROM face WHERE media_id IN (:mediaIds)")
     suspend fun facesOfMedia(mediaIds: List<Long>): List<FaceEntity>
 

@@ -5,6 +5,13 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.4.0
+
+- Avancement détaillé de l'analyse dans Recherche et Réglages : étiquettes et lieux, texte
+  des photos, visages et recherche par le sens, chacun avec son compteur.
+- Bouton « Analyser maintenant » : lance l'analyse tout de suite, même hors charge quand
+  le réglage « Uniquement en charge » est actif.
+
 ## 1.3.0
 
 - Recherche en langage naturel : « chien sur la plage », « voiture rouge dans la neige »…

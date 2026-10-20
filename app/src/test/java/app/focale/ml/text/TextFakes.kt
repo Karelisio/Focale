@@ -3,9 +3,12 @@ package app.focale.ml.text
 import android.net.Uri
 import app.focale.core.database.MediaEntity
 import app.focale.core.database.MediaTextEntity
+import app.focale.core.database.StepCounts
 import app.focale.core.database.TextDao
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaType
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /** Photo de test (l'URI exige Robolectric). */
 fun photo(id: Long, modified: Long = 1_000L, screenshot: Boolean = false) = MediaItem(
@@ -59,4 +62,6 @@ class FakeTextDao(var pendingRows: List<MediaEntity> = emptyList()) : TextDao {
     }
 
     override suspend fun get(mediaId: Long): MediaTextEntity? = rows[mediaId]
+
+    override fun observeProgress(version: Int): Flow<StepCounts> = flowOf(StepCounts(pendingRows.size + rows.size, rows.size))
 }

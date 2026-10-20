@@ -4,13 +4,16 @@ import android.util.Log
 import app.focale.core.database.FaceDao
 import app.focale.core.database.FaceEntity
 import app.focale.core.database.FaceScanEntity
+import app.focale.core.database.StepCounts
 import app.focale.core.model.MediaItem
 import app.focale.data.toModel
+import app.focale.ml.AnalysisKind
 import app.focale.ml.AnalysisStep
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Compteur des modifications faites par l'utilisateur sur les personnes (fusion, retrait,
@@ -42,6 +45,10 @@ class FaceAnalysisStep @Inject constructor(
 
     override val name: String = "visages"
     override val order: Int = 20
+
+    override val kind: AnalysisKind = AnalysisKind.FACES
+
+    override fun observeProgress(): Flow<StepCounts> = dao.observeProgress(VERSION)
 
     private var clusterer: FaceClusterer? = null
     private var loadedGeneration = -1L

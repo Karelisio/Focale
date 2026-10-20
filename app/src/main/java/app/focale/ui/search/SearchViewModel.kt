@@ -13,8 +13,8 @@ import app.focale.data.ThingSuggestion
 import app.focale.ml.SearchQueryParser
 import app.focale.people.PeopleRepository
 import app.focale.people.Person
-import app.focale.work.AnalysisProgress
 import app.focale.work.AnalysisScheduler
+import app.focale.work.AnalysisStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -43,7 +43,7 @@ data class SearchResult(val title: String, val query: MediaQuery)
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val repository: SearchRepository,
-    scheduler: AnalysisScheduler,
+    private val scheduler: AnalysisScheduler,
     private val settingsRepository: SettingsRepository,
     accessManager: MediaAccessManager,
     peopleRepository: PeopleRepository,
@@ -69,8 +69,11 @@ class SearchViewModel @Inject constructor(
         .map { list -> list.mapNotNull { person -> person.name?.let { person.id to it } }.toMap() }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
-    val progress: StateFlow<AnalysisProgress?> = scheduler.progress
+    /** Avancement détaillé (étiquettes, texte, visages, recherche par le sens). */
+    val analysisStatus: StateFlow<AnalysisStatus?> = scheduler.status
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun runAnalysisNow() = scheduler.runNow()
 
     val analysisEnabled: StateFlow<Boolean> = settingsRepository.settings.map { it.analysisEnabled }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)

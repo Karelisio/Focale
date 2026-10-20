@@ -42,6 +42,8 @@ class AnalysisWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result {
         if (!settings.current.value.analysisEnabled) return Result.success()
+        // Passage lancé à la main : ses continuations ignorent aussi « uniquement en charge ».
+        val manual = inputData.getBoolean(KEY_MANUAL, false)
         val deadline = SystemClock.elapsedRealtime() + MAX_RUN_MS
         var processed = 0
         try {
@@ -83,7 +85,7 @@ class AnalysisWorker @AssistedInject constructor(
                 setProgress(workDataOf(KEY_PROCESSED to processed))
 
                 if (SystemClock.elapsedRealtime() > deadline) {
-                    scheduler.continueLater()
+                    scheduler.continueLater(manual)
                     return Result.success()
                 }
             }
@@ -104,7 +106,7 @@ class AnalysisWorker @AssistedInject constructor(
                     processed += items.size
                     setProgress(workDataOf(KEY_PROCESSED to processed))
                     if (SystemClock.elapsedRealtime() > deadline) {
-                        scheduler.continueLater()
+                        scheduler.continueLater(manual)
                         return Result.success()
                     }
                 }
@@ -119,6 +121,7 @@ class AnalysisWorker @AssistedInject constructor(
     companion object {
         private const val TAG = "AnalysisWorker"
         const val KEY_PROCESSED = "processed"
+        const val KEY_MANUAL = "manual"
         private const val BATCH_SIZE = 24
         private const val STEP_BATCH_SIZE = 16
         private const val MAX_RUN_MS = 6 * 60 * 1000L
