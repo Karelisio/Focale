@@ -51,9 +51,9 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 
 /**
- * Widget « Souvenir » : une photo de la bibliothèque (souvenir des années passées en
- * priorité), renouvelée toutes les quelques heures, aux couleurs Material You. Un appui
- * l'ouvre dans la visionneuse de Focale.
+ * Widget « Souvenir » : une photo de la bibliothèque (souvenir du jour en priorité : années
+ * passées, personnes, voyages), renouvelée toutes les quelques heures, aux couleurs
+ * Material You. Un appui l'ouvre dans la visionneuse de Focale.
  */
 class MemoryWidget : GlanceAppWidget() {
 

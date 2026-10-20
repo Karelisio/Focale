@@ -31,15 +31,15 @@ object MediaQueryBuilder {
 
     /**
      * Couverture représentative : de préférence une photo (ni capture ni GIF), la plus
-     * nette selon l'analyse, puis la plus récente.
+     * nette selon l'analyse, puis la plus récente ; [limit] candidates, dans cet ordre.
      */
-    fun bestCover(query: MediaQuery): SimpleSQLiteQuery {
+    fun bestCover(query: MediaQuery, limit: Int = 1): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
         val where = where(query, args)
         return SimpleSQLiteQuery(
             "SELECT m.* FROM media m LEFT JOIN media_analysis a ON a.media_id = m.id WHERE $where " +
                 "ORDER BY (m.media_type = $MEDIA_TYPE_IMAGE AND m.is_screenshot = 0 AND m.is_gif = 0) DESC, " +
-                "COALESCE(a.blur_score, 0) DESC, m.date_taken DESC LIMIT 1",
+                "COALESCE(a.blur_score, 0) DESC, m.date_taken DESC LIMIT $limit",
             args.toTypedArray(),
         )
     }
