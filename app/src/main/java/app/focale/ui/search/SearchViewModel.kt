@@ -19,6 +19,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -60,8 +62,10 @@ class SearchViewModel @Inject constructor(
     val recent: StateFlow<List<String>> = repository.observeRecent()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Personnes visibles (rangée « Personnes » et suggestions). */
-    val people: StateFlow<List<Person>> = peopleRepository.observePeople()
+    /** Personnes visibles (rangée « Personnes » et suggestions), dans l'ordre choisi, épinglées en tête. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val people: StateFlow<List<Person>> = settingsRepository.settings.map { it.peopleSort }.distinctUntilChanged()
+        .flatMapLatest { peopleRepository.observePeople(it) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Personnes nommées, masquées comprises : leur nom est reconnu dans la saisie. */

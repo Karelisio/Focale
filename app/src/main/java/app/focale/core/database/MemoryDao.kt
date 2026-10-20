@@ -2,10 +2,12 @@ package app.focale.core.database
 
 import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import app.focale.core.model.MediaQuery
+import kotlinx.coroutines.flow.Flow
 
 /** Média géolocalisé réduit à sa date de prise de vue (ms) et à ses coordonnées. */
 data class DatedPoint(val date: Long, val latitude: Double, val longitude: Double)
@@ -38,6 +40,19 @@ interface MemoryDao {
 
     @RawQuery
     suspend fun people(query: SupportSQLiteQuery): List<PersonPresence>
+
+    /**
+     * Empreinte de ce dont dépendent les souvenirs au-delà du nombre de médias : lieux trouvés
+     * par l'analyse, visages rattachés, personnes (nom, masquage, fusion).
+     */
+    @Query(
+        """
+        SELECT (SELECT COUNT(*) FROM media_analysis WHERE latitude IS NOT NULL) || ':' ||
+               (SELECT COUNT(*) FROM face WHERE person_id IS NOT NULL) || ':' ||
+               COALESCE((SELECT group_concat(id || '/' || COALESCE(name, '') || '/' || hidden) FROM person), '')
+        """,
+    )
+    fun observeSignature(): Flow<String>
 }
 
 /**

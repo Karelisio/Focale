@@ -292,8 +292,22 @@ interface FaceDao {
         val target = person(targetId) ?: return
         moveFaces(sourceId, targetId)
         if (target.name == null && source.name != null) rename(targetId, source.name)
+        inheritRefusals(sourceId, targetId)
+        if (source.pinned) setPinned(targetId, true)
         deletePerson(sourceId)
     }
+
+    /** Reporte sur [targetId] les refus de fusion de [sourceId], avant la suppression de celle-ci. */
+    @Query(
+        """
+        INSERT OR IGNORE INTO person_refusal (person_low, person_high)
+        SELECT MIN(:targetId, other), MAX(:targetId, other) FROM (
+            SELECT CASE WHEN person_low = :sourceId THEN person_high ELSE person_low END AS other
+            FROM person_refusal WHERE person_low = :sourceId OR person_high = :sourceId
+        ) WHERE other != :targetId
+        """,
+    )
+    suspend fun inheritRefusals(sourceId: Long, targetId: Long)
 
     @Query("SELECT id, person_id, manual FROM face WHERE person_id = :personId AND media_id IN (:mediaIds)")
     suspend fun linksIn(personId: Long, mediaIds: List<Long>): List<FaceLink>
@@ -342,6 +356,42 @@ interface FaceDao {
 
     @Query("DELETE FROM person WHERE id = :id AND NOT EXISTS (SELECT 1 FROM face WHERE person_id = :id)")
     suspend fun deleteIfEmpty(id: Long)
+
+    /**
+     * Rattache à la main [faceIds] (voir [reassign]) et renvoie leurs liens d'origine
+     * (annulation) et le nombre de visages déplacés.
+     */
+    @Transaction
+    suspend fun transferFaces(personId: Long, faceIds: List<Long>, targetId: Long?): Pair<List<FaceLink>, Int> {
+        val chunks = faceIds.chunked(SQL_CHUNK)
+        val links = chunks.flatMap { linksOf(personId, it) }
+        return links to chunks.sumOf { reassign(personId, it, targetId) }
+    }
+
+    /**
+     * Crée [person] et y déplace [faceIds] d'un seul tenant : vide, elle serait supprimée par
+     * le regroupement avant d'être remplie. Renvoie son identifiant et le résultat de [transferFaces].
+     */
+    @Transaction
+    suspend fun transferToNewPerson(personId: Long, faceIds: List<Long>, person: PersonEntity): Pair<Long, Pair<List<FaceLink>, Int>> {
+        val created = insertPerson(person)
+        val result = transferFaces(personId, faceIds, created)
+        if (result.second == 0) deleteIfEmpty(created)
+        return created to result
+    }
+
+    /**
+     * Annule un retrait ou un déplacement : personne recréée si besoin, visages rattachés
+     * comme avant ([links] : visage → manuel), personne créée pour l'occasion supprimée.
+     */
+    @Transaction
+    suspend fun restoreFaces(person: PersonEntity, links: List<Pair<Long, Boolean>>, created: Long? = null) {
+        restorePerson(person)
+        links.groupBy({ it.second }, { it.first }).forEach { (manual, ids) ->
+            ids.chunked(SQL_CHUNK).forEach { relink(it, person.id, manual) }
+        }
+        if (created != null) deleteIfEmpty(created)
+    }
 
     /** Autres personnes présentes sur les photos (hors corbeille) de [personId], avec le nombre de ces photos. */
     @Query(
@@ -433,6 +483,9 @@ interface FaceDao {
     @Query("SELECT * FROM person_refusal")
     fun observeRefusals(): Flow<List<PersonRefusalEntity>>
 }
+
+/** Taille des tranches d'identifiants des retouches (limite des paramètres SQLite). */
+private const val SQL_CHUNK = 500
 
 /** Visage d'une personne et son empreinte (revue des visages). */
 data class FaceReviewRow(

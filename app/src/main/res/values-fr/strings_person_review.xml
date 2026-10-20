@@ -13,7 +13,6 @@
     <string name="people_review_remove">Retirer</string>
     <string name="people_review_move">Déplacer vers…</string>
     <string name="people_review_new_person">Nouvelle personne</string>
-    <string name="people_review_name_optional">Facultatif</string>
     <string name="people_review_move_action">Déplacer</string>
     <plurals name="people_review_removed">
         <item quantity="one">%d visage retiré de cette personne</item>

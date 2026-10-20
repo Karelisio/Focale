@@ -119,8 +119,13 @@ class PeopleListDaoTest {
         faces.refuse(b, 999)
         assertEquals(2, faces.observeRefusals().first().size)
 
-        // Fusion : les refus de la source tombent avec elle.
+        // Fusion : les refus de la source passent à la cible (sauf celui qui la concerne), et
+        // son épingle aussi.
+        faces.setPinned(a, true)
         faces.merge(sourceId = a, targetId = c)
+        assertEquals(setOf(minOf(b, c) to maxOf(b, c)), faces.observeRefusals().first().map { it.personLow to it.personHigh }.toSet())
+        assertTrue(checkNotNull(faces.person(c)).pinned)
+        faces.deletePerson(c)
         assertTrue(faces.observeRefusals().first().isEmpty())
 
         // Suppression d'une personne restée sans visage (regroupement).

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -47,9 +48,32 @@ class FaceReviewViewModel @Inject constructor(
     val person: StateFlow<Person?> = people.observePerson(personId)
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** Null tant que les visages ne sont pas chargés. */
-    val faces: StateFlow<List<ReviewFace>?> = people.observeReview(personId)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    private val _selection = MutableStateFlow<Set<Long>>(emptySet())
+
+    /** Visages sélectionnés (identifiants). */
+    val selection: StateFlow<Set<Long>> = _selection.asStateFlow()
+
+    /** Ordre affiché au début de la sélection en cours. */
+    private var frozenOrder: List<Long>? = null
+
+    /**
+     * Visages, les moins ressemblants d'abord ; null tant qu'ils ne sont pas chargés. Pendant
+     * une sélection, l'ordre est figé (l'analyse retouche la personne par lots, les cases ne
+     * bougent pas sous le doigt) : les visages arrivés entre-temps se placent à la fin.
+     */
+    val faces: StateFlow<List<ReviewFace>?> = combine(
+        people.observeReview(personId),
+        _selection.map { it.isNotEmpty() }.distinctUntilChanged(),
+    ) { faces, selecting ->
+        if (!selecting) {
+            frozenOrder = null
+            return@combine faces
+        }
+        val order = frozenOrder ?: faces.map { it.face.faceId }.also { frozenOrder = it }
+        val byId = faces.associateBy { it.face.faceId }
+        val known = order.toHashSet()
+        order.mapNotNull(byId::get) + faces.filter { it.face.faceId !in known }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Personnes vers lesquelles déplacer des visages, nommées d'abord. */
     val others: StateFlow<List<Person>> = people.observeOthers(personId)
@@ -61,11 +85,6 @@ class FaceReviewViewModel @Inject constructor(
         .distinctUntilChanged()
         .mapLatest { mediaId -> mediaId?.let { mediaRepository.get(it) }?.let { seedExtractor.seedFor(it) } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
-
-    private val _selection = MutableStateFlow<Set<Long>>(emptySet())
-
-    /** Visages sélectionnés (identifiants). */
-    val selection: StateFlow<Set<Long>> = _selection.asStateFlow()
 
     private val channel = Channel<PersonEvent.Message>(Channel.BUFFERED)
     val messages: Flow<PersonEvent.Message> = channel.receiveAsFlow()
@@ -92,8 +111,8 @@ class FaceReviewViewModel @Inject constructor(
     }
 
     /** Déplace la sélection vers une nouvelle personne, nommée [name] s'il est renseigné. */
-    fun moveSelectionToNewPerson(name: String?) = transferSelection({ people.moveFacesToNewPerson(personId, it, name) }) { count ->
-        movedMessage(count, name?.trim()?.takeIf { it.isNotEmpty() }, R.plurals.people_review_moved_new)
+    fun moveSelectionToNewPerson(name: String) = transferSelection({ people.moveFacesToNewPerson(personId, it, name) }) { count ->
+        movedMessage(count, name.trim().takeIf { it.isNotEmpty() }, R.plurals.people_review_moved_new)
     }
 
     /** « 3 visages déplacés vers Tom », ou [unnamed] pour une personne sans nom. */

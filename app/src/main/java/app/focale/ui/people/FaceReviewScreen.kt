@@ -450,9 +450,12 @@ private fun MoveSheet(people: List<Person>, onPick: (Person) -> Unit, onNewPerso
     }
 }
 
-/** Nom de la nouvelle personne, facultatif : sans nom, elle reste « Personne sans nom ». */
+/**
+ * Nom de la nouvelle personne, obligatoire : une personne sans nom de moins de trois photos
+ * n'apparaît dans aucune liste, et ses visages seraient introuvables.
+ */
 @Composable
-private fun NewPersonDialog(onConfirm: (String?) -> Unit, onDismiss: () -> Unit) {
+private fun NewPersonDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var name by rememberSaveable { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
@@ -465,7 +468,6 @@ private fun NewPersonDialog(onConfirm: (String?) -> Unit, onDismiss: () -> Unit)
                 value = name,
                 onValueChange = { name = it },
                 label = { Text(stringResource(R.string.people_name_label)) },
-                supportingText = { Text(stringResource(R.string.people_review_name_optional)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                 modifier = Modifier
@@ -474,7 +476,7 @@ private fun NewPersonDialog(onConfirm: (String?) -> Unit, onDismiss: () -> Unit)
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(name.trim().ifEmpty { null }) }) {
+            TextButton(onClick = { onConfirm(name.trim()) }, enabled = name.isNotBlank()) {
                 Text(stringResource(R.string.people_review_move_action))
             }
         },

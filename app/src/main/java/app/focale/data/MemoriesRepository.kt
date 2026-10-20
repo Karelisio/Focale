@@ -20,8 +20,11 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.withContext
 
 /** Souvenir : des médias d'une année passée, présentés autour de leur date anniversaire. */
@@ -171,6 +174,16 @@ class MemoriesRepository @Inject constructor(
         return Memory(kind, query, count, cover)
     }
 
+    /**
+     * Changements des lieux et des personnes (voir [MemoryDao.observeSignature]), au plus un
+     * par [REFRESH_MS] : l'analyse écrit par lots, les souvenirs suivent sans recalcul incessant.
+     */
+    val changes: Flow<String> = memoryDao.observeSignature().distinctUntilChanged().conflate()
+        .transform { signature ->
+            emit(signature)
+            delay(REFRESH_MS)
+        }
+
     /** Date du jour, réémise à chaque minuit (les souvenirs changent avec elle). */
     val today: Flow<LocalDate> = flow {
         while (true) {
@@ -194,5 +207,8 @@ class MemoriesRepository @Inject constructor(
 
         /** Une fenêtre compte au plus trois cartes : autant de couvertures possibles. */
         private const val COVER_CHOICES = 3
+
+        /** Intervalle minimal entre deux recalculs dus aux lieux et aux personnes. */
+        private const val REFRESH_MS = 30_000L
     }
 }

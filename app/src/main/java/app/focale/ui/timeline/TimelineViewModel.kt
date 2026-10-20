@@ -99,13 +99,14 @@ class TimelineViewModel @Inject constructor(
         .flatMapLatest { mediaRepository.observeHistogram(it, GroupLevel.MONTH) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Souvenirs du jour, recalculés quand la bibliothèque ou la date change. */
+    /** Souvenirs du jour, recalculés quand la bibliothèque, ses lieux, ses personnes ou la date changent. */
     val memories: StateFlow<List<Memory>> = combine(
         settingsRepository.settings.map { it.showMemories }.distinctUntilChanged(),
         hiddenFolders,
         mediaRepository.observeCount(MediaQuery.Timeline),
+        memoriesRepository.changes,
         memoriesRepository.today,
-    ) { show, _, _, day -> if (show) day else null }
+    ) { show, _, _, _, day -> if (show) day else null }
         .mapLatest { day -> if (day != null) memoriesRepository.memories(day) else emptyList() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 

@@ -12,7 +12,6 @@
     <string name="people_review_remove">Remove</string>
     <string name="people_review_move">Move to…</string>
     <string name="people_review_new_person">New person</string>
-    <string name="people_review_name_optional">Optional</string>
     <string name="people_review_move_action">Move</string>
     <plurals name="people_review_removed">
         <item quantity="one">%d face removed from this person</item>

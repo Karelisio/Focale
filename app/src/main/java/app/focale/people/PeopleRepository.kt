@@ -2,6 +2,7 @@ package app.focale.people
 
 import androidx.compose.runtime.Immutable
 import app.focale.core.database.FaceDao
+import app.focale.core.database.FaceLink
 import app.focale.core.database.FaceThumbRow
 import app.focale.core.database.PersonEntity
 import app.focale.core.database.PersonListRow
@@ -14,6 +15,7 @@ import java.text.Collator
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -92,12 +94,12 @@ class PeopleRepository @Inject constructor(
         PersonRemoval(mediaIds.size, person, links.map { it.id to it.manual })
     }
 
-    /** Annule [removal] ; la personne est recréée si elle a disparu entre-temps. */
+    /**
+     * Annule [removal] ; la personne est recréée si elle a disparu entre-temps. Menée à son
+     * terme même si l'écran qui l'a demandée se ferme aussitôt.
+     */
     suspend fun restore(removal: PersonRemoval) = edit {
-        dao.restorePerson(removal.person)
-        removal.links.groupBy({ it.second }, { it.first }).forEach { (manual, ids) ->
-            ids.chunked(MediaRepository.MAX_SQL_ARGS).forEach { dao.relink(it, removal.person.id, manual) }
-        }
+        withContext(NonCancellable) { dao.restoreFaces(removal.person, removal.links) }
     }
 
     // ── Revue des visages et photos ensemble ─────────────────────────────────────
@@ -134,25 +136,28 @@ class PeopleRepository @Inject constructor(
         if (targetId == personId) null else transfer(personId, faceIds, targetId)
     }
 
-    /** Déplace des visages vers une nouvelle personne, nommée [name] s'il est renseigné. */
-    suspend fun moveFacesToNewPerson(personId: Long, faceIds: Collection<Long>, name: String?): FaceTransfer? = edit {
-        val clean = name?.trim()?.takeIf { it.isNotEmpty() }
-        val created = dao.insertPerson(PersonEntity(name = clean, createdAt = System.currentTimeMillis()))
-        transfer(personId, faceIds, created, created).also { if (it == null) dao.deleteIfEmpty(created) }
+    /** Déplace des visages vers une nouvelle personne nommée [name]. */
+    suspend fun moveFacesToNewPerson(personId: Long, faceIds: Collection<Long>, name: String): FaceTransfer? = edit {
+        val person = dao.person(personId) ?: return@edit null
+        val entity = PersonEntity(name = name.trim().takeIf { it.isNotEmpty() }, createdAt = System.currentTimeMillis())
+        val (created, result) = dao.transferToNewPerson(personId, faceIds.toList(), entity)
+        result.toTransfer(person, created)
     }
 
     /** Annule [transfer] ; la personne d'origine est recréée si elle a disparu entre-temps. */
-    suspend fun restore(transfer: FaceTransfer) {
-        restore(transfer.removal)
-        transfer.created?.let { edit { dao.deleteIfEmpty(it) } }
+    suspend fun restore(transfer: FaceTransfer) = edit {
+        val removal = transfer.removal
+        withContext(NonCancellable) { dao.restoreFaces(removal.person, removal.links, transfer.created) }
     }
 
     /** Rattache à la main les visages [faceIds] de [personId] à [targetId] (null : retrait). */
-    private suspend fun transfer(personId: Long, faceIds: Collection<Long>, targetId: Long?, created: Long? = null): FaceTransfer? {
+    private suspend fun transfer(personId: Long, faceIds: Collection<Long>, targetId: Long?): FaceTransfer? {
         val person = dao.person(personId) ?: return null
-        val chunks = faceIds.chunked(MediaRepository.MAX_SQL_ARGS)
-        val links = chunks.flatMap { dao.linksOf(personId, it) }
-        val moved = chunks.sumOf { dao.reassign(personId, it, targetId) }
+        return dao.transferFaces(personId, faceIds.toList(), targetId).toTransfer(person, created = null)
+    }
+
+    private fun Pair<List<FaceLink>, Int>.toTransfer(person: PersonEntity, created: Long?): FaceTransfer? {
+        val (links, moved) = this
         if (moved == 0) return null
         return FaceTransfer(PersonRemoval(moved, person, links.map { it.id to it.manual }), created)
     }
