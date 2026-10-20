@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Albums automatiques : contenu reconnu par l'analyse sur l'appareil -->
+    <string name="smart_albums_title">Albums automatiques</string>
+    <string name="smart_album_documents">Documents</string>
+    <string name="smart_album_receipts">Reçus</string>
+    <string name="smart_album_animals">Animaux</string>
+    <string name="smart_album_food">Nourriture</string>
+    <string name="smart_album_landscapes">Paysages</string>
+    <string name="smart_album_celebrations">Fêtes</string>
+    <string name="smart_album_vehicles">Véhicules</string>
+    <string name="smart_album_sport">Sport</string>
+</resources>

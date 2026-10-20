@@ -11,12 +11,16 @@ import app.focale.core.permissions.MediaAccessManager
 import app.focale.core.settings.SettingsRepository
 import app.focale.data.AlbumRepository
 import app.focale.data.MediaRepository
+import app.focale.data.SmartAlbum
+import app.focale.data.SmartAlbumRepository
 import app.focale.data.TrashRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
@@ -35,6 +39,7 @@ class AlbumsViewModel @Inject constructor(
     private val albumRepository: AlbumRepository,
     mediaRepository: MediaRepository,
     trashRepository: TrashRepository,
+    smartAlbumRepository: SmartAlbumRepository,
     accessManager: MediaAccessManager,
     settingsRepository: SettingsRepository,
 ) : ViewModel() {
@@ -50,6 +55,13 @@ class AlbumsViewModel @Inject constructor(
     /** Dossiers masqués de la timeline, signalés sur leur carte. */
     val hiddenFolders: StateFlow<Set<Long>> = settingsRepository.settings.map { it.hiddenFolders }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), settingsRepository.current.value.hiddenFolders)
+
+    /** Albums automatiques (documents, animaux…), hors dossiers masqués comme la timeline. */
+    val smartAlbums: StateFlow<List<SmartAlbum>> = settingsRepository.settings
+        .map { it.hiddenFolders.sorted() }
+        .distinctUntilChanged()
+        .flatMapLatest { smartAlbumRepository.observe(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val counts: StateFlow<CollectionCounts> = combine(
         mediaRepository.observeCount(FAVORITES),

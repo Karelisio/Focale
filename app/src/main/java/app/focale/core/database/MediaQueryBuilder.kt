@@ -7,6 +7,7 @@ import app.focale.core.model.MediaQuery
 import app.focale.core.model.MediaSort
 import app.focale.core.model.SearchTerm
 import app.focale.core.model.SortField
+import app.focale.core.model.TextCriteria
 import app.focale.ml.LabelDictionary
 
 /**
@@ -35,13 +36,29 @@ object MediaQueryBuilder {
      */
     fun bestCover(query: MediaQuery): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
-        val where = where(query, args)
-        return SimpleSQLiteQuery(
-            "SELECT m.* FROM media m LEFT JOIN media_analysis a ON a.media_id = m.id WHERE $where " +
-                "ORDER BY (m.media_type = $MEDIA_TYPE_IMAGE AND m.is_screenshot = 0 AND m.is_gif = 0) DESC, " +
-                "COALESCE(a.blur_score, 0) DESC, m.date_taken DESC LIMIT 1",
-            args.toTypedArray(),
-        )
+        return SimpleSQLiteQuery("SELECT m.* ${coverSource(query, args)}", args.toTypedArray())
+    }
+
+    /** Fin de [bestCover] (à partir du FROM), partagée avec [summaries]. */
+    private fun coverSource(query: MediaQuery, args: MutableList<Any?>): String =
+        "FROM media m LEFT JOIN media_analysis a ON a.media_id = m.id WHERE ${where(query, args)} " +
+            "ORDER BY (m.media_type = $MEDIA_TYPE_IMAGE AND m.is_screenshot = 0 AND m.is_gif = 0) DESC, " +
+            "COALESCE(a.blur_score, 0) DESC, m.date_taken DESC LIMIT 1"
+
+    /**
+     * Nombre de médias ([count]) et couverture ([bestCover]) de chacune des [queries], en une
+     * seule requête : une ligne par requête, `position` étant son rang dans [queries].
+     */
+    fun summaries(queries: List<MediaQuery>): SimpleSQLiteQuery {
+        require(queries.isNotEmpty())
+        val args = mutableListOf<Any?>()
+        // Les arguments sont ajoutés dans l'ordre où leurs « ? » apparaissent.
+        val sql = queries.withIndex().joinToString(" UNION ALL ") { (position, query) ->
+            val count = "SELECT COUNT(*) FROM media m WHERE ${where(query, args)}"
+            val cover = "SELECT m.id ${coverSource(query, args)}"
+            "SELECT $position AS position, ($count) AS count, ($cover) AS cover_id"
+        }
+        return SimpleSQLiteQuery(sql, args.toTypedArray())
     }
 
     /** Identifiants seuls, dans l'ordre de tri (« tout sélectionner »). */
@@ -209,6 +226,7 @@ object MediaQueryBuilder {
             alternatives += "m.id IN (SELECT media_id FROM media_text WHERE text_key LIKE ? ESCAPE '\\')"
             args += likePattern(LabelDictionary.normalize(text))
         }
+        term.recognizedText?.let { alternatives += recognizedTextClause(it, args) }
         if (term.similarIds.isNotEmpty()) {
             // Identifiants numériques insérés littéralement (limite de paramètres SQLite).
             alternatives += "m.id IN (${term.similarIds.joinToString(",")})"
@@ -217,6 +235,35 @@ object MediaQueryBuilder {
             alternatives += "m.id IN (SELECT media_id FROM face WHERE person_id IN (${term.personIds.joinToString(",")}))"
         }
         return if (alternatives.isEmpty()) "0" else alternatives.joinToString(" OR ", "(", ")")
+    }
+
+    /**
+     * Photo (hors capture d'écran) dont le texte reconnu répond à [criteria]. Chaque mot-clé
+     * est cherché entier dans la clé normalisée (espaces simples entre les mots), un symbole
+     * dans le texte brut ; les correspondances (0 ou 1 en SQLite) s'additionnent.
+     */
+    private fun recognizedTextClause(criteria: TextCriteria, args: MutableList<Any?>): String {
+        var condition = "length(text_key) >= ?"
+        args += criteria.minLength
+        // Un mot n'est compté qu'une fois, quelle que soit sa graphie (« Reçu », « recu »).
+        val keywords = criteria.keywords.map(String::trim).filter(String::isNotEmpty)
+            .distinctBy { LabelDictionary.normalize(it).ifEmpty { it } }
+        if (keywords.isNotEmpty()) {
+            val hits = keywords.joinToString(" + ") { keyword ->
+                val key = LabelDictionary.normalize(keyword)
+                if (key.isEmpty()) {
+                    args += likePattern(keyword)
+                    "(text LIKE ? ESCAPE '\\')"
+                } else {
+                    // Clé faite de [a-z0-9 ] : aucun caractère spécial de LIKE à échapper.
+                    args += "% $key %"
+                    "((' ' || text_key || ' ') LIKE ?)"
+                }
+            }
+            condition += " AND ($hits) >= ?"
+            args += criteria.minKeywords
+        }
+        return "(m.is_screenshot = 0 AND m.id IN (SELECT media_id FROM media_text WHERE $condition))"
     }
 
     fun orderBy(sort: MediaSort): String {

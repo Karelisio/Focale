@@ -1,12 +1,20 @@
 package app.focale.core.database
 
 import androidx.paging.PagingSource
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
+
+/** Ligne de [MediaQueryBuilder.summaries] : rang de la requête, nombre de médias et couverture. */
+data class SummaryRow(
+    val position: Int,
+    val count: Int,
+    @ColumnInfo(name = "cover_id") val coverId: Long?,
+)
 
 /**
  * Accès à l'index des médias.
@@ -58,6 +66,14 @@ interface MediaDao {
 
     @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
     fun observeHistogramWithAnalysis(query: SupportSQLiteQuery): Flow<List<DateBucketRow>>
+
+    /**
+     * Résumés de requêtes sur les étiquettes et le texte reconnu (albums automatiques) : seules
+     * ces tables sont suivies, pas les visages ni les empreintes, dont chaque lot d'analyse
+     * relancerait la requête pour rien.
+     */
+    @RawQuery(observedEntities = [MediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class])
+    fun observeSummaries(query: SupportSQLiteQuery): Flow<List<SummaryRow>>
 
     @Query("SELECT * FROM media WHERE id = :id")
     suspend fun get(id: Long): MediaEntity?

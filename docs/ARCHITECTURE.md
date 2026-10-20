@@ -303,6 +303,25 @@ rondes : `FaceThumbnailFetcher` Coil (découpe dans la miniature MediaStore, sin
 réduit de la région utile de l'original). Recherche : `SearchTerm.personIds`. La télémétrie
 d'ONNX Runtime est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
 
+### 6.10 Albums automatiques
+Section de l'onglet Albums, après les personnes : une tuile (couverture, nombre) par catégorie
+d'au moins 3 médias, hors corbeille et dossiers masqués de la timeline. Chaque album est un
+`SearchTerm` (`SmartAlbums`), ouvert dans la grille générique (`CollectionRoute`) :
+- Animaux, Nourriture, Paysages, Fêtes, Véhicules, Sport : catégories du dictionnaire,
+  sous-catégories comprises (`LabelDictionary.labelsOf`), comme la recherche ; les paysages
+  écartent la végétation en gros plan (fleur, plante) ;
+- Documents : étiquette de document papier, ou texte reconnu d'au moins 200 caractères
+  normalisés (un ticket de caisse en compte quelques centaines, une enseigne rarement 100) ;
+- Reçus : étiquette « Receipt », ou au moins deux indices (mots entiers de `text_key` :
+  « total », « tva », « montant », synonymes de l'étiquette… ; symboles du texte brut : « € »),
+  si bien qu'un « TOTAL » de station-service ou les prix d'un menu ne suffisent pas.
+
+Le texte reconnu (`SearchTerm.recognizedText`) ne compte que hors captures d'écran. Nombres et
+couvertures (`bestCover`) de tous les albums viennent d'une seule requête
+(`MediaQueryBuilder.summaries`, `UNION ALL`) observée sur `media`, `media_label`,
+`media_analysis` et `media_text` : les tuiles suivent l'analyse sans réagir aux lots de visages
+ni d'empreintes.
+
 ---
 
 ## 7. Interface

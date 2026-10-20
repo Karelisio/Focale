@@ -25,8 +25,9 @@ data class MediaSort(
  * Terme de recherche résolu : un mot saisi par l'utilisateur et ce à quoi il correspond.
  * Un média satisfait le terme s'il porte l'une des [labels], si son lieu contient
  * [place] (forme normalisée), s'il a été pris dans l'un des [countries], si son nom de
- * fichier ou le texte reconnu dans la photo contient [text], s'il fait partie des
- * [similarIds] (recherche en langage naturel) ou si l'une des [personIds] y figure.
+ * fichier ou le texte reconnu dans la photo contient [text], si ce texte répond à
+ * [recognizedText], s'il fait partie des [similarIds] (recherche en langage naturel) ou
+ * si l'une des [personIds] y figure.
  */
 @Serializable
 @Immutable
@@ -42,6 +43,22 @@ data class SearchTerm(
     val similarIds: List<Long> = emptyList(),
     /** Personnes dont le nom correspond au terme (regroupement de visages). */
     val personIds: List<Long> = emptyList(),
+    /** Critères sur le texte reconnu (albums automatiques : documents, reçus). */
+    val recognizedText: TextCriteria? = null,
+)
+
+/**
+ * Texte reconnu dans une photo : au moins [minLength] caractères (forme normalisée) et au
+ * moins [minKeywords] des [keywords] distincts. Les captures d'écran, presque toutes
+ * couvertes de texte et rangées à part, n'y répondent jamais.
+ */
+@Serializable
+@Immutable
+data class TextCriteria(
+    val minLength: Int = 1,
+    /** Mots entiers du texte normalisé (« tva »), ou symboles tels quels (« € ») que la normalisation retire. */
+    val keywords: List<String> = emptyList(),
+    val minKeywords: Int = 1,
 )
 
 /** Zone géographique en degrés, bornes incluses (regroupement de la carte). */
