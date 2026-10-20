@@ -356,6 +356,82 @@ interface FaceDao {
         """,
     )
     fun observeTogetherCounts(personId: Long): Flow<List<TogetherRow>>
+
+    // ── Liste des personnes : tri, épinglage, suggestions de fusion ─────────────────
+
+    /**
+     * Mêmes personnes que [observePeople], avec leur épinglage et la date de leur photo la
+     * plus récente : épinglées d'abord, puis les plus présentes. Les autres tris se font
+     * sur cette liste (voir `PeopleRepository`).
+     */
+    @Query(
+        """
+        SELECT p.id AS id, p.name AS name, p.hidden AS hidden, p.pinned AS pinned,
+               COUNT(DISTINCT f.media_id) AS photo_count, MAX(m.date_taken) AS latest_taken,
+               COALESCE(
+                   (SELECT c.id FROM face c JOIN media cm ON cm.id = c.media_id
+                    WHERE c.id = p.cover_face_id AND c.person_id = p.id AND cm.is_trashed = 0),
+                   (SELECT b.id FROM face b JOIN media bm ON bm.id = b.media_id
+                    WHERE b.person_id = p.id AND bm.is_trashed = 0
+                    ORDER BY b.quality DESC, bm.date_taken DESC LIMIT 1)
+               ) AS cover_face_id
+        FROM person p
+        JOIN face f ON f.person_id = p.id
+        JOIN media m ON m.id = f.media_id
+        WHERE m.is_trashed = 0 AND (:includeHidden OR p.hidden = 0)
+        GROUP BY p.id
+        HAVING photo_count >= :minPhotos OR p.name IS NOT NULL
+        ORDER BY p.pinned DESC, photo_count DESC, p.id
+        """,
+    )
+    fun observePeopleList(includeHidden: Boolean, minPhotos: Int): Flow<List<PersonListRow>>
+
+    @Query("UPDATE person SET pinned = :pinned WHERE id = :id")
+    suspend fun setPinned(id: Long, pinned: Boolean)
+
+    /**
+     * Personnes candidates aux suggestions de fusion : celles de la liste, hors masquées.
+     * [MergeCandidateRow.faceCount] et [MergeCandidateRow.faceSum] changent dès qu'un visage
+     * rejoint ou quitte la personne : son empreinte moyenne est alors à recalculer.
+     */
+    @Query(
+        """
+        SELECT p.id AS id, p.name AS name, COUNT(DISTINCT f.media_id) AS photo_count,
+               COUNT(*) AS face_count, SUM(f.id) AS face_sum
+        FROM person p
+        JOIN face f ON f.person_id = p.id
+        JOIN media m ON m.id = f.media_id
+        WHERE m.is_trashed = 0 AND p.hidden = 0
+        GROUP BY p.id
+        HAVING photo_count >= :minPhotos OR p.name IS NOT NULL
+        """,
+    )
+    fun observeMergeCandidates(minPhotos: Int): Flow<List<MergeCandidateRow>>
+
+    /** Empreintes des visages (hors corbeille) de [personIds], par tranches d'identifiant croissant. */
+    @Query(
+        """
+        SELECT f.id AS id, f.person_id AS person_id, f.embedding AS embedding
+        FROM face f JOIN media m ON m.id = f.media_id
+        WHERE f.person_id IN (:personIds) AND m.is_trashed = 0 AND f.id > :after
+        ORDER BY f.id
+        LIMIT :limit
+        """,
+    )
+    suspend fun personEmbeddings(personIds: List<Long>, after: Long, limit: Int): List<PersonEmbeddingRow>
+
+    /** « Pas la même » pour [low] < [high], si les deux personnes existent encore. */
+    @Query(
+        """
+        INSERT OR IGNORE INTO person_refusal (person_low, person_high)
+        SELECT :low, :high
+        WHERE EXISTS (SELECT 1 FROM person WHERE id = :low) AND EXISTS (SELECT 1 FROM person WHERE id = :high)
+        """,
+    )
+    suspend fun refuse(low: Long, high: Long)
+
+    @Query("SELECT * FROM person_refusal")
+    fun observeRefusals(): Flow<List<PersonRefusalEntity>>
 }
 
 /** Visage d'une personne et son empreinte (revue des visages). */
@@ -368,4 +444,32 @@ data class FaceReviewRow(
 data class TogetherRow(
     @ColumnInfo(name = "person_id") val personId: Long,
     @ColumnInfo(name = "photo_count") val photoCount: Int,
+)
+
+/** Personne de la liste : comme [PersonRow], avec l'épinglage et la date de sa photo la plus récente. */
+data class PersonListRow(
+    val id: Long,
+    val name: String?,
+    val hidden: Boolean,
+    val pinned: Boolean,
+    @ColumnInfo(name = "photo_count") val photoCount: Int,
+    @ColumnInfo(name = "latest_taken") val latestTaken: Long,
+    @ColumnInfo(name = "cover_face_id") val coverFaceId: Long?,
+)
+
+/** Personne candidate à une suggestion de fusion, avec la signature de ses visages. */
+data class MergeCandidateRow(
+    val id: Long,
+    val name: String?,
+    @ColumnInfo(name = "photo_count") val photoCount: Int,
+    @ColumnInfo(name = "face_count") val faceCount: Int,
+    /** Somme des identifiants de ses visages : change avec eux, comme [faceCount]. */
+    @ColumnInfo(name = "face_sum") val faceSum: Long,
+)
+
+/** Empreinte d'un visage rattaché à une personne (calcul des empreintes moyennes). */
+class PersonEmbeddingRow(
+    val id: Long,
+    @ColumnInfo(name = "person_id") val personId: Long,
+    val embedding: ByteArray,
 )

@@ -52,6 +52,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setSlideshowInterval(seconds: Int) = edit { it[Keys.SLIDESHOW_INTERVAL] = seconds.coerceIn(2, 30) }
     suspend fun setVaultAutoLockSeconds(seconds: Int) = edit { it[Keys.VAULT_AUTO_LOCK] = seconds.coerceAtLeast(0) }
     suspend fun setAutoCheckUpdates(enabled: Boolean) = edit { it[Keys.AUTO_UPDATES] = enabled }
+    suspend fun setPeopleSort(sort: PeopleSort) = edit { it[Keys.PEOPLE_SORT] = sort.name }
     suspend fun setFolderHidden(bucketId: Long, hidden: Boolean) = edit { prefs ->
         val current = prefs[Keys.HIDDEN_FOLDERS].orEmpty()
         prefs[Keys.HIDDEN_FOLDERS] = if (hidden) current + bucketId.toString() else current - bucketId.toString()
@@ -82,6 +83,7 @@ class SettingsRepository @Inject constructor(
             vaultAutoLockSeconds = prefs[Keys.VAULT_AUTO_LOCK] ?: defaults.vaultAutoLockSeconds,
             autoCheckUpdates = prefs[Keys.AUTO_UPDATES] ?: defaults.autoCheckUpdates,
             hiddenFolders = prefs[Keys.HIDDEN_FOLDERS].orEmpty().mapNotNullTo(HashSet()) { it.toLongOrNull() },
+            peopleSort = prefs[Keys.PEOPLE_SORT].toEnum(defaults.peopleSort),
         )
     }
 
@@ -106,5 +108,6 @@ class SettingsRepository @Inject constructor(
         val VAULT_AUTO_LOCK = intPreferencesKey("vault_auto_lock")
         val AUTO_UPDATES = booleanPreferencesKey("auto_check_updates")
         val HIDDEN_FOLDERS = stringSetPreferencesKey("hidden_folders")
+        val PEOPLE_SORT = stringPreferencesKey("people_sort")
     }
 }

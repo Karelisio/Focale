@@ -2,6 +2,7 @@ package app.focale.core.database
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -60,6 +61,27 @@ data class PersonEntity(
     /** Masquée de la liste des personnes. */
     val hidden: Boolean = false,
     @ColumnInfo(name = "created_at") val createdAt: Long,
+    /** Épinglée en tête de la liste des personnes, quel que soit le tri. */
+    @ColumnInfo(defaultValue = "0") val pinned: Boolean = false,
+)
+
+/**
+ * Deux personnes que l'utilisateur dit distinctes (« Pas la même ») : leur fusion n'est plus
+ * suggérée. Clé ordonnée ([personLow] < [personHigh]) ; contrairement aux tables d'analyse,
+ * la ligne référence `person` et disparaît avec l'une ou l'autre (fusion, suppression).
+ */
+@Entity(
+    tableName = "person_refusal",
+    primaryKeys = ["person_low", "person_high"],
+    foreignKeys = [
+        ForeignKey(entity = PersonEntity::class, parentColumns = ["id"], childColumns = ["person_low"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = PersonEntity::class, parentColumns = ["id"], childColumns = ["person_high"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("person_high")],
+)
+data class PersonRefusalEntity(
+    @ColumnInfo(name = "person_low") val personLow: Long,
+    @ColumnInfo(name = "person_high") val personHigh: Long,
 )
 
 /** Empreinte sémantique d'une photo, pour la recherche en langage naturel. */
