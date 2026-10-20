@@ -69,6 +69,27 @@ attendre_appareil() {
   if command -v timeout >/dev/null 2>&1; then timeout 90 adb wait-for-device; else adb wait-for-device; fi
 }
 
+# Juste après le démarrage, le stockage partagé (FUSE) peut encore refuser les écritures
+# (« Operation not permitted ») : on attend qu'un fichier témoin puisse y être créé.
+attendre_stockage() {
+  for essai in $(seq 45); do
+    if adb shell "mkdir -p $IMAGES && touch $IMAGES/.focale_sonde && rm -f $IMAGES/.focale_sonde" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+# adb push avec quelques nouvelles tentatives (stockage encore indisponible par moments).
+pousser() {
+  for essai in 1 2 3 4 5; do
+    adb push "$1" "$2" >/dev/null && return 0
+    sleep 3
+  done
+  return 1
+}
+
 echec() {
   echo "::error::Test de fumée : $*"
   SIGNALE=1
@@ -178,15 +199,16 @@ echo "$(shell getprop ro.product.model) (API $SDK)"
 # Images poussées avant adb root, avec l'identité shell : FUSE les enregistre alors dans
 # MediaStore (pas celles créées par root, que seule l'analyse du volume indexerait).
 etape "Images de test dans $IMAGES"
+attendre_stockage || echec "stockage partagé indisponible en écriture ($IMAGES)"
 shell "rm -f $IMAGES/focale_smoke_*; mkdir -p $IMAGES"
 TEXTE=focale_smoke_facture.png
-adb push "$ICI/fixtures/facture.png" "$IMAGES/$TEXTE" >/dev/null
+pousser "$ICI/fixtures/facture.png" "$IMAGES/$TEXTE" || echec "copie de l'image de texte impossible"
 NOMS=$TEXTE
 VISAGE=
 CONTROLES=
 if telecharger_visage "$TRAVAIL/visage"; then
   VISAGE=focale_smoke_visage.$TYPE_VISAGE
-  adb push "$TRAVAIL/visage" "$IMAGES/$VISAGE" >/dev/null
+  pousser "$TRAVAIL/visage" "$IMAGES/$VISAGE" || echec "copie de la photo de visage impossible"
   NOMS="$NOMS $VISAGE"
   CONTROLES="--etiquettes --visages"
   echo "Photo de visage (domaine public, NASA) : $SOURCE_VISAGE"
