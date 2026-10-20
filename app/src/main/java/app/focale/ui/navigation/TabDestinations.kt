@@ -7,6 +7,7 @@ import app.focale.ui.albums.AlbumsScreen
 import app.focale.ui.cleanup.CleanupScreen
 import app.focale.ui.collection.CollectionScreen
 import app.focale.ui.map.MapScreen
+import app.focale.ui.people.FaceReviewScreen
 import app.focale.ui.people.PeopleScreen
 import app.focale.ui.people.PersonScreen
 import app.focale.ui.search.SearchScreen
@@ -22,4 +23,5 @@ fun NavGraphBuilder.tabDestinations(tabsNav: NavHostController) {
     composable<MapRoute> { MapScreen(onBack = { tabsNav.popBackStack() }) }
     composable<PeopleRoute> { PeopleScreen(onBack = { tabsNav.popBackStack() }) }
     composable<PersonRoute> { PersonScreen(onBack = { tabsNav.popBackStack() }) }
+    composable<PersonFacesRoute> { FaceReviewScreen(onBack = { tabsNav.popBackStack() }) }
 }

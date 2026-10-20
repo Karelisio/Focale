@@ -77,6 +77,10 @@ data object PeopleRoute
 @Serializable
 data class PersonRoute(val personId: Long)
 
+/** Revue des visages d'une personne, les moins ressemblants d'abord (retrait, déplacement). */
+@Serializable
+data class PersonFacesRoute(val personId: Long)
+
 @Serializable
 data object TrashRoute
 
