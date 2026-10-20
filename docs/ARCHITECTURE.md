@@ -303,6 +303,19 @@ rondes : `FaceThumbnailFetcher` Coil (découpe dans la miniature MediaStore, sin
 réduit de la région utile de l'original). Recherche : `SearchTerm.personIds`. La télémétrie
 d'ONNX Runtime est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
 
+#### Revue des visages et photos ensemble
+« Vérifier les visages » (`FaceReviewScreen`, `PersonFacesRoute`) montre tous les visages
+d'une personne, du moins au plus ressemblant au centroïde de ses empreintes (`FaceReview` :
+cosinus à la moyenne normalisée), pour repérer d'abord les erreurs du regroupement. Retirer
+ou déplacer une sélection (vers une autre personne ou une nouvelle) passe le visage en
+rattachement manuel (`face.manual = 1`, personne nulle pour un retrait) : le regroupement
+n'y revient plus. L'annulation (`FaceTransfer`) rend les rattachements d'origine, recrée la
+personne si elle a disparu et supprime celle créée pour l'occasion ; une personne vidée
+disparaît des listes, une vignette retirée retombe sur le meilleur visage. « Avec… » propose
+les personnes vues sur les photos de la personne (nommées d'abord, avec le nombre de photos
+en commun) et ouvre une collection `photosTogether(ids)` : un `SearchTerm(personIds = [id])`
+par personne, combinés par ET, soit la requête de la recherche « alice bob ».
+
 ---
 
 ## 7. Interface

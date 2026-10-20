@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Personnes : revue des visages d'une personne -->
+    <string name="people_review_faces">Review faces</string>
+    <plurals name="people_review_count">
+        <item quantity="one">%d face</item>
+        <item quantity="other">%,d faces</item>
+    </plurals>
+    <string name="people_review_hint">The least similar faces come first. Long-press to select the ones that aren\'t this person.</string>
+    <string name="people_review_empty">No faces left for this person</string>
+    <string name="people_review_open_photo">Show photo</string>
+    <string name="people_review_remove">Remove</string>
+    <string name="people_review_move">Move to…</string>
+    <string name="people_review_new_person">New person</string>
+    <string name="people_review_name_optional">Optional</string>
+    <string name="people_review_move_action">Move</string>
+    <plurals name="people_review_removed">
+        <item quantity="one">%d face removed from this person</item>
+        <item quantity="other">%,d faces removed from this person</item>
+    </plurals>
+    <plurals name="people_review_moved">
+        <item quantity="one">%1$d face moved to %2$s</item>
+        <item quantity="other">%1$,d faces moved to %2$s</item>
+    </plurals>
+    <plurals name="people_review_moved_other">
+        <item quantity="one">%d face moved to another person</item>
+        <item quantity="other">%,d faces moved to another person</item>
+    </plurals>
+    <plurals name="people_review_moved_new">
+        <item quantity="one">%d face moved to a new person</item>
+        <item quantity="other">%,d faces moved to a new person</item>
+    </plurals>
+
+    <!-- Personnes : photos ensemble -->
+    <string name="people_together">With…</string>
+    <string name="people_together_sheet_title">With whom?</string>
+    <string name="people_together_sheet_message">Photos where %1$s appears with everyone you pick.</string>
+    <string name="people_together_empty">Nobody else has been recognized in these photos yet.</string>
+    <plurals name="people_together_count">
+        <item quantity="one">%d photo together</item>
+        <item quantity="other">%,d photos together</item>
+    </plurals>
+    <string name="people_together_show">Show photos</string>
+    <plurals name="people_together_show_count">
+        <item quantity="one">Show %d photo</item>
+        <item quantity="other">Show %,d photos</item>
+    </plurals>
+    <string name="people_together_none">No photos together</string>
+    <!-- Titre des photos ensemble : « Alice and Bob », « Alice, Bob and Chloé » -->
+    <string name="people_together_title">%1$s and %2$s</string>
+</resources>

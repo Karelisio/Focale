@@ -25,9 +25,11 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Merge
 import androidx.compose.material.icons.outlined.PersonRemove
+import androidx.compose.material.icons.outlined.PersonSearch
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -65,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -82,7 +85,9 @@ import app.focale.ui.components.MediaGridScaffold
 import app.focale.ui.components.SortSheet
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.LocalTabsNavController
+import app.focale.ui.navigation.PersonFacesRoute
 import app.focale.ui.navigation.PersonRoute
+import app.focale.ui.navigation.openCollection
 import app.focale.ui.navigation.openSlideshow
 import app.focale.ui.theme.PhotoTheme
 import kotlinx.coroutines.launch
@@ -97,11 +102,12 @@ fun PersonScreen(onBack: () -> Unit, viewModel: PersonViewModel = hiltViewModel(
 }
 
 /** Dialogue ou feuille ouvert depuis l'écran d'une personne. */
-private enum class PersonSheet { NAME, COVER, MERGE }
+private enum class PersonSheet { NAME, COVER, MERGE, TOGETHER }
 
 @Composable
 private fun PersonContent(viewModel: PersonViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val rootNav = LocalRootNavController.current
     val tabsNav = LocalTabsNavController.current
     val items = viewModel.items.collectAsLazyPagingItems()
@@ -181,6 +187,28 @@ private fun PersonContent(viewModel: PersonViewModel, onBack: () -> Unit) {
                     mergeTargetId = target.id
                 },
                 onDismiss = { sheet = null },
+            )
+        }
+        PersonSheet.TOGETHER -> if (current != null) {
+            val candidates by viewModel.together.collectAsStateWithLifecycle()
+            val chosen by viewModel.togetherSelection.collectAsStateWithLifecycle()
+            val togetherCount by viewModel.togetherCount.collectAsStateWithLifecycle()
+            TogetherSheet(
+                person = current,
+                candidates = candidates,
+                selection = chosen,
+                onSelectionChange = viewModel::setTogetherSelection,
+                photoCount = togetherCount,
+                onShow = {
+                    val others = candidates.orEmpty().map { it.person }.filter { it.id in chosen }
+                    sheet = null
+                    tabsNav.openCollection(togetherTitle(resources, listOf(current) + others), viewModel.togetherQuery())
+                    viewModel.setTogetherSelection(emptySet())
+                },
+                onDismiss = {
+                    sheet = null
+                    viewModel.setTogetherSelection(emptySet())
+                },
             )
         }
         null -> Unit
@@ -264,9 +292,11 @@ private fun PersonContent(viewModel: PersonViewModel, onBack: () -> Unit) {
                     if (current != null) {
                         PersonMenu(
                             person = current,
+                            onTogether = { sheet = PersonSheet.TOGETHER },
                             onEditName = { sheet = PersonSheet.NAME },
                             onRemoveName = { viewModel.rename(null) },
                             onChooseCover = { sheet = PersonSheet.COVER },
+                            onReviewFaces = { tabsNav.navigate(PersonFacesRoute(viewModel.personId)) { launchSingleTop = true } },
                             onMerge = { sheet = PersonSheet.MERGE },
                             onHiddenChange = viewModel::setHidden,
                         )
@@ -317,9 +347,11 @@ private fun PersonHeader(person: Person?, onCover: () -> Unit, onName: () -> Uni
 @Composable
 private fun PersonMenu(
     person: Person,
+    onTogether: () -> Unit,
     onEditName: () -> Unit,
     onRemoveName: () -> Unit,
     onChooseCover: () -> Unit,
+    onReviewFaces: () -> Unit,
     onMerge: () -> Unit,
     onHiddenChange: (Boolean) -> Unit,
 ) {
@@ -333,6 +365,11 @@ private fun PersonMenu(
             Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.people_together)) },
+                leadingIcon = { Icon(Icons.Outlined.Groups, contentDescription = null) },
+                onClick = { pick(onTogether) },
+            )
             DropdownMenuItem(
                 text = { Text(stringResource(if (person.name == null) R.string.people_add_name else R.string.people_edit_name)) },
                 leadingIcon = { Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = null) },
@@ -349,6 +386,11 @@ private fun PersonMenu(
                 text = { Text(stringResource(R.string.people_choose_cover)) },
                 leadingIcon = { Icon(Icons.Outlined.Face, contentDescription = null) },
                 onClick = { pick(onChooseCover) },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.people_review_faces)) },
+                leadingIcon = { Icon(Icons.Outlined.PersonSearch, contentDescription = null) },
+                onClick = { pick(onReviewFaces) },
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.people_merge)) },

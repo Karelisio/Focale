@@ -23,6 +23,8 @@ import app.focale.data.toGridItems
 import app.focale.people.FaceThumbnail
 import app.focale.people.PeopleRepository
 import app.focale.people.Person
+import app.focale.people.PersonTogether
+import app.focale.people.photosTogether
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.components.GridSelection
 import app.focale.ui.navigation.PersonRoute
@@ -37,6 +39,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -53,7 +56,8 @@ sealed interface PersonEvent {
 
 /**
  * Photos d'une personne (même grille que les albums, via `MediaQuery.personId`) et
- * retouches : nom, vignette, masquage, fusion, retrait de photos.
+ * retouches : nom, vignette, masquage, fusion, retrait de photos ; photos avec d'autres
+ * personnes (« Avec… »).
  */
 @HiltViewModel
 class PersonViewModel @Inject constructor(
@@ -76,10 +80,23 @@ class PersonViewModel @Inject constructor(
     val person: StateFlow<Person?> = people.observePerson(personId)
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** Autres personnes, candidates à une fusion (masquées comprises). */
-    val others: StateFlow<List<Person>> = people.observePeople(includeHidden = true)
-        .map { list -> list.filter { it.id != personId } }
+    /** Autres personnes, candidates à une fusion (masquées comprises), nommées d'abord. */
+    val others: StateFlow<List<Person>> = people.observeOthers(personId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Personnes vues sur les photos de celle-ci (« Avec… ») ; null avant le chargement. */
+    val together: StateFlow<List<PersonTogether>?> = people.observeTogether(personId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _togetherSelection = MutableStateFlow<Set<Long>>(emptySet())
+
+    /** Personnes choisies dans « Avec… ». */
+    val togetherSelection: StateFlow<Set<Long>> = _togetherSelection.asStateFlow()
+
+    /** Photos où la personne figure avec toutes celles choisies ; -1 sans choix. */
+    val togetherCount: StateFlow<Int> = _togetherSelection
+        .flatMapLatest { ids -> if (ids.isEmpty()) flowOf(-1) else mediaRepository.observeCount(togetherQuery(ids)) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), -1)
 
     private val _sort = MutableStateFlow(baseQuery.sort)
     val sort: StateFlow<MediaSort> = _sort.asStateFlow()
@@ -128,6 +145,13 @@ class PersonViewModel @Inject constructor(
     fun setSelection(ids: Set<Long>) = gridSelection.set(ids)
     fun clearSelection() = gridSelection.clear()
     fun selectAll() = gridSelection.selectAll(query.value)
+
+    fun setTogetherSelection(ids: Set<Long>) {
+        _togetherSelection.value = ids
+    }
+
+    /** Photos où la personne figure avec toutes celles de [ids] (« Avec… »). */
+    fun togetherQuery(ids: Set<Long> = togetherSelection.value): MediaQuery = photosTogether(listOf(personId) + ids)
 
     fun setSort(sort: MediaSort) {
         _sort.value = sort

@@ -2,6 +2,7 @@ package app.focale.core.database
 
 import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -306,4 +307,65 @@ interface FaceDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun restorePerson(person: PersonEntity)
+
+    // ── Revue des visages et photos ensemble ─────────────────────────────────────
+
+    /** Visages d'une personne hors corbeille, avec leur empreinte (revue des visages). */
+    @Query(
+        """
+        SELECT f.id AS id, f.media_id AS media_id, f.person_id AS person_id, f.box_left AS box_left,
+               f.box_top AS box_top, f.box_right AS box_right, f.box_bottom AS box_bottom,
+               f.quality AS quality, f.manual AS manual, m.date_modified AS date_modified,
+               f.embedding AS embedding
+        FROM face f JOIN media m ON m.id = f.media_id
+        WHERE f.person_id = :personId AND m.is_trashed = 0
+        ORDER BY f.id
+        """,
+    )
+    fun observeReviewFaces(personId: Long): Flow<List<FaceReviewRow>>
+
+    @Query("SELECT id, person_id, manual FROM face WHERE person_id = :personId AND id IN (:faceIds)")
+    suspend fun linksOf(personId: Long, faceIds: List<Long>): List<FaceLink>
+
+    /**
+     * Rattache à la main des visages de [personId] à [targetId] (null : simple retrait), si
+     * celle-ci existe toujours : le regroupement automatique n'y revient pas.
+     */
+    @Query(
+        """
+        UPDATE face SET person_id = :targetId, manual = 1
+        WHERE person_id = :personId AND id IN (:faceIds)
+          AND (:targetId IS NULL OR EXISTS (SELECT 1 FROM person WHERE id = :targetId))
+        """,
+    )
+    suspend fun reassign(personId: Long, faceIds: List<Long>, targetId: Long?): Int
+
+    @Query("DELETE FROM person WHERE id = :id AND NOT EXISTS (SELECT 1 FROM face WHERE person_id = :id)")
+    suspend fun deleteIfEmpty(id: Long)
+
+    /** Autres personnes présentes sur les photos (hors corbeille) de [personId], avec le nombre de ces photos. */
+    @Query(
+        """
+        SELECT o.person_id AS person_id, COUNT(DISTINCT o.media_id) AS photo_count
+        FROM face f
+        JOIN face o ON o.media_id = f.media_id
+        JOIN media m ON m.id = f.media_id
+        WHERE f.person_id = :personId AND o.person_id IS NOT NULL AND o.person_id != :personId
+          AND m.is_trashed = 0
+        GROUP BY o.person_id
+        """,
+    )
+    fun observeTogetherCounts(personId: Long): Flow<List<TogetherRow>>
 }
+
+/** Visage d'une personne et son empreinte (revue des visages). */
+data class FaceReviewRow(
+    @Embedded val thumb: FaceThumbRow,
+    val embedding: ByteArray,
+)
+
+/** Autre personne présente sur les photos d'une personne, et le nombre de ces photos. */
+data class TogetherRow(
+    @ColumnInfo(name = "person_id") val personId: Long,
+    @ColumnInfo(name = "photo_count") val photoCount: Int,
+)

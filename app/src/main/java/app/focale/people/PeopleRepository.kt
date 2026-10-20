@@ -12,8 +12,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.withContext
 
@@ -91,6 +93,63 @@ class PeopleRepository @Inject constructor(
         removal.links.groupBy({ it.second }, { it.first }).forEach { (manual, ids) ->
             ids.chunked(MediaRepository.MAX_SQL_ARGS).forEach { dao.relink(it, removal.person.id, manual) }
         }
+    }
+
+    // ── Revue des visages et photos ensemble ─────────────────────────────────────
+
+    /** Visages de la personne, du moins au plus ressemblant ([FaceReview]) : les erreurs d'abord. */
+    fun observeReview(personId: Long): Flow<List<ReviewFace>> =
+        dao.observeReviewFaces(personId).mapLatest { rows ->
+            FaceReview.leastSimilarFirst(rows.map { FaceEmbeddings.decode(it.embedding) })
+                .map { (index, similarity) -> ReviewFace(rows[index].thumb.toThumbnail(), similarity) }
+        }.distinctUntilChanged().flowOn(io)
+
+    /** Autres personnes que [personId], masquées comprises, les nommées d'abord (listes de choix). */
+    fun observeOthers(personId: Long): Flow<List<Person>> =
+        observePeople(includeHidden = true).map { people -> people.filter { it.id != personId }.sortedBy { it.name == null } }
+
+    /**
+     * Personnes vues sur les photos de [personId] (masquées comprises), les nommées d'abord
+     * puis les plus fréquentes, avec le nombre de photos où elles figurent ensemble.
+     */
+    fun observeTogether(personId: Long): Flow<List<PersonTogether>> =
+        combine(observeOthers(personId), dao.observeTogetherCounts(personId)) { others, rows ->
+            val counts = rows.associate { it.personId to it.photoCount }
+            others.mapNotNull { person -> counts[person.id]?.let { PersonTogether(person, it) } }
+                .sortedWith(compareBy({ it.person.name == null }, { -it.photoCount }))
+        }.flowOn(io)
+
+    /** Retire des visages de la personne ; le regroupement ne les lui rattachera plus d'office. */
+    suspend fun removeFaces(personId: Long, faceIds: Collection<Long>): FaceTransfer? = edit {
+        transfer(personId, faceIds, targetId = null)
+    }
+
+    /** Déplace des visages vers [targetId] : rattachement manuel, que le regroupement respecte. */
+    suspend fun moveFaces(personId: Long, faceIds: Collection<Long>, targetId: Long): FaceTransfer? = edit {
+        if (targetId == personId) null else transfer(personId, faceIds, targetId)
+    }
+
+    /** Déplace des visages vers une nouvelle personne, nommée [name] s'il est renseigné. */
+    suspend fun moveFacesToNewPerson(personId: Long, faceIds: Collection<Long>, name: String?): FaceTransfer? = edit {
+        val clean = name?.trim()?.takeIf { it.isNotEmpty() }
+        val created = dao.insertPerson(PersonEntity(name = clean, createdAt = System.currentTimeMillis()))
+        transfer(personId, faceIds, created, created).also { if (it == null) dao.deleteIfEmpty(created) }
+    }
+
+    /** Annule [transfer] ; la personne d'origine est recréée si elle a disparu entre-temps. */
+    suspend fun restore(transfer: FaceTransfer) {
+        restore(transfer.removal)
+        transfer.created?.let { edit { dao.deleteIfEmpty(it) } }
+    }
+
+    /** Rattache à la main les visages [faceIds] de [personId] à [targetId] (null : retrait). */
+    private suspend fun transfer(personId: Long, faceIds: Collection<Long>, targetId: Long?, created: Long? = null): FaceTransfer? {
+        val person = dao.person(personId) ?: return null
+        val chunks = faceIds.chunked(MediaRepository.MAX_SQL_ARGS)
+        val links = chunks.flatMap { dao.linksOf(personId, it) }
+        val moved = chunks.sumOf { dao.reassign(personId, it, targetId) }
+        if (moved == 0) return null
+        return FaceTransfer(PersonRemoval(moved, person, links.map { it.id to it.manual }), created)
     }
 
     private suspend fun <T> edit(block: suspend () -> T): T = withContext(io) {
