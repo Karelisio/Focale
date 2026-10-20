@@ -81,7 +81,7 @@
     <string name="settings_grouping_month">Mois</string>
     <string name="settings_grouping_year">Année</string>
     <string name="settings_memories">Souvenirs</string>
-    <string name="settings_memories_summary">Afficher les souvenirs « il y a X ans » dans l\'onglet Photos</string>
+    <string name="settings_memories_summary">Afficher les souvenirs, voyages et moments avec vos proches dans l\'onglet Photos</string>
     <string name="settings_videos">Vidéos</string>
     <string name="settings_autoplay">Lire les vidéos automatiquement</string>
     <string name="settings_mute">Démarrer les vidéos sans le son</string>

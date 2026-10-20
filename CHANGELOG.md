@@ -5,6 +5,20 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.5.0
+
+- Personnes : tri par nombre de photos, nom ou photo récente, et personnes épinglées en
+  tête (appui long).
+- « Est-ce la même personne ? » : Focale propose de fusionner les groupes d'une même
+  personne, en un appui.
+- Vérifier les visages d'une personne : les moins ressemblants d'abord, à retirer ou
+  déplacer en sélection multiple, avec annulation.
+- Photos ensemble : depuis une personne, « Avec… » montre les photos où vous êtes réunis.
+- Albums automatiques : documents, reçus, animaux, nourriture, paysages, fêtes, véhicules
+  et sport, mis à jour pendant l'analyse.
+- Souvenirs enrichis : « Il y a 2 ans avec Alice » et voyages (« Lisbonne · juin 2023 »),
+  aussi dans le widget.
+
 ## 1.4.1
 
 - Analyse sur l'appareil réparée : dans les versions publiées, étiquettes, texte des photos

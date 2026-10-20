@@ -81,7 +81,7 @@
     <string name="settings_grouping_month">Month</string>
     <string name="settings_grouping_year">Year</string>
     <string name="settings_memories">Memories</string>
-    <string name="settings_memories_summary">Show “years ago” memories on the Photos tab</string>
+    <string name="settings_memories_summary">Show memories, trips and moments with your people on the Photos tab</string>
     <string name="settings_videos">Videos</string>
     <string name="settings_autoplay">Play videos automatically</string>
     <string name="settings_mute">Start videos muted</string>

@@ -27,7 +27,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 - **Organisation** : albums par dossier et albums virtuels, favoris, corbeille
   30 jours, sélection multiple (appui long + glisser), copier / déplacer / renommer /
   supprimer / partager, tri et filtres (photos, vidéos, captures, GIF), dossiers
-  masqués de Photos (WhatsApp, mèmes…) mais toujours dans Albums.
+  masqués de Photos (WhatsApp, mèmes…) mais toujours dans Albums. Albums automatiques
+  tirés de l'analyse : documents, reçus, animaux, nourriture, paysages, fêtes, véhicules,
+  sport.
 - **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
   (« plage », « chien »…, en français ou en anglais), texte des photos et des captures
   d'écran (« facture », « wifi »…), dates, lieux (géocodage hors ligne), écran de
@@ -38,7 +40,11 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   à toutes les empreintes et les photos les plus proches s'ajoutent aux résultats.
 - **Personnes** : visages détectés (ML Kit) et regroupés sur l'appareil (empreintes SFace
   exécutées par ONNX Runtime) ; section dans l'onglet Albums, nom, vignette, masquage,
-  fusion, retrait d'une photo ; recherche par nom et personnes listées dans les infos.
+  fusion, retrait d'une photo ; tri (photos, nom, récentes) et personnes épinglées en
+  tête ; suggestions « Est-ce la même personne ? » ; revue des visages d'une personne
+  (les moins ressemblants d'abord, retirer ou déplacer une sélection) ; photos où
+  plusieurs personnes figurent ensemble ; recherche par nom et personnes listées dans les
+  infos.
 - **Édition** : recadrage libre ou au format, rotation, miroir, filtres, luminosité /
   contraste / saturation / chaleur, dessin (stylo, surligneur, ligne, flèche, rectangle,
   ellipse, gomme) ; enregistrement en copie ou à la place de l'original. Vidéos :
@@ -51,7 +57,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir
-  des médias pris la même semaine les années précédentes.
+  des médias pris la même semaine les années précédentes, avec les moments partagés avec
+  une personne (« Il y a 2 ans avec Alice ») et les voyages loin de chez soi
+  (« Lisbonne · juin 2023 »), détectés sur l'appareil.
 - **Carte** des photos géolocalisées (osmdroid), regroupées en vignettes selon le zoom,
   sur un fond vectoriel hors ligne aux couleurs du thème ; fond OpenStreetMap en ligne
   en option (variante `standard`).
