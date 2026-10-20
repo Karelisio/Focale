@@ -9,6 +9,7 @@ import app.focale.core.settings.SettingsRepository
 import app.focale.core.util.Formatters
 import app.focale.data.MediaRepository
 import app.focale.data.MemoriesRepository
+import app.focale.data.MemoryTitles
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -19,10 +20,11 @@ import kotlinx.coroutines.flow.first
 data class WidgetPhoto(val item: MediaItem, val title: String, val subtitle: String)
 
 /**
- * Choisit la photo du widget : un souvenir des années passées en priorité, à défaut un
- * favori, à défaut une photo récente (jamais une capture d'écran). Le choix est
- * déterministe sur une période de [SLOT_HOURS] heures : toutes les instances du widget
- * montrent la même photo, qui change à chaque période.
+ * Choisit la photo du widget : un souvenir du jour en priorité (les mêmes que le carrousel :
+ * années passées, personnes, voyages, avec leur titre), à défaut un favori, à défaut une
+ * photo récente (jamais une capture d'écran). Le choix est déterministe sur une période de
+ * [SLOT_HOURS] heures : toutes les instances du widget montrent la même photo, qui change à
+ * chaque période.
  */
 @Singleton
 class WidgetPhotoPicker @Inject constructor(
@@ -39,8 +41,7 @@ class WidgetPhotoPicker @Inject constructor(
             val memory = todaysMemories[spread(slot, todaysMemories.size)]
             candidates(memory.query)?.let { list ->
                 val item = list.choose(slot)
-                val title = context.resources.getQuantityString(R.plurals.memories_years_ago, memory.yearsAgo, memory.yearsAgo)
-                return WidgetPhoto(item, title, date(item))
+                return WidgetPhoto(item, MemoryTitles.title(context.resources, memory.kind), date(item))
             }
         }
         val hidden = settings.settings.first().hiddenFolders.sorted()

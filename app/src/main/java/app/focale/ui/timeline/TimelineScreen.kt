@@ -25,6 +25,7 @@ import app.focale.R
 import app.focale.core.mediastore.SyncState
 import app.focale.core.model.MediaFilter
 import app.focale.core.permissions.MediaAccess
+import app.focale.data.MemoryTitles
 import app.focale.ui.components.EmptyState
 import app.focale.ui.components.LoadingState
 import app.focale.ui.components.MediaFilterChips
@@ -115,14 +116,7 @@ private fun TimelineContent(viewModel: TimelineViewModel, partialAccess: Boolean
                 item(key = "memories", span = { GridItemSpan(maxLineSpan) }) {
                     MemoriesCarousel(
                         memories = memories,
-                        onOpen = { memory ->
-                            val title = resources.getQuantityString(
-                                R.plurals.memories_years_ago,
-                                memory.yearsAgo,
-                                memory.yearsAgo,
-                            )
-                            tabsNav.openCollection(title, memory.query)
-                        },
+                        onOpen = { memory -> tabsNav.openCollection(MemoryTitles.title(resources, memory.kind), memory.query) },
                     )
                 }
             }

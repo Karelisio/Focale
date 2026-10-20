@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Souvenirs : avec quelqu'un, voyages -->
+    <plurals name="memories_years_ago_with">
+        <item quantity="one">Il y a %1$d an avec %2$s</item>
+        <item quantity="many">Il y a %1$d ans avec %2$s</item>
+        <item quantity="other">Il y a %1$d ans avec %2$s</item>
+    </plurals>
+    <!-- Personne sans nom : son visage figure sur la carte. -->
+    <plurals name="memories_years_ago_together">
+        <item quantity="one">Il y a %d an, ensemble</item>
+        <item quantity="many">Il y a %d ans, ensemble</item>
+        <item quantity="other">Il y a %d ans, ensemble</item>
+    </plurals>
+    <!-- Lieu du voyage · mois, ex. « Lisbonne · juin 2023 » -->
+    <string name="memories_trip">%1$s · %2$s</string>
+    <string name="memories_trip_somewhere">Voyage</string>
+    <!-- Durée d'un voyage, sur sa carte -->
+    <plurals name="memories_trip_days">
+        <item quantity="one">%d jour</item>
+        <item quantity="many">%d jours</item>
+        <item quantity="other">%d jours</item>
+    </plurals>
+</resources>

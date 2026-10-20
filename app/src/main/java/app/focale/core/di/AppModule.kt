@@ -16,6 +16,7 @@ import app.focale.core.database.FaceDao
 import app.focale.core.database.FavoriteDao
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaDao
+import app.focale.core.database.MemoryDao
 import app.focale.core.database.SearchHistoryDao
 import app.focale.core.database.TextDao
 import app.focale.core.database.TrashDao
@@ -137,6 +138,9 @@ object AppModule {
 
     @Provides
     fun embeddingDao(database: FocaleDatabase): EmbeddingDao = database.embeddingDao()
+
+    @Provides
+    fun memoryDao(database: FocaleDatabase): MemoryDao = database.memoryDao()
 
     @Provides
     @Singleton

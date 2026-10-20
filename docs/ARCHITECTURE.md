@@ -273,7 +273,8 @@ exposées par un `FileProvider` et purgées au bout d'une heure.
 ### 6.8 Souvenirs, carte, diaporama et widget
 - **Souvenirs** : pour chaque année passée (40 au plus), fenêtre du même jour ± 3 jours
   (`MemoryWindows`) ; couverture choisie par SQL : photo hors capture, la plus nette
-  selon l'analyse. Recalcul quand la bibliothèque change et à minuit.
+  selon l'analyse. Recalcul quand la bibliothèque change et à minuit. Voyages et
+  personnes : voir ci-dessous.
 - **Carte** : `AnalysisDao.observeGeoPhotos()` ; regroupement par grille de Mercator à
   chaque niveau de zoom entier (`PhotoClustering`, linéaire, hors thread principal) ;
   un appui ouvre la photo, ou la grille de la zone (`MediaQuery.area`). Fond vectoriel
@@ -283,9 +284,32 @@ exposées par un `FileProvider` et purgées au bout d'une heure.
 - **Diaporama** : même requête que la grille d'origine (photos seules si elle est
   mixte), pagination identique à la visionneuse, préchargement de la photo suivante,
   `keepScreenOn`.
-- **Widget** : Glance, photo choisie par `WidgetPhotoPicker` (souvenir, sinon favori,
-  sinon photo récente), stable sur une période de 4 h ; renouvellement par WorkManager
-  tant qu'une instance existe, et immédiatement après un déplacement vers le coffre.
+- **Widget** : Glance, photo choisie par `WidgetPhotoPicker` (souvenir du carrousel avec
+  son titre, sinon favori, sinon photo récente), stable sur une période de 4 h ;
+  renouvellement par WorkManager tant qu'une instance existe, et immédiatement après un
+  déplacement vers le coffre.
+
+#### Souvenirs avec quelqu'un et voyages
+Pour chaque fenêtre, `MemoriesRepository` produit au plus trois cartes, dans cet ordre : le
+voyage commencé dans la fenêtre, le souvenir général, un souvenir « avec » une personne
+(titres : `MemoryTitles`, communs au carrousel, à la grille ouverte et au widget). Les
+lectures propres à ces cartes (`MemoryDao`) sont des agrégats SQL ou des colonnes
+compactes, sur la clause WHERE de `MediaQueryBuilder` (corbeille et dossiers masqués exclus).
+- **Avec quelqu'un** : personnes non masquées de la fenêtre, comptées en SQL. `MemoryPeople`
+  retient la plus présente parmi celles qui figurent sur au moins 5 médias et moins de 80 %
+  d'entre eux (au-delà, le souvenir général la montre déjà) ; une personne nommée d'abord,
+  sinon une personne sans nom revenue sur au moins 3 mois (un proche plutôt qu'un inconnu),
+  titrée « ensemble » avec son visage. Requête : fenêtre + `personId`.
+- **Voyages** : `TripDetector`, logique pure sur les points (date, latitude, longitude) des
+  médias géolocalisés. Chez soi : la cellule d'une grille de ~25 km photographiée pendant le
+  plus de mois distincts (un séjour tient en un ou deux mois), par année pour suivre un
+  déménagement (à défaut, celle de l'année la plus proche). Un voyage enchaîne les jours avec un média à plus de 100 km de chez soi (un
+  jour sans média géolocalisé toléré, une journée à la maison l'interrompt), 5 médias
+  lointains au moins ; il apparaît quand son premier jour tombe dans la fenêtre. Requête : du
+  premier au dernier média lointain, sans les photos de la maison du départ et du retour.
+  Titre : la ville qui rassemble au moins la moitié des médias lointains, sinon le pays.
+- **Sans doublon** : une fenêtre passée à 80 % dans le voyage n'a pas de souvenir général ;
+  deux cartes d'une même fenêtre ne partagent pas leur couverture.
 
 ### 6.9 Personnes (regroupement des visages)
 Étape d'analyse `FaceAnalysisStep` (package `people/`), après l'analyse principale :
