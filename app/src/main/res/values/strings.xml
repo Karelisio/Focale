@@ -231,6 +231,7 @@
     <!-- Nettoyage -->
     <string name="cleanup_title">Cleanup</string>
     <string name="cleanup_summary">Duplicates, blurry photos, screenshots and large videos</string>
+    <string name="more_cleanup_subtitle">Duplicates, blurry photos…</string>
     <string name="cleanup_duplicates">Duplicates</string>
     <string name="cleanup_blurry">Blurry</string>
     <string name="cleanup_searching">Looking for similar photos…</string>

@@ -245,6 +245,7 @@
     <!-- Nettoyage -->
     <string name="cleanup_title">Nettoyage</string>
     <string name="cleanup_summary">Doublons, photos floues, captures et grosses vidéos</string>
+    <string name="more_cleanup_subtitle">Doublons, photos floues…</string>
     <string name="cleanup_duplicates">Doublons</string>
     <string name="cleanup_blurry">Floues</string>
     <string name="cleanup_searching">Recherche de photos similaires…</string>

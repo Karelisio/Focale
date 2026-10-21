@@ -29,7 +29,6 @@ import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Gif
@@ -98,7 +97,6 @@ import app.focale.ml.LabelDictionary
 import app.focale.people.Person
 import app.focale.ui.analysis.AnalysisStatusCard
 import app.focale.ui.components.MediaPermissionScreen
-import app.focale.ui.navigation.CleanupRoute
 import app.focale.ui.navigation.CollectionKind
 import app.focale.ui.navigation.LocalTabsNavController
 import app.focale.ui.navigation.PersonRoute
@@ -262,10 +260,6 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
                         open(name, MediaQuery(terms = listOf(SearchTerm(labels = listOf(thing.label)))))
                     }
                 }
-            }
-
-            item(key = "cleanup", span = { GridItemSpan(maxLineSpan) }) {
-                CleanupCard(onClick = { tabsNav.navigate(CleanupRoute) })
             }
         }
     }
@@ -512,33 +506,6 @@ private fun AnalysisDisabledCard(onEnable: () -> Unit) {
                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
             )
             Button(onClick = onEnable, shapes = ButtonDefaults.shapes()) { Text(stringResource(R.string.search_analysis_enable)) }
-        }
-    }
-}
-
-@Composable
-private fun CleanupCard(onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        modifier = Modifier.padding(top = 12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-            Box(
-                Modifier
-                    .size(52.dp)
-                    .clip(MaterialShapes.Clover4Leaf.toShape())
-                    .background(MaterialTheme.colorScheme.tertiary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.CleaningServices, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiary)
-            }
-            Column(Modifier.padding(start = 16.dp)) {
-                Text(stringResource(R.string.cleanup_title), style = MaterialTheme.typography.titleMediumEmphasized)
-                Text(stringResource(R.string.cleanup_summary), style = MaterialTheme.typography.bodyMedium)
-            }
         }
     }
 }

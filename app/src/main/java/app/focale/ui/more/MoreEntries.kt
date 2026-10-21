@@ -1,6 +1,7 @@
 package app.focale.ui.more
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Lock
@@ -13,6 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
 import app.focale.R
 import app.focale.core.model.MediaQuery
+import app.focale.ui.navigation.CleanupRoute
 import app.focale.ui.navigation.CollectionKind
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.MapRoute
@@ -53,6 +55,15 @@ fun moreEntries(counts: MoreCounts, tabsNav: NavHostController): List<MoreEntry>
             containerColor = colors.primaryContainer,
             contentColor = colors.onPrimaryContainer,
             onClick = { tabsNav.navigate(MapRoute) { launchSingleTop = true } },
+        ),
+        MoreEntry(
+            title = stringResource(R.string.cleanup_title),
+            subtitle = stringResource(R.string.more_cleanup_subtitle),
+            icon = Icons.Outlined.CleaningServices,
+            shape = MaterialShapes.Sunny,
+            containerColor = colors.secondary,
+            contentColor = colors.onSecondary,
+            onClick = { tabsNav.navigate(CleanupRoute) { launchSingleTop = true } },
         ),
         MoreEntry(
             title = stringResource(R.string.collection_trash),
