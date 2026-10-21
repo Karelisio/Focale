@@ -62,6 +62,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
@@ -86,14 +87,15 @@ import kotlinx.coroutines.launch
  * Affiche les dialogues et messages de [MediaActions] : choix d'album ou de dossier,
  * renommage, partage, snackbar avec « Annuler ».
  *
- * @param onAlbumMoved l'album affiché est passé en entier dans le coffre : l'écran se ferme.
+ * @param onAlbumMoved l'album affiché est passé en entier dans le coffre : l'écran se ferme, sur
+ *   un message qui lui survit. Sans lui (onglet Albums, rien ne se ferme), message en snackbar.
  */
 @Composable
 fun MediaActionsHost(
     actions: MediaActions,
     snackbarHostState: SnackbarHostState,
     onActionDone: () -> Unit = {},
-    onAlbumMoved: () -> Unit = {},
+    onAlbumMoved: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val rootNav = LocalRootNavController.current
@@ -106,26 +108,32 @@ fun MediaActionsHost(
     val requestNotifications = rememberNotificationPermission()
 
     LaunchedEffect(actions) {
+        // Snackbar dans sa propre coroutine : les événements suivants (fin de l'action…) ne
+        // doivent pas attendre sa disparition.
+        fun showMessage(event: ActionEvent.Message) = launch {
+            val result = snackbarHostState.showSnackbar(
+                message = event.text.resolve(context),
+                actionLabel = if (event.undo != null) undoLabel else null,
+                withDismissAction = event.undo == null,
+                duration = if (event.undo != null) SnackbarDuration.Long else SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) event.undo?.invoke()
+        }
         actions.events.collect { event ->
             when (event) {
                 is ActionEvent.Share -> context.startActivity(event.intent)
                 is ActionEvent.Done -> currentOnDone()
                 is ActionEvent.AlbumMoved -> {
-                    // Message qui survit à l'écran fermé, comme à la sortie de l'éditeur.
-                    Toast.makeText(context, event.text.resolve(context), Toast.LENGTH_SHORT).show()
-                    currentOnAlbumMoved()
+                    val close = currentOnAlbumMoved
+                    if (close != null) {
+                        // Message qui survit à l'écran fermé, comme à la sortie de l'éditeur.
+                        Toast.makeText(context, event.text.resolve(context), Toast.LENGTH_SHORT).show()
+                        close()
+                    } else {
+                        showMessage(ActionEvent.Message(event.text))
+                    }
                 }
-                // Snackbar dans sa propre coroutine : les événements suivants (fin de
-                // l'action…) ne doivent pas attendre sa disparition.
-                is ActionEvent.Message -> launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = event.text.resolve(context),
-                        actionLabel = if (event.undo != null) undoLabel else null,
-                        withDismissAction = event.undo == null,
-                        duration = if (event.undo != null) SnackbarDuration.Long else SnackbarDuration.Short,
-                    )
-                    if (result == SnackbarResult.ActionPerformed) event.undo?.invoke()
-                }
+                is ActionEvent.Message -> showMessage(event)
             }
         }
     }
@@ -460,11 +468,12 @@ private fun FolderPickerSheet(
     }
 }
 
+/** Couverture d'un album en vignette arrondie ; l'icône d'album faute de couverture. */
 @Composable
-private fun AlbumThumb(cover: MediaItem?) {
+internal fun AlbumThumb(cover: MediaItem?, size: Dp = 48.dp) {
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(size)
             .clip(MaterialTheme.shapes.medium)
             .background(MaterialTheme.colorScheme.secondaryContainer),
         contentAlignment = Alignment.Center,
@@ -474,7 +483,7 @@ private fun AlbumThumb(cover: MediaItem?) {
                 model = cover.thumbnail(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(size),
             )
         } else {
             Icon(Icons.Outlined.PhotoAlbum, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)

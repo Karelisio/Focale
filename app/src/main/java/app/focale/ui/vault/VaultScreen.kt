@@ -538,7 +538,13 @@ private fun VaultContentPane(
                     }
                     if (albums.isNotEmpty()) {
                         item(key = "albums", span = { GridItemSpan(maxLineSpan) }, contentType = "albums") {
-                            VaultAlbumsShelf(albums, onOpen = onOpenAlbum)
+                            VaultAlbumsShelf(
+                                albums = albums,
+                                onOpen = onOpenAlbum,
+                                onRename = viewModel::renameAlbum,
+                                onRestore = viewModel::restoreAlbum,
+                                onDelete = viewModel::deleteAlbum,
+                            )
                         }
                         item(key = "all", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
                             VaultSectionHeader(stringResource(R.string.vault_all_items))

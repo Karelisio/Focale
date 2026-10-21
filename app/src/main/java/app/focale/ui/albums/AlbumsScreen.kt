@@ -2,6 +2,8 @@ package app.focale.ui.albums
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,13 +41,17 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.ripple
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,14 +78,21 @@ import app.focale.core.model.Album
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
 import app.focale.core.permissions.MediaAccess
+import app.focale.data.SmartAlbum
+import app.focale.people.Person
+import app.focale.ui.actions.MediaActionsHost
 import app.focale.ui.actions.NameDialog
+import app.focale.ui.actions.source
 import app.focale.ui.components.MediaPermissionScreen
+import app.focale.ui.components.clickableWithOptions
 import app.focale.ui.navigation.CollectionKind
+import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.LocalTabsNavController
 import app.focale.ui.navigation.PeopleRoute
 import app.focale.ui.navigation.PersonRoute
 import app.focale.ui.navigation.TrashRoute
 import app.focale.ui.navigation.openCollection
+import app.focale.ui.navigation.openSlideshow
 import app.focale.ui.people.PeopleSectionViewModel
 import app.focale.ui.people.peopleSection
 import coil3.compose.AsyncImage
@@ -87,7 +100,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Onglet Albums : collections automatiques, personnes, albums automatiques (contenu reconnu),
- * albums virtuels, dossiers de l'appareil.
+ * albums virtuels, dossiers de l'appareil. Un appui long sur un album virtuel ou un dossier en
+ * donne les options sans l'ouvrir.
  */
 @Composable
 fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel(), peopleViewModel: PeopleSectionViewModel = hiltViewModel()) {
@@ -97,35 +111,115 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel(), peopleViewModel: 
         return
     }
     val tabsNav = LocalTabsNavController.current
+    val rootNav = LocalRootNavController.current
     val userAlbums by viewModel.userAlbums.collectAsStateWithLifecycle()
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val hiddenFolders by viewModel.hiddenFolders.collectAsStateWithLifecycle()
     val smartAlbums by viewModel.smartAlbums.collectAsStateWithLifecycle()
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val people by peopleViewModel.people.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Album passé dans le coffre depuis ses options : confirmation, progression et bilan, comme
+    // depuis l'album ouvert.
+    MediaActionsHost(actions = viewModel.actions, snackbarHostState = snackbarHostState)
+
+    AlbumsContent(
+        counts = counts,
+        people = people,
+        smartAlbums = smartAlbums,
+        userAlbums = userAlbums,
+        folders = folders,
+        hiddenFolders = hiddenFolders,
+        snackbarHostState = snackbarHostState,
+        onOpenCollection = { title, query, kind -> tabsNav.openCollection(title, query, kind) },
+        onOpenTrash = { tabsNav.navigate(TrashRoute) },
+        onOpenPerson = { tabsNav.navigate(PersonRoute(it.id)) { launchSingleTop = true } },
+        onSeeAllPeople = { tabsNav.navigate(PeopleRoute) { launchSingleTop = true } },
+        onOpenAlbum = { album ->
+            when (album) {
+                is Album.User -> tabsNav.openCollection(album.name, MediaQuery(albumId = album.id), CollectionKind.USER_ALBUM, album.id)
+                is Album.Folder -> tabsNav.openCollection(album.name, MediaQuery(bucketId = album.bucketId), CollectionKind.FOLDER)
+            }
+        },
+        onCreateAlbum = { name ->
+            scope.launch {
+                val id = viewModel.createAlbum(name)
+                tabsNav.openCollection(name.trim(), MediaQuery(albumId = id), CollectionKind.USER_ALBUM, id)
+            }
+        },
+        onSlideshow = { rootNav.openSlideshow(it.source.query) },
+        onRename = viewModel::renameAlbum,
+        onDelete = viewModel::deleteAlbum,
+        onHiddenChange = viewModel::setFolderHidden,
+        onMoveToVault = viewModel::requestMoveToVault,
+    )
+}
+
+/**
+ * Contenu de l'onglet, sans ViewModel ni navigation (tests). Appui long sur un album virtuel ou
+ * un dossier : feuille de ses options ([AlbumOptions]).
+ */
+@Composable
+internal fun AlbumsContent(
+    counts: CollectionCounts,
+    people: List<Person>,
+    smartAlbums: List<SmartAlbum>,
+    userAlbums: List<Album.User>,
+    folders: List<Album.Folder>,
+    hiddenFolders: Set<Long>,
+    snackbarHostState: SnackbarHostState,
+    onOpenCollection: (title: String, query: MediaQuery, kind: CollectionKind) -> Unit,
+    onOpenTrash: () -> Unit,
+    onOpenPerson: (Person) -> Unit,
+    onSeeAllPeople: () -> Unit,
+    onOpenAlbum: (Album) -> Unit,
+    onCreateAlbum: (String) -> Unit,
+    onSlideshow: (Album) -> Unit,
+    onRename: (Album.User, String) -> Unit,
+    onDelete: (Album.User) -> Unit,
+    onHiddenChange: (Album.Folder, Boolean) -> Unit,
+    onMoveToVault: (Album) -> Unit,
+) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyGridState()
     val fabExpanded by remember { derivedStateOf { gridState.firstVisibleItemIndex == 0 } }
     var creating by rememberSaveable { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    // Album dont les options sont ouvertes, par sa clé dans la grille : relu dans les listes, il
+    // y est à jour (nombre, couverture, dossier masqué) et s'efface s'il disparaît.
+    var optionsKey by rememberSaveable { mutableStateOf<String?>(null) }
 
     if (creating) {
         NameDialog(
             title = stringResource(R.string.album_new),
             label = stringResource(R.string.album_name),
             confirm = stringResource(R.string.action_create),
-            onConfirm = { name ->
-                scope.launch {
-                    val id = viewModel.createAlbum(name)
-                    tabsNav.openCollection(name.trim(), MediaQuery(albumId = id), CollectionKind.USER_ALBUM, id)
-                }
-            },
+            onConfirm = onCreateAlbum,
             onDismiss = { creating = false },
         )
+    }
+    val optionsAlbum = optionsKey?.let { wanted ->
+        userAlbums.firstOrNull { it.gridKey == wanted } ?: folders.firstOrNull { it.gridKey == wanted }
+    }
+    if (optionsAlbum != null) {
+        key(optionsAlbum.gridKey) {
+            AlbumOptions(
+                album = optionsAlbum,
+                hidden = optionsAlbum is Album.Folder && optionsAlbum.bucketId in hiddenFolders,
+                onSlideshow = { onSlideshow(optionsAlbum) },
+                onRename = { name -> if (optionsAlbum is Album.User) onRename(optionsAlbum, name) },
+                onHiddenChange = { hidden -> if (optionsAlbum is Album.Folder) onHiddenChange(optionsAlbum, hidden) },
+                onMoveToVault = { onMoveToVault(optionsAlbum) },
+                onDelete = { if (optionsAlbum is Album.User) onDelete(optionsAlbum) },
+                onDismiss = { optionsKey = null },
+            )
+        }
     }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.tab_albums)) },
@@ -156,14 +250,10 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel(), peopleViewModel: 
             modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "collections", span = { GridItemSpan(maxLineSpan) }) {
-                CollectionsRow(counts)
+                CollectionsRow(counts, onOpen = onOpenCollection, onOpenTrash = onOpenTrash)
             }
-            peopleSection(
-                people = people,
-                onOpen = { tabsNav.navigate(PersonRoute(it.id)) { launchSingleTop = true } },
-                onSeeAll = { tabsNav.navigate(PeopleRoute) { launchSingleTop = true } },
-            )
-            smartAlbumsSection(smartAlbums, onOpen = { album, title -> tabsNav.openCollection(title, album.query) })
+            peopleSection(people = people, onOpen = onOpenPerson, onSeeAll = onSeeAllPeople)
+            smartAlbumsSection(smartAlbums, onOpen = { album, title -> onOpenCollection(title, album.query, CollectionKind.QUERY) })
             item(key = "user-header", span = { GridItemSpan(maxLineSpan) }) {
                 SectionHeader(stringResource(R.string.albums_mine))
             }
@@ -172,26 +262,34 @@ fun AlbumsScreen(viewModel: AlbumsViewModel = hiltViewModel(), peopleViewModel: 
                     EmptyAlbumsHint(onCreate = { creating = true })
                 }
             }
-            items(userAlbums, key = { "user-${it.id}" }) { album ->
-                AlbumCard(album) {
-                    tabsNav.openCollection(album.name, MediaQuery(albumId = album.id), CollectionKind.USER_ALBUM, album.id)
-                }
+            items(userAlbums, key = { it.gridKey }) { album ->
+                AlbumCard(album, onLongClick = { optionsKey = album.gridKey }) { onOpenAlbum(album) }
             }
             item(key = "folder-header", span = { GridItemSpan(maxLineSpan) }) {
                 SectionHeader(stringResource(R.string.albums_device))
             }
-            items(folders, key = { "folder-${it.bucketId}" }) { folder ->
-                AlbumCard(folder, hiddenFromTimeline = folder.bucketId in hiddenFolders) {
-                    tabsNav.openCollection(folder.name, MediaQuery(bucketId = folder.bucketId), CollectionKind.FOLDER)
+            items(folders, key = { it.gridKey }) { folder ->
+                AlbumCard(folder, hiddenFromTimeline = folder.bucketId in hiddenFolders, onLongClick = { optionsKey = folder.gridKey }) {
+                    onOpenAlbum(folder)
                 }
             }
         }
     }
 }
 
+/** Clé d'un album dans la grille, qui désigne aussi celui dont les options sont ouvertes. */
+private val Album.gridKey: String
+    get() = when (this) {
+        is Album.User -> "user-$id"
+        is Album.Folder -> "folder-$bucketId"
+    }
+
 @Composable
-private fun CollectionsRow(counts: CollectionCounts) {
-    val tabsNav = LocalTabsNavController.current
+private fun CollectionsRow(
+    counts: CollectionCounts,
+    onOpen: (title: String, query: MediaQuery, kind: CollectionKind) -> Unit,
+    onOpenTrash: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val favoritesTitle = stringResource(R.string.collection_favorites)
     val videosTitle = stringResource(R.string.filter_videos)
@@ -205,19 +303,19 @@ private fun CollectionsRow(counts: CollectionCounts) {
             .padding(vertical = 4.dp),
     ) {
         CollectionChip(favoritesTitle, counts.favorites, Icons.Outlined.Favorite, MaterialShapes.Heart, colors.tertiaryContainer, colors.onTertiaryContainer) {
-            tabsNav.openCollection(favoritesTitle, AlbumsViewModel.FAVORITES, CollectionKind.FAVORITES)
+            onOpen(favoritesTitle, AlbumsViewModel.FAVORITES, CollectionKind.FAVORITES)
         }
         CollectionChip(videosTitle, counts.videos, Icons.Outlined.Videocam, MaterialShapes.Cookie9Sided, colors.primaryContainer, colors.onPrimaryContainer) {
-            tabsNav.openCollection(videosTitle, AlbumsViewModel.VIDEOS)
+            onOpen(videosTitle, AlbumsViewModel.VIDEOS, CollectionKind.QUERY)
         }
         CollectionChip(screenshotsTitle, counts.screenshots, Icons.Outlined.Screenshot, MaterialShapes.Square, colors.secondaryContainer, colors.onSecondaryContainer) {
-            tabsNav.openCollection(screenshotsTitle, AlbumsViewModel.SCREENSHOTS)
+            onOpen(screenshotsTitle, AlbumsViewModel.SCREENSHOTS, CollectionKind.QUERY)
         }
         CollectionChip(gifsTitle, counts.gifs, Icons.Outlined.Gif, MaterialShapes.Sunny, colors.primaryContainer, colors.onPrimaryContainer) {
-            tabsNav.openCollection(gifsTitle, AlbumsViewModel.GIFS)
+            onOpen(gifsTitle, AlbumsViewModel.GIFS, CollectionKind.QUERY)
         }
         CollectionChip(stringResource(R.string.collection_trash), counts.trash, Icons.Outlined.DeleteOutline, MaterialShapes.Pill, colors.errorContainer, colors.onErrorContainer) {
-            tabsNav.navigate(TrashRoute)
+            onOpenTrash()
         }
     }
 }
@@ -292,13 +390,21 @@ private fun EmptyAlbumsHint(onCreate: () -> Unit) {
     }
 }
 
-/** Carte d'album : couverture arrondie, nom et nombre d'éléments. */
+/**
+ * Carte d'album : couverture arrondie, nom et nombre d'éléments. [onLongClick] : options de
+ * l'album, sans l'ouvrir.
+ */
 @Composable
-fun AlbumCard(album: Album, hiddenFromTimeline: Boolean = false, onClick: () -> Unit) {
-    AlbumCard(album.name, album.count, album.cover, hiddenFromTimeline = hiddenFromTimeline, onClick = onClick)
+fun AlbumCard(album: Album, hiddenFromTimeline: Boolean = false, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+    AlbumCard(album.name, album.count, album.cover, hiddenFromTimeline = hiddenFromTimeline, onLongClick = onLongClick, onClick = onClick)
 }
 
-/** Carte d'album à partir de ses éléments ; [placeholder] tient lieu de couverture absente. */
+/**
+ * Carte d'album à partir de ses éléments ; [placeholder] tient lieu de couverture absente. Toute
+ * la carte se touche, lue d'un bloc par TalkBack ; l'ondulation reste sur la couverture.
+ * [onLongClick] : options de l'album (retour haptique de l'appui long, action « Options de
+ * l'album » pour TalkBack).
+ */
 @Composable
 fun AlbumCard(
     name: String,
@@ -306,16 +412,23 @@ fun AlbumCard(
     cover: MediaItem?,
     placeholder: ImageVector = Icons.Outlined.PhotoAlbum,
     hiddenFromTimeline: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth()) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickableWithOptions(interactionSource, stringResource(R.string.album_options), onOptions = onLongClick, onClick = onClick),
+    ) {
         Surface(
-            onClick = onClick,
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f),
+                .aspectRatio(1f)
+                .clip(MaterialTheme.shapes.extraLarge)
+                .indication(interactionSource, ripple()),
         ) {
             if (cover != null) {
                 AsyncImage(

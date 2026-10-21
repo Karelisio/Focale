@@ -14,6 +14,9 @@ import app.focale.data.MediaRepository
 import app.focale.data.SmartAlbum
 import app.focale.data.SmartAlbumRepository
 import app.focale.data.TrashRepository
+import app.focale.ui.actions.AlbumActions
+import app.focale.ui.actions.MediaActions
+import app.focale.ui.actions.source
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -42,7 +45,13 @@ class AlbumsViewModel @Inject constructor(
     smartAlbumRepository: SmartAlbumRepository,
     accessManager: MediaAccessManager,
     settingsRepository: SettingsRepository,
+    /** Passage d'un album dans le coffre : confirmation, progression et bilan, comme dans l'album. */
+    val actions: MediaActions,
 ) : ViewModel() {
+
+    init {
+        actions.bind(viewModelScope)
+    }
 
     val access: StateFlow<MediaAccess> = accessManager.access
 
@@ -74,6 +83,26 @@ class AlbumsViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CollectionCounts())
 
     suspend fun createAlbum(name: String): Long = albumRepository.create(name)
+
+    /** Options d'un album (appui long sur sa carte), les mêmes que dans l'album ouvert. */
+    private val albumActions = AlbumActions(viewModelScope, albumRepository, settingsRepository, actions)
+
+    fun renameAlbum(album: Album.User, name: String) {
+        albumActions.rename(album.id, name)
+    }
+
+    fun deleteAlbum(album: Album.User) {
+        albumActions.delete(album.id)
+    }
+
+    fun setFolderHidden(folder: Album.Folder, hidden: Boolean) {
+        albumActions.setFolderHidden(folder.bucketId, hidden)
+    }
+
+    /** Tout l'album, comme depuis son menu. */
+    fun requestMoveToVault(album: Album) {
+        albumActions.moveToVault(album.source)
+    }
 
     companion object {
         val FAVORITES = MediaQuery(favoritesOnly = true)

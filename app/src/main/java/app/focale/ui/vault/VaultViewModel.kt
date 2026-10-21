@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -127,11 +128,26 @@ class VaultViewModel @Inject constructor(
 
     private val selectionState = VaultSelection(viewModelScope, repository) { items.value.orEmpty() }
     val selection: StateFlow<Set<Long>> = selectionState.selected
-    val busy: StateFlow<Boolean> = combine(selectionState.busy, removingOriginals) { selecting, removing -> selecting || removing }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Options d'un album (appui long sur sa tuile), les mêmes que dans l'album ouvert. */
+    private val albumActions = VaultAlbumActions(viewModelScope, repository)
+
+    val busy: StateFlow<Boolean> = combine(selectionState.busy, removingOriginals, albumActions.busy) { selecting, removing, leaving ->
+        selecting || removing || leaving
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val channel = Channel<VaultEvent>(Channel.BUFFERED)
-    val events: Flow<VaultEvent> = merge(channel.receiveAsFlow(), selectionState.messages.map { VaultEvent.Message(it) })
+    val events: Flow<VaultEvent> = merge(
+        channel.receiveAsFlow(),
+        selectionState.messages.map { VaultEvent.Message(it) },
+        // Rien ne se ferme ici : seul le message d'un album sorti du coffre, ou d'un échec, s'affiche.
+        albumActions.events.mapNotNull { event ->
+            when (event) {
+                is VaultAlbumEvent.Message -> event.text
+                is VaultAlbumEvent.Closed -> event.text
+            }?.let { VaultEvent.Message(it) }
+        },
+    )
 
     private val digits = StringBuilder()
     private var firstEntry: String? = null
@@ -277,6 +293,20 @@ class VaultViewModel @Inject constructor(
 
     /** Range la sélection dans un album : de la métadonnée seulement, rien n'est rechiffré. */
     fun moveSelection(destination: VaultDestination) = selectionState.moveTo(destination, albums.value)
+
+    fun renameAlbum(album: VaultAlbum, name: String) {
+        albumActions.rename(album.id, name)
+    }
+
+    /** Supprime l'album ; ses éléments restent dans le coffre, dans « Tous les éléments ». */
+    fun deleteAlbum(album: VaultAlbum) {
+        albumActions.delete(album.id)
+    }
+
+    /** Sort tout l'album du coffre : ses éléments retournent dans leurs dossiers d'origine. */
+    fun restoreAlbum(album: VaultAlbum) {
+        if (!busy.value) albumActions.restore(album.id)
+    }
 
     fun setSort(sort: VaultSort) {
         viewModelScope.launch { content.setItemSort(sort) }

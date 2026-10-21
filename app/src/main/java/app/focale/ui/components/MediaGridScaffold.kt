@@ -64,7 +64,7 @@ fun MediaGridScaffold(
     extraSelectionActions: List<ExtraAction> = emptyList(),
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    onAlbumMovedToVault: () -> Unit = {},
+    onAlbumMovedToVault: (() -> Unit)? = null,
     emptyContent: @Composable () -> Unit = {},
     /**
      * Défilement imbriqué d'une barre supérieure qui ne se replie pas comme une barre

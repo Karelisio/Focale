@@ -33,9 +33,11 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 - **Organisation** : albums par dossier et albums virtuels, favoris, corbeille
   30 jours, sélection multiple (appui long + glisser), copier / déplacer / renommer /
   supprimer / partager, tri et filtres (photos, vidéos, captures, GIF), dossiers
-  masqués de Photos (WhatsApp, mèmes…) mais toujours dans Albums. Albums automatiques
-  tirés de l'analyse : documents, reçus, animaux, nourriture, paysages, fêtes, véhicules,
-  sport.
+  masqués de Photos (WhatsApp, mèmes…) mais toujours dans Albums. Appui long sur un album
+  pour ses options sans l'ouvrir : diaporama, renommer, masquer dans Photos, déplacer dans
+  le coffre-fort, supprimer (dans le coffre : renommer, sortir du coffre, supprimer).
+  Albums automatiques tirés de l'analyse : documents, reçus, animaux, nourriture,
+  paysages, fêtes, véhicules, sport.
 - **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
   (« plage », « chien »…, en français ou en anglais), texte des photos et des captures
   d'écran (« facture », « wifi »…), dates, lieux (géocodage hors ligne, noms français et

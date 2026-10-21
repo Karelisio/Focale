@@ -17,17 +17,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,7 +33,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,8 +54,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.R
 import app.focale.ui.actions.MediaActionsHost
-import app.focale.ui.actions.NameDialog
+import app.focale.ui.actions.RenameAlbumDialog
 import app.focale.ui.components.EmptyState
+import app.focale.ui.components.OptionsMenu
 import app.focale.ui.components.SelectionTopBar
 import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultItem
@@ -121,45 +114,15 @@ fun VaultAlbumScreen(
     if (sorting) {
         VaultSortSheet(sort = sort, onSortChange = viewModel::setSort, onDismiss = { sorting = false })
     }
+    // Dialogues des options de l'album, les mêmes que depuis l'appui long sur sa tuile.
     if (renaming) {
-        NameDialog(
-            title = stringResource(R.string.album_rename),
-            label = stringResource(R.string.album_name),
-            confirm = stringResource(R.string.action_rename),
-            initial = current.name,
-            onConfirm = viewModel::rename,
-            onDismiss = { renaming = false },
-        )
+        RenameAlbumDialog(name = current.name, onConfirm = viewModel::rename, onDismiss = { renaming = false })
     }
     if (confirmDeleteAlbum) {
-        AlertDialog(
-            onDismissRequest = { confirmDeleteAlbum = false },
-            icon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null) },
-            title = { Text(stringResource(R.string.vault_album_delete_title, current.name)) },
-            text = { Text(stringResource(R.string.vault_album_delete_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDeleteAlbum = false
-                    viewModel.deleteAlbum()
-                }) { Text(stringResource(R.string.action_delete)) }
-            },
-            dismissButton = { TextButton(onClick = { confirmDeleteAlbum = false }) { Text(stringResource(R.string.action_cancel)) } },
-        )
+        VaultAlbumDeleteDialog(name = current.name, onConfirm = viewModel::deleteAlbum, onDismiss = { confirmDeleteAlbum = false })
     }
     if (confirmRestoreAlbum) {
-        AlertDialog(
-            onDismissRequest = { confirmRestoreAlbum = false },
-            icon = { Icon(Icons.Outlined.LockOpen, contentDescription = null) },
-            title = { Text(stringResource(R.string.vault_album_restore_title, current.name)) },
-            text = { Text(stringResource(R.string.vault_album_restore_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmRestoreAlbum = false
-                    viewModel.restoreAlbum()
-                }) { Text(stringResource(R.string.vault_album_restore_confirm)) }
-            },
-            dismissButton = { TextButton(onClick = { confirmRestoreAlbum = false }) { Text(stringResource(R.string.action_cancel)) } },
-        )
+        VaultAlbumRestoreDialog(name = current.name, onConfirm = viewModel::restoreAlbum, onDismiss = { confirmRestoreAlbum = false })
     }
     if (confirmDeleteItems) {
         VaultDeleteDialog(
@@ -264,12 +227,7 @@ internal fun VaultAlbumContent(
                         IconButton(onClick = onLock, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.Outlined.Lock, contentDescription = stringResource(R.string.action_lock))
                         }
-                        VaultAlbumMenu(
-                            canRestore = album.count > 0,
-                            onRename = onRename,
-                            onRestore = onRestoreAlbum,
-                            onDelete = onDeleteAlbum,
-                        )
+                        OptionsMenu(vaultAlbumOptions(album, onRename = onRename, onRestore = onRestoreAlbum, onDelete = onDeleteAlbum))
                     },
                     scrollBehavior = scrollBehavior,
                 )
@@ -331,43 +289,6 @@ internal fun VaultAlbumContent(
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun VaultAlbumMenu(canRestore: Boolean, onRename: () -> Unit, onRestore: () -> Unit, onDelete: () -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }, shapes = IconButtonDefaults.shapes()) {
-            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.album_rename)) },
-                leadingIcon = { Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = null) },
-                onClick = {
-                    open = false
-                    onRename()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.vault_album_restore_action)) },
-                leadingIcon = { Icon(Icons.Outlined.LockOpen, contentDescription = null) },
-                enabled = canRestore,
-                onClick = {
-                    open = false
-                    onRestore()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.album_delete_title)) },
-                leadingIcon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null) },
-                onClick = {
-                    open = false
-                    onDelete()
-                },
-            )
         }
     }
 }

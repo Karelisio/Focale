@@ -366,10 +366,11 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   ou réorganiser un album ne chiffre que les médias qui entrent dans le coffre : ceux qui y
   sont ne sont ni relus ni réécrits (`VaultAlbumImportTest`), et l'import n'exige toujours pas
   de déverrouiller le coffre.
-- Album entier (menu de `CollectionScreen`, même pipeline d'import) : un dossier rejoint
-  l'album du coffre lié à son `BUCKET_ID` (`source_bucket_id`, `source_path`), créé au besoin ;
-  un album de l'application devient un nouvel album du même nom, puis il est supprimé s'il a
-  été vidé (il ne resterait dans la galerie que son nom, indice de ce qu'il contenait).
+- Album entier (menu de `CollectionScreen` ou appui long sur sa carte dans l'onglet Albums,
+  même pipeline d'import) : un dossier rejoint l'album du coffre lié à son `BUCKET_ID`
+  (`source_bucket_id`, `source_path`), créé au besoin ; un album de l'application devient un
+  nouvel album du même nom, puis il est supprimé s'il a été vidé (il ne resterait dans la
+  galerie que son nom, indice de ce qu'il contenait).
 - Nouveaux médias d'un album-dossier (bannière dans l'album, « Ajouter ») : médias du dossier,
   hors corbeille, dont `date_added` suit `last_import_at` à une minute près (`DATE_ADDED` est à
   la seconde et l'index suit MediaStore avec retard). Les originaux importés ayant quitté
@@ -627,6 +628,24 @@ application ouvre les photos et proposer de choisir Focale.
 - Export (`EditRenderer`, `ImageEditor`) : même rotation autour du centre du cadre, image
   agrandie de 3 px (`bleed`) pour qu'aucun coin ne soit à demi transparent. Les traits
   restent alignés sur le cadre : une forme tracée sur la photo redressée reste droite.
+
+### 7.6 Options des albums
+- Appui long sur la carte d'un album de l'application ou d'un dossier (onglet Albums) : feuille
+  d'options (`OptionsSheet`) avec en tête la couverture, le nom et le nombre d'éléments, et le
+  retour haptique de l'appui long (`combinedClickable`) ; l'appui simple ouvre l'album. Le
+  diaporama (album non vide), puis les options du menu de l'album ouvert, même liste et mêmes
+  conditions (`albumOptions`) : renommer, masquer dans Photos ou y afficher, déplacer dans le
+  coffre (album non vide), supprimer. Mêmes dialogues (`RenameAlbumDialog`, `DeleteAlbumDialog`)
+  et même logique (`AlbumActions`, propre à chaque ViewModel) ; le passage au coffre suit le flux
+  de `MediaActions` (confirmation, progression, permission de notification, bilan), dont le
+  bilan s'affiche en snackbar quand aucun écran ne se ferme. Une option à dialogue l'ouvre une
+  fois la feuille refermée.
+- Albums du coffre : même appui long sur leurs tuiles (renommer, sortir du coffre, supprimer,
+  mêmes dialogues que le menu de l'album, `VaultAlbumActions`), feuille protégée des captures.
+  L'appui long des éléments sélectionne toujours ; albums automatiques et personnes inchangés.
+- Accessibilité : la carte entière est un seul nœud (nom, nombre, dossier masqué), l'ondulation
+  restant sur la couverture ; appui long nommé « Options de l'album » et action personnalisée du
+  même nom pour TalkBack (`clickableWithOptions`).
 
 ---
 
