@@ -36,7 +36,10 @@ import app.focale.ui.theme.FocaleTheme
 import app.focale.ui.theme.ViewerChromeTheme
 import app.focale.ui.videoeditor.VideoEditorLayout
 import app.focale.ui.viewer.MotionPhotoChip
+import app.focale.ui.viewer.SeekDirection
+import app.focale.ui.viewer.SeekFeedback
 import app.focale.ui.viewer.VideoControlsLayout
+import app.focale.ui.viewer.VideoSeekFeedback
 import app.focale.ui.viewer.ViewerToolbar
 import app.focale.video.TrimRange
 import com.github.takahirom.roborazzi.RoborazziOptions
@@ -51,8 +54,9 @@ import androidx.compose.ui.graphics.Canvas as BitmapCanvas
 
 /**
  * Captures de référence de la lecture et du montage vidéo, en portrait et en paysage
- * (couleurs Material You de repli, sans couleurs dynamiques). Régénérer avec
- * `./gradlew recordRoborazziStandardDebug` quand le changement est voulu.
+ * (couleurs Material You de repli, sans couleurs dynamiques), dont le cumul des sauts par
+ * double appui. Régénérer avec `./gradlew recordRoborazziStandardDebug` quand le changement
+ * est voulu.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -70,6 +74,15 @@ class VideoScreenshotTest {
     @Test
     @Config(qualifiers = "w800dp-h400dp-xxhdpi")
     fun commandesVideoPaysage() = captureViewer(playing = true, muted = true)
+
+    /** Deuxième appui d'une série à droite, commandes affichées : entre la barre supérieure et la progression. */
+    @Test
+    fun sautVideoPortrait() = captureViewer(playing = true, muted = false, seek = SeekFeedback(SeekDirection.FORWARD, seconds = 20))
+
+    /** Troisième appui à gauche, en paysage et en français : l'ovale s'aplatit entre la barre supérieure et la progression. */
+    @Test
+    @Config(qualifiers = "fr-w800dp-h400dp-xxhdpi")
+    fun sautVideoPaysage() = captureViewer(playing = true, muted = true, seek = SeekFeedback(SeekDirection.BACKWARD, seconds = 30))
 
     @Test
     fun montageVideoPortrait() = captureEditor()
@@ -91,8 +104,8 @@ class VideoScreenshotTest {
         }
     }
 
-    /** Visionneuse : image de la vidéo, commandes et barre d'outils flottante dessous. */
-    private fun captureViewer(playing: Boolean, muted: Boolean) = capture {
+    /** Visionneuse : image de la vidéo, cumul des sauts ([seek]), commandes et barre d'outils flottante dessous. */
+    private fun captureViewer(playing: Boolean, muted: Boolean, seek: SeekFeedback? = null) = capture {
         // Comme la visionneuse : la progression prend la largeur mesurée de la barre d'outils.
         var toolbarWidth by remember { mutableStateOf(Dp.Unspecified) }
         val density = LocalDensity.current
@@ -102,6 +115,7 @@ class VideoScreenshotTest {
                 .background(Color.Black),
         ) {
             FakeVideoFrame()
+            if (seek != null) ViewerChromeTheme { VideoSeekFeedback(seek, controlsVisible = true) }
             ViewerChromeTheme {
                 VideoControlsLayout(
                     playing = playing,

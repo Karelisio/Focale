@@ -154,6 +154,7 @@ private fun VaultViewerContent(viewModel: VaultViewerViewModel, onBack: () -> Un
                     mediaItem = { viewModel.mediaItemFor(item) },
                     poster = { VaultPoster(item) },
                     controlsWidth = toolbarWidth,
+                    contentDescription = item.displayName,
                     playerFactory = viewModel::createPlayer,
                 )
             } else {
