@@ -357,9 +357,12 @@ private fun VaultContentPane(
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
     val lastBackupAt by backupViewModel.lastBackupAt.collectAsStateWithLifecycle()
+    val sort by viewModel.sort.collectAsStateWithLifecycle()
+    val albumSort by viewModel.albumSort.collectAsStateWithLifecycle()
     val selecting = selection.isNotEmpty()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var choosingAlbum by rememberSaveable { mutableStateOf(false) }
+    var sorting by rememberSaveable { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyGridState()
     val fabExpanded by remember { derivedStateOf { gridState.firstVisibleItemIndex == 0 } }
@@ -387,6 +390,15 @@ private fun VaultContentPane(
             onDismiss = { choosingAlbum = false },
         )
     }
+    if (sorting) {
+        VaultSortSheet(
+            sort = sort,
+            onSortChange = viewModel::setSort,
+            albumSort = albumSort,
+            onAlbumSortChange = viewModel::setAlbumSort,
+            onDismiss = { sorting = false },
+        )
+    }
     VaultBackupDialogs(viewModel = backupViewModel, onPickTarget = onPickBackupTarget)
 
     Scaffold(
@@ -411,6 +423,7 @@ private fun VaultContentPane(
                         }
                     },
                     actions = {
+                        if (!items.isNullOrEmpty() || albums.isNotEmpty()) VaultSortButton(onClick = { sorting = true })
                         IconButton(onClick = viewModel::lock, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.Outlined.Lock, contentDescription = stringResource(R.string.action_lock))
                         }

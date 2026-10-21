@@ -24,6 +24,8 @@ data class VaultItem(
     val durationMs: Long,
     val fileName: String,
     val thumbFileName: String?,
+    /** Entrée dans le coffre (ms). */
+    val addedAt: Long,
 ) {
     /** Fichier complet, pour Coil. */
     fun image(): VaultImage = VaultImage(fileName)
@@ -40,6 +42,7 @@ fun VaultItemEntity.toModel(): VaultItem = VaultItem(
     durationMs = duration,
     fileName = fileName,
     thumbFileName = thumbFileName,
+    addedAt = addedAt,
 )
 
 /**

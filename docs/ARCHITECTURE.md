@@ -278,6 +278,12 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   option ; état déverrouillé en mémoire seulement, reverrouillage dès la mise en
   arrière-plan ou après 1, 5 ou 15 min ; `FLAG_SECURE` sur les écrans du coffre.
 
+- Tri (`VaultContent`, réglages `vaultSort` et `vaultAlbumSort`) : éléments par date de prise
+  de vue, date d'ajout au coffre, nom (`Collator` primaire) ou taille, albums par nom, date de
+  création ou nombre d'éléments, dans les deux sens ; même feuille que les grilles de la
+  galerie (`SortSheet`). Le même ordre vaut pour la grille de tout le coffre, celles des albums
+  et la visionneuse, qui parcourt les éléments dans l'ordre de la grille d'origine.
+
 #### Albums du coffre
 - De la métadonnée seulement : `vault_album`, et `vault_item.album_id` (clé étrangère
   `ON DELETE SET NULL` : supprimer un album garde ses éléments, hors album ; « Tous les

@@ -15,6 +15,7 @@ import app.focale.data.MediaRepository
 import app.focale.data.MediaSharer
 import app.focale.data.OperationResult
 import app.focale.vault.VaultAlbum
+import app.focale.vault.VaultContent
 import app.focale.vault.VaultDestination
 import app.focale.vault.VaultPinStore
 import app.focale.vault.VaultRepository
@@ -102,6 +103,7 @@ class MediaActions @Inject constructor(
     private val media: MediaRepository,
     private val sharer: MediaSharer,
     private val vault: VaultRepository,
+    private val vaultContent: VaultContent,
     private val vaultPins: VaultPinStore,
     private val vaultSession: VaultSession,
 ) {
@@ -126,7 +128,7 @@ class MediaActions @Inject constructor(
 
     /** Albums du coffre, vides tant qu'il est verrouillé : leurs noms ne s'affichent pas autrement. */
     val vaultAlbums: Flow<List<VaultAlbum>>
-        get() = vaultSession.unlocked.flatMapLatest { unlocked -> if (unlocked) vault.observeAlbums() else flowOf(emptyList()) }
+        get() = vaultSession.unlocked.flatMapLatest { unlocked -> if (unlocked) vaultContent.albums() else flowOf(emptyList()) }
 
     fun bind(scope: CoroutineScope) {
         this.scope = scope
