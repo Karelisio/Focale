@@ -12,6 +12,9 @@ description de la version GitHub.
   nouvelles photos du dossier d'origine). Les sauvegardes du coffre gardent les albums.
 - Rotation à deux doigts dans la visionneuse, avec « Enregistrer la rotation » (sans perte
   pour les JPEG) ; aussi « Pivoter » dans le menu.
+- Focale peut devenir l'application par défaut des photos : il apparaît dans « Ouvrir
+  avec » (fichiers, WhatsApp, appareil photo…), et Réglages > Fichiers indique comment
+  le choisir.
 - Nettoyage (doublons, photos floues…) déplacé dans l'onglet Plus.
 
 ## 1.5.0
