@@ -5,6 +5,15 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.6.0
+
+- Albums dans le coffre-fort : « Déplacer dans le coffre-fort » depuis un album, puis
+  ajout des nouvelles photos sans rien déchiffrer (bouton « Ajouter », et proposition des
+  nouvelles photos du dossier d'origine). Les sauvegardes du coffre gardent les albums.
+- Rotation à deux doigts dans la visionneuse, avec « Enregistrer la rotation » (sans perte
+  pour les JPEG) ; aussi « Pivoter » dans le menu.
+- Nettoyage (doublons, photos floues…) déplacé dans l'onglet Plus.
+
 ## 1.5.0
 
 - Personnes : tri par nombre de photos, nom ou photo récente, et personnes épinglées en

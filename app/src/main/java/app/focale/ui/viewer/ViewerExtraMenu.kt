@@ -1,6 +1,7 @@
 package app.focale.ui.viewer
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TextFields
@@ -14,9 +15,16 @@ import app.focale.ui.navigation.openSlideshow
 
 /** Entrées de menu ajoutées par d'autres fonctionnalités (texte, diaporama, coffre…). */
 @Composable
-fun ViewerExtraMenuItems(viewModel: ViewerViewModel, item: MediaItem?, dismiss: () -> Unit) {
+fun ViewerExtraMenuItems(viewModel: ViewerViewModel, item: MediaItem?, dismiss: () -> Unit, onRotate: (() -> Unit)? = null) {
     if (item == null) return
     val rootNav = LocalRootNavController.current
+    // Même rotation que le geste à deux doigts, pour qui ne peut pas le faire.
+    if (onRotate != null) {
+        ViewerMenuItem(Icons.AutoMirrored.Outlined.RotateRight, stringResource(R.string.editor_rotate)) {
+            dismiss()
+            onRotate()
+        }
+    }
     if (!item.isVideo) {
         val texts: PhotoTextViewModel = hiltViewModel()
         ViewerMenuItem(Icons.Outlined.TextFields, stringResource(R.string.action_text)) {

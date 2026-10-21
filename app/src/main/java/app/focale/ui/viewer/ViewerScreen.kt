@@ -76,6 +76,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -176,6 +177,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
         if (emptyAfterLoad && initialIndex != null) onBack()
     }
 
+    val resources = LocalResources.current
     LaunchedEffect(viewModel) {
         viewModel.rotationEvents.collect { event ->
             // La nouvelle version du fichier a pu arriver avant et remettre l'état à zéro.
@@ -198,7 +200,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     null
                 }
             }
-            if (message != null) launch { snackbarHostState.showSnackbar(context.getString(message), withDismissAction = true) }
+            if (message != null) launch { snackbarHostState.showSnackbar(resources.getString(message), withDismissAction = true) }
         }
     }
 
@@ -341,7 +343,9 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                         dismiss()
                         item?.let { startChooser(context, Intent.ACTION_VIEW, it) }
                     }
-                    ViewerExtraMenuItems(viewModel, item, dismiss)
+                    val rotatable = item != null && !item.isVideo && !item.isGif && !motionState.isPlaying &&
+                        !rotation.awaitsNewVersion
+                    ViewerExtraMenuItems(viewModel, item, dismiss, onRotate = item?.takeIf { rotatable }?.let { { rotation.rotateClockwise(it) } })
                 },
             )
         }

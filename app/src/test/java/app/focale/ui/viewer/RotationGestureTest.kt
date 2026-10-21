@@ -134,4 +134,22 @@ class RotationGestureTest {
         assertEquals(-1, state.turns)
         assertEquals(3, state.pending)
     }
+
+    @Test
+    fun `le menu tourne d'un quart de tour par appui, comme le geste`() {
+        val state = PhotoRotationState()
+        state.rotateClockwise(photo)
+        state.rotateClockwise(photo)
+        assertEquals(photo, state.item)
+        assertEquals(2, state.pending)
+
+        state.cancel()
+        assertEquals(0, state.pending)
+
+        // Enregistrement en cours : rien ne bouge.
+        state.rotateClockwise(photo)
+        state.beginSave()
+        state.rotateClockwise(photo)
+        assertEquals(1, state.pending)
+    }
 }

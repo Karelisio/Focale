@@ -54,7 +54,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   retirées de MediaStore et des autres applications, déverrouillage par code ou
   biométrie, reverrouillage automatique, captures d'écran interdites ; sauvegarde
   chiffrée par mot de passe (`.fvault`, PBKDF2 + AES-256-GCM en flux) à restaurer sur un
-  autre téléphone.
+  autre téléphone. Albums du coffre : un album entier y entre d'un geste, et ses nouvelles
+  photos s'y ajoutent sans rien déchiffrer (chaque élément est chiffré à part).
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir

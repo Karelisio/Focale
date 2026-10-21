@@ -141,6 +141,14 @@ class PhotoRotationState {
         dragging = false
     }
 
+    /** Quart de tour horaire sans geste (menu, accessibilité), aligné par la page comme un relâchement. */
+    fun rotateClockwise(photo: MediaItem) {
+        if (dragging || saving || saved) return
+        if (item?.id != photo.id) reset()
+        item = photo
+        turns += 1
+    }
+
     /** Retour à l'orientation d'origine, animé par la page. */
     fun cancel() {
         turns = RotationMath.nearestFullTurn(turns)
