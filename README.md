@@ -192,4 +192,4 @@ ML Kit (modèles embarqués) · ONNX Runtime · osmdroid · Tink · Glance.
 Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
 carte, modèles de la recherche en langage naturel) à partir des données sources, ou
 calibrent des seuils sur des données publiques (`tools/faces/` : regroupement des visages,
-sur LFW) ; ils ne sont pas nécessaires à la compilation.
+sur LFW ; `tools/trips/` : voyages, sur YFCC100M) ; ils ne sont pas nécessaires à la compilation.

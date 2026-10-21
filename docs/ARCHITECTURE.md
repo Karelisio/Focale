@@ -380,13 +380,18 @@ compactes, sur la clause WHERE de `MediaQueryBuilder` (corbeille et dossiers mas
   sinon une personne sans nom revenue sur au moins 3 mois (un proche plutôt qu'un inconnu),
   titrée « ensemble » avec son visage. Requête : fenêtre + `personId`.
 - **Voyages** : `TripDetector`, logique pure sur les points (date, latitude, longitude) des
-  médias géolocalisés. Chez soi : la cellule d'une grille de ~25 km photographiée pendant le
-  plus de mois distincts (un séjour tient en un ou deux mois), par année pour suivre un
-  déménagement (à défaut, celle de l'année la plus proche). Un voyage enchaîne les jours avec un média à plus de 100 km de chez soi (un
-  jour sans média géolocalisé toléré, une journée à la maison l'interrompt), 5 médias
-  lointains au moins ; il apparaît quand son premier jour tombe dans la fenêtre. Requête : du
-  premier au dernier média lointain, sans les photos de la maison du départ et du retour.
-  Titre : la ville qui rassemble au moins la moitié des médias lointains, sinon le pays.
+  médias géolocalisés, seuils mesurés sur les photos de YFCC100M (`tools/trips/`). Lieux
+  familiers : les cellules d'une grille de ~25 km photographiées pendant au moins 4 mois
+  distincts, étalés sur 90 jours, dans les 12 mois autour du média (domicile, résidence
+  secondaire, travail d'un frontalier, nouvelle adresse dès un déménagement ; un séjour, même
+  long, tient en deux ou trois mois) ; chez soi : le plus familier. Un mois sans lieu familier
+  reprend ceux du mois le plus proche. Un voyage enchaîne les jours avec un média à plus de
+  60 km de tout lieu familier (deux jours sans média géolocalisé tolérés, une journée près d'un
+  lieu familier l'interrompt), 5 médias lointains au moins et une nuit sur place, sauf au-delà
+  de 150 km (un aller-retour dans la journée est une sortie) ; il apparaît quand son premier
+  jour tombe dans la fenêtre. Requête : du premier au dernier média lointain, sans les photos
+  de la maison du départ et du retour. Titre : la ville qui rassemble au moins la moitié des
+  médias lointains, sinon le pays.
 - **Sans doublon** : une fenêtre passée à 80 % dans le voyage n'a pas de souvenir général ;
   deux cartes d'une même fenêtre ne partagent pas leur couverture.
 
