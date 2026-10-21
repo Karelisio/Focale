@@ -11,12 +11,15 @@ import com.google.crypto.tink.util.SecretBytes
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
+import java.io.Closeable
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.BufferUnderflowException
+import java.nio.ByteBuffer
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -58,6 +61,10 @@ import kotlinx.serialization.json.Json
  * de passe) ; il distingue un mot de passe faux d'un fichier endommagé, sans rien
  * déchiffrer. L'archive s'écrit et se lit en flux : la mémoire utilisée ne dépend pas de
  * sa taille, et sa taille d'aucune limite (vidéos de plusieurs Go).
+ *
+ * Les clés tirées du mot de passe ([deriveKeys]) peuvent écrire plusieurs archives : celles de
+ * la sauvegarde automatique, qui partagent alors l'en-tête (sel, itérations, témoin) et se
+ * restaurent toutes avec le mot de passe.
  */
 object VaultArchive {
 
@@ -79,15 +86,15 @@ object VaultArchive {
     internal const val CHUNK_BYTES = 256 * 1024
     internal const val MAX_CHUNK_BYTES = 1 shl 20
     internal const val MAX_MANIFEST_BYTES = 32 shl 20
+    internal const val KEY_BYTES = 32
 
-    private const val KEY_BYTES = 32
     private const val SEGMENT_BYTES = 1 shl 20
     private const val BUFFER = 64 * 1024
     private const val HKDF = "HMACSHA256"
     private val WITNESS_INFO = "focale-vault-backup/check".toByteArray(Charsets.US_ASCII)
     private val STREAM_INFO = "focale-vault-backup/stream".toByteArray(Charsets.US_ASCII)
 
-    private val streamParameters: AesGcmHkdfStreamingParameters = AesGcmHkdfStreamingParameters.builder()
+    internal val streamParameters: AesGcmHkdfStreamingParameters = AesGcmHkdfStreamingParameters.builder()
         .setKeySizeBytes(KEY_BYTES)
         .setDerivedAesGcmKeySizeBytes(KEY_BYTES)
         .setHkdfHashType(AesGcmHkdfStreamingParameters.HashType.SHA256)
@@ -116,12 +123,32 @@ object VaultArchive {
         onBytes: (Int) -> Unit = {},
         content: (VaultArchiveWriter) -> Unit,
     ) {
-        require(iterations in 1..MAX_ITERATIONS)
-        val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
-        val keys = deriveKeys(password, salt, iterations)
-        val header = ArchiveHeader(iterations, salt, keys.witness).encode()
+        deriveKeys(password, iterations).use { keys -> write(output, keys, manifest, onBytes, content) }
+    }
+
+    /**
+     * Écrit une archive avec des clés déjà tirées du mot de passe ([deriveKeys]), sans lui :
+     * même format, même en-tête (itérations, sel, témoin), restaurable avec le mot de passe par
+     * [open]. Pour le reste, comme [write] avec mot de passe ; [keys] ne sont pas effacées.
+     *
+     * Les mêmes clés peuvent écrire plusieurs archives sans s'affaiblir : pour chaque flux, Tink
+     * tire un sel de 32 octets et un préfixe de nonce de 7 octets (`AesGcmHkdfStreaming`,
+     * `randomSalt()` et `randomNonce()`), et chiffre ce flux avec sa propre clé AES-GCM,
+     * HKDF(clé, sel, données associées) ; dans un flux, le nonce de chaque segment (préfixe,
+     * numéro, marque du dernier) est unique. C'est l'usage prévu de `StreamingAead` (une clé
+     * pour de nombreux fichiers, comme ceux du coffre) : deux archives, même d'en-tête
+     * identique, ne partagent ni clé de segment ni nonce.
+     */
+    fun write(
+        output: OutputStream,
+        keys: VaultArchiveKeys,
+        manifest: ArchiveManifest,
+        onBytes: (Int) -> Unit = {},
+        content: (VaultArchiveWriter) -> Unit,
+    ) {
+        val header = keys.header().encode()
         output.write(header)
-        val data = DataOutputStream(BufferedOutputStream(keys.stream.newEncryptingStream(output, header), BUFFER))
+        val data = DataOutputStream(BufferedOutputStream(keys.streamingAead().newEncryptingStream(output, header), BUFFER))
         val description = json.encodeToString(ArchiveManifest.serializer(), manifest).toByteArray(Charsets.UTF_8)
         check(description.size <= MAX_MANIFEST_BYTES) { "Manifeste trop volumineux" }
         data.writeInt(description.size)
@@ -134,6 +161,17 @@ object VaultArchive {
     }
 
     /**
+     * Tire de [password], avec un sel aléatoire, les clés de nouvelles archives (dérivation lente :
+     * [iterations] de PBKDF2). [password] n'est pas effacé, les clés le sont par
+     * [VaultArchiveKeys.close].
+     */
+    fun deriveKeys(password: CharArray, iterations: Int = DEFAULT_ITERATIONS): VaultArchiveKeys {
+        require(iterations in 1..MAX_ITERATIONS)
+        val salt = ByteArray(SALT_BYTES).also { SecureRandom().nextBytes(it) }
+        return deriveKeys(password, salt, iterations)
+    }
+
+    /**
      * Ouvre l'archive lue dans [input] : en-tête, mot de passe puis manifeste. Le contenu se
      * lit ensuite avec le [VaultArchiveReader] renvoyé.
      *
@@ -143,10 +181,12 @@ object VaultArchive {
     fun open(input: InputStream, password: CharArray): VaultArchiveReader {
         val source = SourceInput(input)
         val header = readHeader(source)
-        val keys = deriveKeys(password, header.salt, header.iterations)
-        if (!MessageDigest.isEqual(keys.witness, header.witness)) throw VaultArchiveException(Reason.WRONG_PASSWORD)
+        val stream = deriveKeys(password, header.salt, header.iterations).use { keys ->
+            if (!MessageDigest.isEqual(keys.witness, header.witness)) throw VaultArchiveException(Reason.WRONG_PASSWORD)
+            keys.streamingAead()
+        }
         val data = guarded {
-            DataInputStream(BufferedInputStream(keys.stream.newDecryptingStream(source, header.encode()), BUFFER))
+            DataInputStream(BufferedInputStream(stream.newDecryptingStream(source, header.encode()), BUFFER))
         }
         val size = guarded { data.readInt() }
         if (size !in 1..MAX_MANIFEST_BYTES) throw VaultArchiveException(Reason.CORRUPTED)
@@ -206,22 +246,18 @@ object VaultArchive {
         }
     }
 
-    /** Témoin du mot de passe et primitive du flux, tirés de la même clé dérivée. */
-    private class Keys(val witness: ByteArray, val stream: StreamingAead)
-
-    private fun deriveKeys(password: CharArray, salt: ByteArray, iterations: Int): Keys {
+    /** Témoin du mot de passe et clé du flux, tirés de la même clé dérivée, effacée aussitôt. */
+    private fun deriveKeys(password: CharArray, salt: ByteArray, iterations: Int): VaultArchiveKeys {
         val master = BackupPassword.derive(password, salt, iterations)
-        val streamKey = Hkdf.computeHkdf(HKDF, master, ByteArray(0), STREAM_INFO, KEY_BYTES)
         try {
-            val witness = Hkdf.computeHkdf(HKDF, master, ByteArray(0), WITNESS_INFO, WITNESS_BYTES)
-            val key = AesGcmHkdfStreamingKey.create(
-                streamParameters,
-                SecretBytes.copyFrom(streamKey, InsecureSecretKeyAccess.get()),
+            return VaultArchiveKeys(
+                iterations = iterations,
+                salt = salt.copyOf(),
+                witness = Hkdf.computeHkdf(HKDF, master, ByteArray(0), WITNESS_INFO, WITNESS_BYTES),
+                streamKey = Hkdf.computeHkdf(HKDF, master, ByteArray(0), STREAM_INFO, KEY_BYTES),
             )
-            return Keys(witness, AesGcmHkdfStreaming.create(key))
         } finally {
             master.fill(0)
-            streamKey.fill(0)
         }
     }
 
@@ -435,6 +471,86 @@ internal class ArchiveHeader(val iterations: Int, val salt: ByteArray, val witne
             write(witness)
         }
         return bytes.toByteArray()
+    }
+}
+
+/**
+ * Clés d'archive tirées d'un mot de passe ([VaultArchive.deriveKeys]) : paramètres de l'en-tête
+ * (itérations, sel, témoin) et clé du flux chiffré. Elles écrivent des archives que le mot de
+ * passe restaure, sans lui ; ni lui ni la clé dont elles sont tirées n'en sont retrouvables
+ * (PBKDF2 puis HKDF). [close] efface la clé du flux, et les clés ne servent plus ; les copies
+ * qu'en fait Tink pour un flux, hors de portée, disparaissent avec lui.
+ */
+class VaultArchiveKeys internal constructor(
+    internal val iterations: Int,
+    internal val salt: ByteArray,
+    /** Témoin du mot de passe : public, il figure dans l'en-tête de chaque archive. */
+    internal val witness: ByteArray,
+    private val streamKey: ByteArray,
+) : Closeable {
+
+    @Volatile
+    private var closed = false
+
+    internal fun header(): ArchiveHeader = ArchiveHeader(iterations, salt, witness)
+
+    /** Primitive du flux chiffré ; refusée une fois les clés effacées (la clé serait nulle). */
+    internal fun streamingAead(): StreamingAead {
+        check(!closed) { "Clés effacées" }
+        val key = AesGcmHkdfStreamingKey.create(
+            VaultArchive.streamParameters,
+            SecretBytes.copyFrom(streamKey, InsecureSecretKeyAccess.get()),
+        )
+        return AesGcmHkdfStreaming.create(key)
+    }
+
+    /**
+     * Forme sérialisée, à ne conserver que chiffrée et à effacer après usage : format (1 o),
+     * itérations (4 o), longueur du sel (1 o) et sel, témoin (32 o), clé du flux (32 o).
+     */
+    fun encode(): ByteArray {
+        check(!closed) { "Clés effacées" }
+        // Tampon de la taille exacte : aucune copie de la clé ne reste ailleurs que dans le résultat.
+        return ByteBuffer.allocate(1 + 4 + 1 + salt.size + witness.size + streamKey.size)
+            .put(ENCODING)
+            .putInt(iterations)
+            .put(salt.size.toByte())
+            .put(salt)
+            .put(witness)
+            .put(streamKey)
+            .array()
+    }
+
+    override fun close() {
+        closed = true
+        streamKey.fill(0)
+    }
+
+    companion object {
+        private const val ENCODING: Byte = 1
+
+        /**
+         * Clés lues de [bytes], forme de [encode] ; [bytes] n'est pas effacé.
+         *
+         * @throws GeneralSecurityException forme inconnue, tronquée ou paramètres invalides.
+         */
+        fun decode(bytes: ByteArray): VaultArchiveKeys {
+            val buffer = ByteBuffer.wrap(bytes)
+            try {
+                if (buffer.get() != ENCODING) throw GeneralSecurityException("Clés d'un format inconnu")
+                val iterations = buffer.getInt()
+                val salt = ByteArray(buffer.get().toInt() and 0xFF).also { buffer.get(it) }
+                val witness = ByteArray(VaultArchive.WITNESS_BYTES).also { buffer.get(it) }
+                val streamKey = ByteArray(VaultArchive.KEY_BYTES).also { buffer.get(it) }
+                if (iterations !in 1..VaultArchive.MAX_ITERATIONS || salt.size < VaultArchive.SALT_BYTES || buffer.hasRemaining()) {
+                    streamKey.fill(0)
+                    throw GeneralSecurityException("Clés invalides")
+                }
+                return VaultArchiveKeys(iterations, salt, witness, streamKey)
+            } catch (error: BufferUnderflowException) {
+                throw GeneralSecurityException("Clés tronquées", error)
+            }
+        }
     }
 }
 

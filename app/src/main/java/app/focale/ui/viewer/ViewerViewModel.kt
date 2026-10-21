@@ -19,6 +19,8 @@ import app.focale.data.MediaRepository
 import app.focale.data.OperationResult
 import app.focale.data.PhotoRotator
 import app.focale.edit.SaveMode
+import app.focale.ml.PlaceName
+import app.focale.ml.PlaceNames
 import app.focale.people.PeopleRepository
 import app.focale.people.Person
 import app.focale.ui.actions.MediaActions
@@ -41,7 +43,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -72,6 +73,7 @@ class ViewerViewModel @Inject constructor(
     private val seedExtractor: SeedColorExtractor,
     settingsRepository: SettingsRepository,
     private val analysisDao: AnalysisDao,
+    private val placeNames: PlaceNames,
     private val peopleRepository: PeopleRepository,
     private val motionPhotos: MotionPhotoRepository,
     private val rotator: PhotoRotator,
@@ -116,11 +118,11 @@ class ViewerViewModel @Inject constructor(
         .mapLatest { seedExtractor.seedFor(it) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** Lieu (géocodage hors ligne) et étiquettes ML Kit du média courant. */
-    val place: StateFlow<Pair<String, String>?> = _current
+    /** Lieu (géocodage hors ligne, noms traduits) et étiquettes ML Kit du média courant. */
+    val place: StateFlow<Pair<PlaceName, String>?> = _current
         .distinctUntilChangedBy { it?.id }
         .flatMapLatest { item -> item?.let { analysisDao.observe(it.id) } ?: flowOf(null) }
-        .map { analysis -> analysis?.place?.let { name -> name to analysis.country.orEmpty() } }
+        .mapLatest { analysis -> analysis?.place?.let { name -> placeNames.of(name, analysis.country) to analysis.country.orEmpty() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val labels: StateFlow<List<String>> = _current

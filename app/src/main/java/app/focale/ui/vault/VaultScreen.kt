@@ -1,6 +1,7 @@
 package app.focale.ui.vault
 
 import android.content.ActivityNotFoundException
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -138,6 +139,7 @@ fun VaultScreen(
     onUnlocked: (() -> Unit)? = null,
     viewModel: VaultViewModel = hiltViewModel(),
     backupViewModel: VaultBackupViewModel = hiltViewModel(),
+    autoBackupViewModel: VaultAutoBackupViewModel = hiltViewModel(),
 ) {
     SecureWindow()
     val context = LocalContext.current
@@ -191,6 +193,14 @@ fun VaultScreen(
             openArchive.launch(arrayOf("*/*"))
         } catch (error: ActivityNotFoundException) {
             backupViewModel.onPickerUnavailable()
+        }
+    }
+    val openFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree(), autoBackupViewModel::onFolderChosen)
+    val pickBackupFolder: (Uri?) -> Unit = { initial ->
+        try {
+            openFolder.launch(initial)
+        } catch (error: ActivityNotFoundException) {
+            autoBackupViewModel.onPickerUnavailable()
         }
     }
     if (backupRunning) KeepScreenOn()
@@ -261,6 +271,8 @@ fun VaultScreen(
                 },
                 onPickBackupTarget = pickBackupTarget,
                 onRestoreBackup = pickArchive,
+                autoBackupViewModel = autoBackupViewModel,
+                onPickBackupFolder = pickBackupFolder,
             )
         }
     }
@@ -355,6 +367,8 @@ private fun VaultContentPane(
     onToggleBiometric: (Boolean) -> Unit,
     onPickBackupTarget: () -> Unit,
     onRestoreBackup: () -> Unit,
+    autoBackupViewModel: VaultAutoBackupViewModel,
+    onPickBackupFolder: (Uri?) -> Unit,
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
     val albums by viewModel.albums.collectAsStateWithLifecycle()
@@ -409,6 +423,7 @@ private fun VaultContentPane(
         )
     }
     VaultBackupDialogs(viewModel = backupViewModel, onPickTarget = onPickBackupTarget)
+    VaultAutoBackupDialogs(viewModel = autoBackupViewModel, onPickFolder = onPickBackupFolder)
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -445,6 +460,7 @@ private fun VaultContentPane(
                             onOpenTrash = onOpenTrash,
                             onBackup = backupViewModel::requestBackup,
                             onRestoreBackup = onRestoreBackup,
+                            onAutoBackup = autoBackupViewModel::open,
                             onToggleBiometric = onToggleBiometric,
                             onToggleNewMediaAlerts = { enabled ->
                                 viewModel.setNewMediaAlerts(enabled)
@@ -630,6 +646,7 @@ private fun VaultMenu(
     onOpenTrash: () -> Unit,
     onBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
+    onAutoBackup: () -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
     onToggleNewMediaAlerts: (Boolean) -> Unit,
     onChangePin: () -> Unit,
@@ -669,6 +686,14 @@ private fun VaultMenu(
                 onClick = {
                     open = false
                     onRestoreBackup()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.vault_auto_backup_action)) },
+                leadingIcon = { Icon(AutoBackupIcon, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onAutoBackup()
                 },
             )
             HorizontalDivider()

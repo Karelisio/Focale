@@ -1,5 +1,6 @@
 package app.focale.ui.vault
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -73,6 +74,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.R
 import app.focale.core.util.Formatters
@@ -163,13 +165,22 @@ fun KeepScreenOn() {
 }
 
 /**
- * Mot de passe d'une nouvelle sauvegarde, saisi deux fois.
+ * Mot de passe d'une nouvelle sauvegarde, saisi deux fois, avec les règles et l'indicateur de
+ * robustesse de [BackupPassword] ; aussi pour les sauvegardes automatiques, d'où les textes et
+ * l'icône en paramètres. Protégé des captures, quelle que soit la fenêtre qui l'ouvre.
  *
  * Les champs sont mémorisés sans sauvegarde d'état (`remember` et non `rememberSaveable`) :
  * le mot de passe ne doit pas finir dans l'état d'instance conservé par le système.
  */
 @Composable
-private fun NewPasswordDialog(onConfirm: (CharArray) -> Unit, onDismiss: () -> Unit) {
+internal fun NewPasswordDialog(
+    onConfirm: (CharArray) -> Unit,
+    onDismiss: () -> Unit,
+    icon: ImageVector = Icons.Outlined.Backup,
+    @StringRes title: Int = R.string.vault_backup_title,
+    @StringRes message: Int = R.string.vault_backup_password_message,
+    @StringRes confirmLabel: Int = R.string.vault_backup_choose_location,
+) {
     val password = remember { TextFieldState() }
     val confirmation = remember { TextFieldState() }
     val strength = BackupPassword.strength(password.text)
@@ -185,14 +196,15 @@ private fun NewPasswordDialog(onConfirm: (CharArray) -> Unit, onDismiss: () -> U
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.Backup, contentDescription = null) },
-        title = { Text(stringResource(R.string.vault_backup_title)) },
+        icon = { Icon(icon, contentDescription = null) },
+        title = { Text(stringResource(title)) },
+        properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
-                Text(stringResource(R.string.vault_backup_password_message))
+                Text(stringResource(message))
                 PasswordField(
                     state = password,
                     labelText = stringResource(R.string.vault_backup_password),
@@ -214,7 +226,7 @@ private fun NewPasswordDialog(onConfirm: (CharArray) -> Unit, onDismiss: () -> U
             }
         },
         confirmButton = {
-            TextButton(onClick = submit, enabled = valid) { Text(stringResource(R.string.vault_backup_choose_location)) }
+            TextButton(onClick = submit, enabled = valid) { Text(stringResource(confirmLabel)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }

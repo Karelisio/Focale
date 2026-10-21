@@ -25,9 +25,9 @@ object MemoryTitles {
     fun cardTitle(resources: Resources, kind: MemoryKind): String =
         if (kind is MemoryKind.Trip) place(resources, kind) + "\n" + months(resources, kind) else title(resources, kind)
 
-    /** Ville du voyage, sinon son pays, sinon « Voyage ». */
+    /** Ville du voyage (dans la langue de l'application), sinon son pays, sinon « Voyage ». */
     private fun place(resources: Resources, kind: MemoryKind.Trip): String =
-        kind.place
+        kind.place?.display(resources.locale)
             ?: kind.country?.let { code -> runCatching { CountryResolver.displayName(code, resources.locale) }.getOrNull() }
             ?: resources.getString(R.string.memories_trip_somewhere)
 

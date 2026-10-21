@@ -59,6 +59,7 @@ import app.focale.core.database.GeoPhoto
 import app.focale.core.model.MediaQuery
 import app.focale.map.Basemap
 import app.focale.map.PhotoCluster
+import app.focale.ml.PlaceName
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.LocalTabsNavController
 import app.focale.ui.navigation.openCollection
@@ -153,7 +154,10 @@ fun MapScreen(onBack: () -> Unit, viewModel: MapViewModel = hiltViewModel()) {
                                 }
                             }
                         } else {
-                            tabsNav.openCollection(clusterTitle(resources, cluster), MediaQuery(area = cluster.area))
+                            scope.launch {
+                                val title = clusterTitle(resources, cluster, viewModel.placeName(cluster.cover))
+                                tabsNav.openCollection(title, MediaQuery(area = cluster.area))
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -182,8 +186,9 @@ fun MapScreen(onBack: () -> Unit, viewModel: MapViewModel = hiltViewModel()) {
     }
 }
 
-private fun clusterTitle(resources: Resources, cluster: PhotoCluster): String =
-    cluster.cover.place ?: resources.getQuantityString(R.plurals.media_count, cluster.count, cluster.count)
+/** Lieu de la photo de couverture dans la langue de l'application, sinon le nombre de médias. */
+private fun clusterTitle(resources: Resources, cluster: PhotoCluster, place: PlaceName?): String =
+    place?.display(resources.configuration.locales[0]) ?: resources.getQuantityString(R.plurals.media_count, cluster.count, cluster.count)
 
 @Composable
 private fun MapHint(message: String, modifier: Modifier = Modifier) {

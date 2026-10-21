@@ -2,7 +2,10 @@ package app.focale.edit
 
 import androidx.compose.runtime.Immutable
 
-/** Rectangle normalisé (0..1) dans le repère de l'image après rotation et miroir. */
+/**
+ * Rectangle normalisé (0..1) dans le cadre de l'image après rotation et miroir ; le
+ * redressement fait pivoter l'image dans ce cadre, qui ne change pas.
+ */
 @Immutable
 data class NormRect(val left: Float, val top: Float, val right: Float, val bottom: Float) {
     val width: Float get() = right - left
@@ -32,13 +35,17 @@ enum class Adjustment { BRIGHTNESS, CONTRAST, SATURATION, WARMTH }
 
 /**
  * État complet d'une édition, appliqué dans cet ordre : rotation par quarts de tour,
- * miroir horizontal, recadrage, filtre puis réglages. Les traits de dessin ([strokes]),
- * exprimés comme [crop] dans le repère pivoté, sont tracés par-dessus, sans filtre.
+ * miroir horizontal, redressement, recadrage, filtre puis réglages. Le redressement
+ * ([straighten], en degrés, sens horaire, de -45 à 45) fait pivoter l'image autour du
+ * centre de son cadre ; [crop] reste dans l'image redressée ([StraightenMath]). Les traits
+ * de dessin ([strokes]), exprimés comme [crop] dans ce cadre, sont tracés par-dessus, sans
+ * filtre.
  */
 @Immutable
 data class EditState(
     val quarterTurns: Int = 0,
     val flipHorizontal: Boolean = false,
+    val straighten: Float = 0f,
     val crop: NormRect = NormRect.Full,
     val aspect: CropAspect = CropAspect.FREE,
     val filter: FilterPreset = FilterPreset.NONE,
@@ -50,7 +57,7 @@ data class EditState(
 ) {
     val isIdentity: Boolean get() = this == EditState(aspect = aspect)
 
-    val hasGeometry: Boolean get() = quarterTurns % 4 != 0 || flipHorizontal || crop != NormRect.Full
+    val hasGeometry: Boolean get() = quarterTurns % 4 != 0 || flipHorizontal || straighten != 0f || crop != NormRect.Full
 
     fun value(adjustment: Adjustment): Float = when (adjustment) {
         Adjustment.BRIGHTNESS -> brightness

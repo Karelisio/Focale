@@ -37,7 +37,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   sport.
 - **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
   (« plage », « chien »…, en français ou en anglais), texte des photos et des captures
-  d'écran (« facture », « wifi »…), dates, lieux (géocodage hors ligne). Nettoyage
+  d'écran (« facture », « wifi »…), dates, lieux (géocodage hors ligne, noms français et
+  anglais : « Lisbonne » comme « Lisbon »). Nettoyage
   (onglet Plus) : doublons, photos floues, captures d'écran et grosses vidéos.
 - **Recherche en langage naturel** : « chien sur la plage », « voiture rouge dans la
   neige »… Un modèle CLIP compact (TinyCLIP, 23 Mo, ONNX Runtime) calcule l'empreinte de
@@ -50,19 +51,22 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   (les moins ressemblants d'abord, retirer ou déplacer une sélection) ; photos où
   plusieurs personnes figurent ensemble ; recherche par nom et personnes listées dans les
   infos.
-- **Édition** : recadrage libre ou au format, rotation, miroir, filtres, luminosité /
-  contraste / saturation / chaleur, dessin (stylo, surligneur, ligne, flèche, rectangle,
-  ellipse, gomme) ; enregistrement en copie ou à la place de l'original. Vidéos :
+- **Édition** : recadrage libre ou au format, rotation, miroir, redressement à angle libre
+  (règle graduée ou deux doigts, recadré automatiquement sans coin vide), filtres,
+  luminosité / contraste / saturation / chaleur, dessin (stylo, surligneur, ligne, flèche,
+  rectangle, ellipse, gomme) ; enregistrement en copie ou à la place de l'original. Vidéos :
   coupe du début et de la fin, son coupé, enregistrées en copie (Media3 Transformer).
 - **Coffre-fort** : photos et vidéos chiffrées (Tink, clé dans l'Android Keystore),
   retirées de MediaStore et des autres applications, déverrouillage par code ou
   biométrie, reverrouillage automatique, captures d'écran interdites ; sauvegarde
   chiffrée par mot de passe (`.fvault`, PBKDF2 + AES-256-GCM en flux) à restaurer sur un
-  autre téléphone. Albums du coffre : un album entier y entre d'un geste, et ses nouvelles
-  photos s'y ajoutent sans rien déchiffrer (chaque élément est chiffré à part), signalées
-  par une notification qui les y met d'un geste. Mise au coffre en tâche de fond (service
-  au premier plan, reprise sans rien rechiffrer, état réparé au lancement), tri mémorisé
-  des éléments et des albums, corbeille de 30 jours. Une photo qui en sort retrouve sa date.
+  autre téléphone, manuelle ou automatique (chaque jour ou chaque semaine, dans un dossier
+  choisi : carte SD, clé USB… ; les 3 dernières gardées, mot de passe non conservé). Albums
+  du coffre : un album entier y entre d'un geste, et ses nouvelles photos s'y ajoutent sans
+  rien déchiffrer (chaque élément est chiffré à part), signalées par une notification qui
+  les y met d'un geste. Mise au coffre en tâche de fond (service au premier plan, reprise
+  sans rien rechiffrer, état réparé au lancement), tri mémorisé des éléments et des albums,
+  corbeille de 30 jours. Une photo qui en sort retrouve sa date.
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir
@@ -174,7 +178,9 @@ ML Kit (modèles embarqués) · ONNX Runtime · osmdroid · Tink · Glance.
 - Police **Google Sans Flex** : SIL Open Font License 1.1
   (`app/src/main/assets/licenses/google_sans_flex_OFL.txt`).
 - Noms de lieux du géocodage hors ligne : **GeoNames**, CC BY 4.0
-  (<https://www.geonames.org>), compilés par `tools/geonames/build_cities.py`.
+  (<https://www.geonames.org>), compilés par `tools/geonames/build_cities.py` ; noms français et
+  anglais : noms alternatifs de GeoNames (**alternateNames**, CC BY 4.0), lus dans la base
+  compilée par Open-Meteo (<https://github.com/open-meteo/geocoding-api>).
 - Fond de carte hors ligne : **Natural Earth**, domaine public
   (<https://www.naturalearthdata.com>), compilé par `tools/basemap/build_basemap.py`.
 - Tuiles en ligne (optionnelles) : © contributeurs **OpenStreetMap**, données sous
@@ -194,5 +200,6 @@ ML Kit (modèles embarqués) · ONNX Runtime · osmdroid · Tink · Glance.
   sa télémétrie Android est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
 
 Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
-carte, modèles de la recherche en langage naturel) à partir des données sources ; ils ne
-sont pas nécessaires à la compilation.
+carte, modèles de la recherche en langage naturel) à partir des données sources, ou
+calibrent des seuils sur des données publiques (`tools/faces/` : regroupement des visages,
+sur LFW ; `tools/trips/` : voyages, sur YFCC100M) ; ils ne sont pas nécessaires à la compilation.

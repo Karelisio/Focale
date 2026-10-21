@@ -142,7 +142,11 @@ data class MediaAnalysisEntity(
     val longitude: Double?,
     /** Ville la plus proche (géocodage hors ligne). */
     val place: String?,
-    /** [place] normalisé (minuscules, sans accents) pour la recherche. */
+    /**
+     * Clé de recherche du lieu : ses noms normalisés (minuscules, sans accents), celui de
+     * GeoNames d'abord puis ses formes française et anglaise (« lisbon | lisbonne »,
+     * `PlaceTranslations.searchKey`).
+     */
     @ColumnInfo(name = "place_key") val placeKey: String?,
     /** Code pays ISO 3166-1 alpha-2. */
     val country: String?,

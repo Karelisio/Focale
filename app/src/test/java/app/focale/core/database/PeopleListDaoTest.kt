@@ -169,13 +169,13 @@ class PeopleListDaoTest {
         val unnamed = faces.insertPerson(PersonEntity(createdAt = 0))
         val stranger = faces.insertPerson(PersonEntity(createdAt = 0))
         faces.insertFaces((1L..3L).map { face(it, lea, axis) })
-        faces.insertFaces((4L..6L).map { face(it, unnamed, near(0.6f, 1)) })
+        faces.insertFaces((4L..6L).map { face(it, unnamed, near(0.8f, 1)) })
         faces.insertFaces((7L..9L).map { face(it, stranger, near(0.1f, 2)) })
         val suggestions = MergeSuggestions(faces, Dispatchers.Default)
 
         val first = suggestions.observe().first().single()
         assertEquals(lea to unnamed, first.targetId to first.sourceId)
-        assertEquals(0.6f, first.similarity, 1e-4f)
+        assertEquals(0.8f, first.similarity, 1e-4f)
 
         faces.refuse(minOf(lea, unnamed), maxOf(lea, unnamed))
         assertTrue(suggestions.observe().first().isEmpty())
@@ -183,7 +183,7 @@ class PeopleListDaoTest {
         // Nouveaux visages chez l'inconnu, proches de Léa : son centroïde est recalculé.
         media.upsert((10L..12L).map { photo(it) })
         faces.insertFaces((10L..12L).map { face(it, stranger, axis) })
-        // Léa d'abord (≈ 0,74), puis l'inconnu et la personne sans nom (≈ 0,45) : le plus de photos est la cible.
+        // Léa d'abord (≈ 0,74), puis l'inconnu et la personne sans nom (≈ 0,59) : le plus de photos est la cible.
         val again = suggestions.observe().first()
         assertEquals(listOf(lea to stranger, stranger to unnamed), again.map { it.targetId to it.sourceId })
 

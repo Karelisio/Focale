@@ -21,6 +21,7 @@ import app.focale.core.settings.AppSettings
 import app.focale.core.settings.ThemeMode
 import app.focale.data.Memory
 import app.focale.data.MemoryKind
+import app.focale.ml.PlaceName
 import app.focale.ui.theme.FocaleTheme
 import app.focale.ui.timeline.MEMORY_CARD_THUMBNAIL
 import app.focale.ui.timeline.MemoriesCarousel
@@ -58,7 +59,7 @@ class MemoriesScreenshotTest {
     private fun memories() = listOf(
         memory(
             id = 1,
-            kind = MemoryKind.Trip(1, "Lisbonne", "PT", LocalDate.of(2025, 10, 17), LocalDate.of(2025, 10, 24)),
+            kind = MemoryKind.Trip(1, PlaceName("Lisbonne"), "PT", LocalDate.of(2025, 10, 17), LocalDate.of(2025, 10, 24)),
             count = 214,
             colors = 0xFF2E7DB8.toInt() to 0xFFF0C27A.toInt(),
         ),

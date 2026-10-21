@@ -36,7 +36,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | ML sur l'appareil | ML Kit Image Labeling, Text Recognition v2 (alphabet latin) et Face Detection, modèles **embarqués**, pas de téléchargement ; SFace (OpenCV Zoo) et TinyCLIP quantifié (recherche en langage naturel), exécutés par ONNX Runtime |
 | Arrière-plan | WorkManager |
 | Carte | osmdroid + fond vectoriel hors ligne (Natural Earth, domaine public) |
-| Géocodage inverse | Hors ligne : base GeoNames (CC BY 4.0) embarquée, index spatial en grille |
+| Géocodage inverse | Hors ligne : base GeoNames (CC BY 4.0) embarquée, index spatial en grille, noms français et anglais (alternateNames) |
 | Chiffrement | Tink `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo), keyset protégé par Android Keystore |
 | Authentification | androidx.biometric (biométrie forte ou identifiants de l'appareil) + code PIN (PBKDF2) |
 | Widget | Glance (`GlanceTheme` = couleurs dynamiques du système) |
@@ -135,7 +135,7 @@ dans leur ordre sans trier la bibliothèque : (`is_trashed`, `date_taken`) pour 
 
 | Table | Contenu |
 |---|---|
-| `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `country` |
+| `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `place_key` (ses noms normalisés, traductions comprises), `country` |
 | `media_label` | (media, étiquette ML Kit canonique, confiance) |
 | `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée |
 | `media_embedding` | empreinte TinyCLIP de chaque photo (512 flottants, norme 1) |
@@ -224,7 +224,17 @@ travail :
 2. ML Kit Image Labeling (confiance ≥ 0,6) → étiquettes canoniques anglaises ;
 3. dHash 64 bits (doublons) ;
 4. variance du Laplacien (flou) ;
-5. GPS EXIF (avec `ACCESS_MEDIA_LOCATION`) → ville/pays via géocodeur hors ligne ;
+5. GPS EXIF (avec `ACCESS_MEDIA_LOCATION`) → ville/pays via géocodeur hors ligne ; la base
+   (`assets/geo/cities.bin`, format FCG2) précède ses 171 000 lieux de leurs noms français et
+   anglais quand ils diffèrent du nom GeoNames (2 749 en français, 378 en anglais : « Lisbon »
+   → « Lisbonne », « Köln » → « Cologne » ; 1 885 autres noms anglais, cherchés mais non
+   affichés : « Makkah » → « Mecca »), lus seuls par `PlaceNames`. `media_analysis.place`
+   garde le nom GeoNames ; l'affichage (infos, carte, recherche, titres des voyages, widget)
+   choisit la forme de la langue de l'application (`PlaceName.display`) ; `place_key` réunit les
+   formes normalisées (« lisbon | lisbonne »). Une base FCG1 (sans noms traduits) se lit encore ;
+   à chaque passage, l'analyse met à jour les clés des lieux déjà analysés qui diffèrent
+   (`AnalysisDao.refreshPlaceKeys`, par lieu distinct, sans nouvelle version de l'analyse) : ni
+   géocodage ni étiquetage à refaire ;
 6. puis étapes complémentaires (`AnalysisStep`), dont le texte : ML Kit Text Recognition
    sur la photo réduite à 1600 px (orientation appliquée), captures d'écran d'abord, les
    plus hautes lues par bandes à leur largeur d'écran ; aussi lancée à la demande par
@@ -232,7 +242,8 @@ travail :
 
 Recherche : la requête est normalisée (minuscules, sans accents), confrontée au
 dictionnaire FR/EN des 447 étiquettes (avec synonymes et hyperonymes :
-« chien » couvre aussi les races détectées), aux lieux, aux dates
+« chien » couvre aussi les races détectées), aux lieux (début d'un mot de l'un de leurs noms :
+« Lisbonne » comme « Lisbon » ; une carte de lieu cherche le nom GeoNames exact), aux dates
 (« 2023 », « juillet 2022 », « 14/07/2021 »), aux noms de fichiers et au texte reconnu
 dans les photos (« wifi » trouve aussi « Wi-Fi »).
 
@@ -311,6 +322,20 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   il reste chiffré 30 jours, hors des grilles, albums, sauvegardes et contrôles ; il peut en être
   remis (dans son album s'il existe encore) ou effacé définitivement. `VaultTrashPurgeWorker`
   efface chaque jour ceux dont le délai est passé (fichiers chiffrés compris).
+- Sauvegarde automatique (`VaultAutoBackup`, réglage du menu du coffre) : chaque jour ou chaque
+  semaine, dans un dossier choisi par `ACTION_OPEN_DOCUMENT_TREE` (autorisation persistante, dossier
+  en lecture seule refusé), avec un mot de passe saisi deux fois qui n'est pas conservé : les clés
+  d'archive en sont tirées une fois (`VaultArchive.deriveKeys` : PBKDF2 à sel aléatoire puis HKDF,
+  témoin et clé du flux) et gardées dans le DataStore du coffre, chiffrées par une AEAD Tink dont le
+  jeu de clés est protégé par le Keystore (`VaultAutoBackupKeys`). Les archives restent au format
+  `.fvault` v1 (en-tête commun, restaurables avec le mot de passe) : Tink tire un sel et un préfixe
+  de nonce par flux, réutiliser la clé est sûr. `VaultAutoBackupWorker` (WorkManager périodique,
+  batterie et stockage non faibles, coffre verrouillé) crée `focale-coffre-auto-AAAA-MM-JJ.fvault`
+  et l'écrit en flux par l'export de la sauvegarde manuelle (document supprimé s'il échoue), ne
+  garde que les 3 dernières (reconnues à leur nom), saute la sauvegarde si l'empreinte du coffre
+  (identifiants, albums, rangements) et des clés n'a pas changé, et met à jour la date de dernière
+  sauvegarde. Échec (dossier inaccessible, autorisation retirée, plus de place) : erreur dans le
+  réglage et notification, sans nom d'album ni de fichier.
 - Tri (`VaultContent`, réglages `vaultSort` et `vaultAlbumSort`) : éléments par date de prise
   de vue, date d'ajout au coffre, nom (`Collator` primaire) ou taille, albums par nom, date de
   création ou nombre d'éléments, dans les deux sens ; même feuille que les grilles de la
@@ -394,13 +419,18 @@ compactes, sur la clause WHERE de `MediaQueryBuilder` (corbeille et dossiers mas
   sinon une personne sans nom revenue sur au moins 3 mois (un proche plutôt qu'un inconnu),
   titrée « ensemble » avec son visage. Requête : fenêtre + `personId`.
 - **Voyages** : `TripDetector`, logique pure sur les points (date, latitude, longitude) des
-  médias géolocalisés. Chez soi : la cellule d'une grille de ~25 km photographiée pendant le
-  plus de mois distincts (un séjour tient en un ou deux mois), par année pour suivre un
-  déménagement (à défaut, celle de l'année la plus proche). Un voyage enchaîne les jours avec un média à plus de 100 km de chez soi (un
-  jour sans média géolocalisé toléré, une journée à la maison l'interrompt), 5 médias
-  lointains au moins ; il apparaît quand son premier jour tombe dans la fenêtre. Requête : du
-  premier au dernier média lointain, sans les photos de la maison du départ et du retour.
-  Titre : la ville qui rassemble au moins la moitié des médias lointains, sinon le pays.
+  médias géolocalisés, seuils mesurés sur les photos de YFCC100M (`tools/trips/`). Lieux
+  familiers : les cellules d'une grille de ~25 km photographiées pendant au moins 4 mois
+  distincts, étalés sur 90 jours, dans les 12 mois autour du média (domicile, résidence
+  secondaire, travail d'un frontalier, nouvelle adresse dès un déménagement ; un séjour, même
+  long, tient en deux ou trois mois) ; chez soi : le plus familier. Un mois sans lieu familier
+  reprend ceux du mois le plus proche. Un voyage enchaîne les jours avec un média à plus de
+  60 km de tout lieu familier (deux jours sans média géolocalisé tolérés, une journée près d'un
+  lieu familier l'interrompt), 5 médias lointains au moins et une nuit sur place, sauf au-delà
+  de 150 km (un aller-retour dans la journée est une sortie) ; il apparaît quand son premier
+  jour tombe dans la fenêtre. Requête : du premier au dernier média lointain, sans les photos
+  de la maison du départ et du retour. Titre : la ville qui rassemble au moins la moitié des
+  médias lointains (nom traduit), sinon le pays.
 - **Sans doublon** : une fenêtre passée à 80 % dans le voyage n'a pas de souvenir général ;
   deux cartes d'une même fenêtre ne partagent pas leur couverture.
 
@@ -412,9 +442,12 @@ similitude vers le gabarit ArcFace 112 × 112 (`FaceAlignment`, conventions de
 `FaceRecognizerSF` d'OpenCV) → SFace int8 via ONNX Runtime (entrée RVB 0..255) →
 empreinte de 128 flottants normalisée (`face.embedding`). Après chaque lot,
 `FaceClusterer` (logique pure) rattache les nouveaux visages au centroïde le plus proche
-(cosinus ≥ 0,42, un visage par photo et par personne) ou crée une personne quand trois
-visages en attente sur trois photos forment un groupe cohérent (voisins ≥ 0,45, chacun
-proche du centroïde des autres). Les rattachements manuels (`face.manual`) ne sont jamais
+(cosinus ≥ 0,50, un visage par photo et par personne) ou crée une personne quand trois
+visages en attente sur trois photos forment un groupe cohérent (voisins ≥ 0,50, chacun
+proche du centroïde des autres). Seuils mesurés sur LFW (`tools/faces/`) : chaque visage
+étant comparé à toutes les personnes, 0,42 laissait des inconnus rejoindre des personnes,
+dont le centroïde dérivait alors vers le « visage moyen » (26 % de visages mal rattachés
+dans une bibliothèque simulée de 150 personnes, 0,9 % à 0,50). Les rattachements manuels (`face.manual`) ne sont jamais
 modifiés ; une personne sans nom n'est proposée qu'à partir de trois photos. Vignettes
 rondes : `FaceThumbnailFetcher` Coil (découpe dans la miniature MediaStore, sinon décodage
 réduit de la région utile de l'original). Recherche : `SearchTerm.personIds`. La télémétrie
@@ -428,8 +461,9 @@ d'ONNX Runtime est neutralisée (fournisseur retiré du manifeste, `setTelemetry
   de l'onglet Albums.
 - **« Est-ce la même personne ? »** (`MergeSuggestions`) : paires de personnes visibles dont
   les centroïdes (moyenne normalisée des empreintes de leurs visages) ont une similarité d'au
-  moins 0,38, un peu sous le seuil de rattachement (0,42) : la moyenne de nombreux visages est
-  peu bruitée. Une carte en tête de l'écran Personnes les propose une à une, les plus
+  moins 0,55 : au plus une fausse suggestion pour 5 000 paires de personnes distinctes, 99 %
+  des personnes coupées en deux retrouvées (LFW). Moyenner les visages rapproche aussi deux
+  inconnus (composante commune des empreintes) : 0,38 proposait 0,3 à 0,6 % des paires. Une carte en tête de l'écran Personnes les propose une à une, les plus
   probables d'abord, sans les paires refusées ni deux personnes nommées différemment ; la
   cible est la personne nommée, sinon la plus présente. Recalcul hors thread principal à
   chaque changement des personnes ou des refus (flux Room) : seules les personnes dont les
@@ -547,6 +581,24 @@ application ouvre les photos et proposer de choisir Focale.
   formats (PNG, dont Android ignore l'orientation EXIF ; HEIF et AVIF) : rendu de
   l'éditeur, en copie ou à la place. Clé mémoire Coil des images pleine taille liée à
   `date_modified`.
+
+### 7.5 Éditeur
+- `EditState` appliqué dans l'ordre : quarts de tour, miroir, redressement, recadrage,
+  couleurs (mêmes matrices pour l'aperçu et l'export), dessin. L'aperçu tourné est rendu en
+  arrière-plan ; le redressement est appliqué à l'affichage, instantané.
+- Redressement à angle libre (±45°, au dixième de degré) : règle graduée (retour haptique à
+  chaque degré, marqué à 0° ; double appui ou valeur affichée pour revenir à 0°) ou rotation
+  à deux doigts sur l'aperçu en mode recadrage, rotations parasites d'un pincement ignorées
+  (seuil de 5°, doigts d'abord écartés ou rapprochés). Grille fine pendant le geste.
+- Géométrie pure (`StraightenMath`) : l'image pivote dans son cadre, le recadrage reste
+  normalisé dans ce cadre et doit tenir dans l'image tournée. Recadrage automatique : plus
+  grand rectangle de la proportion voulue (format imposé compris), en forme close (la zone
+  permise est symétrique : un rectangle qui y tient quelque part y tient centré), rapproché
+  du centre seulement si besoin ; il retrouve sa taille en revenant vers 0°. Les poignées
+  s'arrêtent au bord de l'image tournée. Quart de tour : même angle ; miroir : angle opposé.
+- Export (`EditRenderer`, `ImageEditor`) : même rotation autour du centre du cadre, image
+  agrandie de 3 px (`bleed`) pour qu'aucun coin ne soit à demi transparent. Les traits
+  restent alignés sur le cadre : une forme tracée sur la photo redressée reste droite.
 
 ---
 

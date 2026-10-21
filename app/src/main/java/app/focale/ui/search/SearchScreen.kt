@@ -236,7 +236,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
                         items(places, key = { "${it.name}-${it.countryCode}" }) { place ->
                             PlaceCard(place, locale) {
                                 open(
-                                    place.name,
+                                    place.names.display(locale),
                                     MediaQuery(
                                         terms = listOf(
                                             SearchTerm(place = LabelDictionary.normalize(place.name), exactPlace = true),
@@ -279,7 +279,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
             onPickThing = { thing, name -> open(name, MediaQuery(terms = listOf(SearchTerm(labels = listOf(thing.label))))) },
             onPickPlace = { place ->
                 open(
-                    place.name,
+                    place.names.display(locale),
                     MediaQuery(
                         terms = listOf(
                             SearchTerm(place = LabelDictionary.normalize(place.name), exactPlace = true),
@@ -317,7 +317,8 @@ private fun SearchSuggestions(
             thing.label in LabelDictionary.match(key)
     }.take(6)
     val matchingPlaces = if (key.length < 2) emptyList() else places.filter { place ->
-        LabelDictionary.normalize(place.name).split(' ').any { it.startsWith(key) } ||
+        // Nom GeoNames, français ou anglais : « lisb » trouve Lisbon / Lisbonne.
+        place.names.forms.any { name -> LabelDictionary.normalize(name).split(' ').any { it.startsWith(key) } } ||
             LabelDictionary.normalize(CountryResolver.displayName(place.countryCode, locale)).startsWith(key)
     }.take(6)
 
@@ -379,7 +380,7 @@ private fun SearchSuggestions(
                     supportingContent = { Text(CountryResolver.displayName(place.countryCode, locale)) },
                     leadingContent = { SuggestionThumb(place.cover) },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                ) { Text(place.name) }
+                ) { Text(place.names.display(locale)) }
             }
         }
     }
@@ -458,7 +459,7 @@ private fun PlaceCard(place: PlaceSuggestion, locale: java.util.Locale, onClick:
                     .background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f))),
             )
             Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                Text(place.name, style = MaterialTheme.typography.titleMediumEmphasized, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(place.names.display(locale), style = MaterialTheme.typography.titleMediumEmphasized, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     CountryResolver.displayName(place.countryCode, locale),
                     style = MaterialTheme.typography.bodySmall,

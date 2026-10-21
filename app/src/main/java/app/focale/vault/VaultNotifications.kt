@@ -91,21 +91,13 @@ class VaultNotifications @Inject constructor(
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val open = PendingIntent.getActivity(
-            context,
-            OPEN_VAULT_REQUEST,
-            Intent(context, MainActivity::class.java)
-                .setAction(MainActivity.ACTION_OPEN_VAULT)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
         notify(
             newMediaId(albumId),
             builder(CHANNEL_NEW_MEDIA)
                 .setContentTitle(context.getString(R.string.vault_title))
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setContentIntent(open)
+                .setContentIntent(openVault())
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(!alert)
                 .setGroup(CHANNEL_NEW_MEDIA)
@@ -124,6 +116,48 @@ class VaultNotifications @Inject constructor(
     fun cancelNewMedia(albumId: Long) = cancel(newMediaId(albumId))
 
     private fun newMediaId(albumId: Long): Int = NEW_MEDIA_ID + albumId.toInt()
+
+    /** Sauvegarde automatique en cours, quand elle peut passer au premier plan : discrète, sans détail. */
+    fun autoBackupForeground(): ForegroundInfo {
+        val notification = builder(CHANNEL_BACKUP)
+            .setContentTitle(context.getString(R.string.vault_auto_backup_running))
+            .setProgress(0, 0, true)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .build()
+        return ForegroundInfo(AUTO_BACKUP_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    }
+
+    /** Échec d'une sauvegarde automatique : sa cause seulement ; un toucher ouvre le coffre. */
+    fun autoBackupFailed(error: AutoBackupError) {
+        val text = context.getString(error.message)
+        notify(
+            AUTO_BACKUP_FAILED_ID,
+            builder(CHANNEL_BACKUP)
+                .setContentTitle(context.getString(R.string.vault_auto_backup_failed_title))
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setContentIntent(openVault())
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setCategory(NotificationCompat.CATEGORY_ERROR)
+                .build(),
+        )
+    }
+
+    fun cancelAutoBackupFailed() = cancel(AUTO_BACKUP_FAILED_ID)
+
+    /** Ouvre le coffre (verrouillé s'il l'est). */
+    private fun openVault(): PendingIntent = PendingIntent.getActivity(
+        context,
+        OPEN_VAULT_REQUEST,
+        Intent(context, MainActivity::class.java)
+            .setAction(MainActivity.ACTION_OPEN_VAULT)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
 
     /** Vrai si les notifications peuvent s'afficher (réglages, et permission depuis Android 13). */
     fun allowed(): Boolean = manager.areNotificationsEnabled() &&
@@ -164,7 +198,8 @@ class VaultNotifications @Inject constructor(
 
     private fun ensureChannels() {
         val system = context.getSystemService(NotificationManager::class.java) ?: return
-        if (system.getNotificationChannel(CHANNEL_NEW_MEDIA) != null) return
+        // Le dernier canal ajouté manque : les autres sont recréés à l'identique, sans effet.
+        if (system.getNotificationChannel(CHANNEL_BACKUP) != null) return
         system.createNotificationChannels(
             listOf(
                 NotificationChannel(CHANNEL_IMPORT, context.getString(R.string.vault_import_channel), NotificationManager.IMPORTANCE_LOW).apply {
@@ -179,6 +214,15 @@ class VaultNotifications @Inject constructor(
                     description = context.getString(R.string.vault_notify_channel_description)
                     lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 },
+                NotificationChannel(
+                    CHANNEL_BACKUP,
+                    context.getString(R.string.vault_auto_backup_channel),
+                    NotificationManager.IMPORTANCE_LOW,
+                ).apply {
+                    description = context.getString(R.string.vault_auto_backup_channel_description)
+                    setShowBadge(false)
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                },
             ),
         )
     }
@@ -186,9 +230,12 @@ class VaultNotifications @Inject constructor(
     companion object {
         const val CHANNEL_IMPORT = "vault_import"
         const val CHANNEL_NEW_MEDIA = "vault_new_media"
+        const val CHANNEL_BACKUP = "vault_backup"
         const val IMPORT_ID = 3_001
         const val RESULT_ID = 3_002
         private const val OPEN_VAULT_REQUEST = 3_003
+        const val AUTO_BACKUP_ID = 3_004
+        const val AUTO_BACKUP_FAILED_ID = 3_005
         /** Notifications des nouveaux médias : une par album lié, à partir de cet identifiant. */
         private const val NEW_MEDIA_ID = 10_000
     }
