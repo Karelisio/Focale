@@ -5,6 +5,29 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.8.0
+
+- Recherche : combinez le texte et des pastilles (personnes, lieu, période, type) ; les
+  résultats s'affichent dans l'onglet et suivent chaque pastille, retirée d'un appui. Les
+  dates, personnes et lieux reconnus dans la saisie deviennent une pastille d'un appui, et
+  sans résultat, Focale indique quelle pastille retirer.
+- Appui long sur un album : diaporama, renommer, masquer dans Photos, déplacer dans le
+  coffre-fort ou supprimer, sans l'ouvrir. Aussi pour les albums du coffre-fort.
+- Vidéos : double appui à droite pour avancer de 10 secondes, à gauche pour reculer ; les
+  appuis rapprochés qui suivent s'ajoutent (+20 s, +30 s…).
+- Éditeur : redresser une photo avec une règle graduée ou à deux doigts ; le recadrage suit,
+  sans coin vide, dans le format choisi.
+- Coffre-fort : sauvegarde automatique chiffrée, chaque jour ou chaque semaine, dans le
+  dossier de votre choix (carte SD, clé USB…) ; les 3 dernières sont gardées, et chacune se
+  restaure avec son mot de passe, jamais conservé sur l'appareil.
+- Personnes : regroupement des visages et suggestions « Est-ce la même personne ? » plus
+  fiables, avec des seuils mesurés sur de vraies photos.
+- Souvenirs : voyages mieux détectés (week-end à 80 km, voyage en étapes ; plus
+  d'allers-retours dans la journée ni de résidence secondaire comptés comme voyages). Villes
+  nommées en français (« Lisbonne ») et retrouvées par leur nom français ou anglais.
+- Grandes bibliothèques : timeline et liste des dossiers bien plus rapides, et l'analyse ne
+  ralentit plus à mesure qu'elle avance.
+
 ## 1.7.0
 
 - Une photo sortie du coffre-fort garde sa date d'origine : elle reprend sa place dans la
