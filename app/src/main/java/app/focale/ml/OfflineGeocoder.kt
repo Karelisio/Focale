@@ -15,7 +15,8 @@ data class Place(val name: String, val countryCode: String, val distanceKm: Doub
 
 /**
  * Géocodage inverse 100 % hors ligne, à partir d'une base GeoNames embarquée
- * (171 000 localités, licence CC BY 4.0).
+ * (171 000 localités, licence CC BY 4.0). Les noms français et anglais de la base (FCG2) sont lus
+ * à part, par [PlaceTranslations].
  *
  * Représentation compacte en mémoire (≈ 4 Mo) : tableaux primitifs + index spatial
  * en grille de 1° × 1° (stockage CSR), ce qui limite une recherche à quelques dizaines
@@ -82,11 +83,26 @@ class PlaceIndex private constructor(
             return sqrt(x * x + y * y) * EARTH_KM_PER_DEGREE
         }
 
-        /** Lit le format binaire produit par `tools/geonames/build_cities.py`. */
+        /** Base sans noms traduits (versions précédentes de la base). */
+        internal const val FORMAT_1 = "FCG1"
+
+        /** Base précédée de la table des noms français et anglais ([PlaceTranslations]). */
+        internal const val FORMAT_2 = "FCG2"
+
+        /** Format de la base, d'après ses quatre premiers octets. */
+        internal fun readMagic(data: DataInputStream): String {
+            val magic = String(ByteArray(4).also(data::readFully), Charsets.US_ASCII)
+            require(magic == FORMAT_1 || magic == FORMAT_2) { "Base de lieux invalide" }
+            return magic
+        }
+
+        /** Lit le format binaire produit par `tools/geonames/build_cities.py` (FCG2, ou FCG1 sans traductions). */
         fun read(input: InputStream): PlaceIndex {
             val data = DataInputStream(input.buffered(1 shl 16))
-            val magic = ByteArray(4).also(data::readFully)
-            require(String(magic, Charsets.US_ASCII) == "FCG1") { "Base de lieux invalide" }
+            if (readMagic(data) == FORMAT_2) {
+                data.readInt() // noms traduits, lus par PlaceTranslations
+                data.skipFully(data.readInt())
+            }
             val count = data.readInt()
             val lat = IntArray(count)
             val lon = IntArray(count)
@@ -122,6 +138,19 @@ class PlaceIndex private constructor(
             for (i in 0 until count) items[fill[cellOf[i]]++] = i
             return PlaceIndex(lat, lon, countries, offsets, names.copyOf(cursor), start, items)
         }
+
+        private fun DataInputStream.skipFully(length: Int) {
+            var remaining = length
+            while (remaining > 0) {
+                val skipped = skipBytes(remaining)
+                if (skipped <= 0) {
+                    readByte() // fin de fichier : EOFException
+                    remaining--
+                } else {
+                    remaining -= skipped
+                }
+            }
+        }
     }
 }
 
@@ -143,7 +172,8 @@ class OfflineGeocoder @Inject constructor(
         index = null
     }
 
-    private companion object {
+    companion object {
+        /** Base embarquée : `app/src/main/assets/`. */
         const val ASSET = "geo/cities.bin"
     }
 }

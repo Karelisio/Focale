@@ -80,7 +80,7 @@ fun PlacePickerSheet(places: List<PlaceSuggestion>, locale: Locale, onPick: (Pla
                         )
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                ) { Text(place.name) }
+                ) { Text(place.names.display(locale)) }
             }
         }
     }

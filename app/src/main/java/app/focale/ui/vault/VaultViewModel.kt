@@ -3,13 +3,20 @@ package app.focale.ui.vault
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import app.focale.R
+import app.focale.core.settings.SettingsRepository
+import app.focale.core.settings.VaultAlbumSort
+import app.focale.core.settings.VaultSort
 import app.focale.core.util.UiText
+import app.focale.data.OperationResult
 import app.focale.vault.PinCheck
 import app.focale.vault.PinHasher
 import app.focale.vault.VaultAlbum
+import app.focale.vault.VaultContent
 import app.focale.vault.VaultDestination
 import app.focale.vault.VaultItem
+import app.focale.vault.VaultNewMediaWatch
 import app.focale.vault.VaultPinStore
 import app.focale.vault.VaultRepository
 import app.focale.vault.VaultSession
@@ -57,8 +64,11 @@ sealed interface VaultEvent {
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     private val repository: VaultRepository,
+    private val content: VaultContent,
     private val pinStore: VaultPinStore,
     private val session: VaultSession,
+    private val settings: SettingsRepository,
+    private val workManager: WorkManager,
 ) : ViewModel() {
 
     /** Un coffre déverrouillé a forcément un code : l'ordre évite d'afficher la création. */
@@ -79,13 +89,35 @@ class VaultViewModel @Inject constructor(
 
     /** Contenu du coffre, chargé uniquement une fois déverrouillé. */
     val items: StateFlow<List<VaultItem>?> = session.unlocked
-        .flatMapLatest { unlocked -> if (unlocked) repository.observeItems() else flowOf(null) }
+        .flatMapLatest { unlocked -> if (unlocked) content.items() else flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Albums du coffre, chargés eux aussi une fois déverrouillé. */
     val albums: StateFlow<List<VaultAlbum>> = session.unlocked
-        .flatMapLatest { unlocked -> if (unlocked) repository.observeAlbums() else flowOf(emptyList()) }
+        .flatMapLatest { unlocked -> if (unlocked) content.albums() else flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Éléments dont l'original est resté dans la galerie (import interrompu). */
+    val leftInGallery: StateFlow<Int> = session.unlocked
+        .flatMapLatest { unlocked -> if (unlocked) repository.observeLeftInGallery() else flowOf(0) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    private val removingOriginals = MutableStateFlow(false)
+
+    /** Éléments de la corbeille du coffre. */
+    val trashCount: StateFlow<Int> = session.unlocked
+        .flatMapLatest { unlocked -> if (unlocked) repository.observeTrashCount() else flowOf(0) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    /** Notification des nouvelles photos des dossiers liés à un album du coffre. */
+    val newMediaAlerts: StateFlow<Boolean> = settings.settings.map { it.vaultNewMediaAlerts }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, settings.current.value.vaultNewMediaAlerts)
+
+    /** Tri des éléments et des albums, mémorisé. */
+    val sort: StateFlow<VaultSort> = content.itemSort
+        .stateIn(viewModelScope, SharingStarted.Eagerly, VaultSort())
+    val albumSort: StateFlow<VaultAlbumSort> = content.albumSort
+        .stateIn(viewModelScope, SharingStarted.Eagerly, VaultAlbumSort())
 
     private val _pin = MutableStateFlow(PinState())
     val pin: StateFlow<PinState> = _pin.asStateFlow()
@@ -93,12 +125,13 @@ class VaultViewModel @Inject constructor(
     private val _changingPin = MutableStateFlow(false)
     val changingPin: StateFlow<Boolean> = _changingPin.asStateFlow()
 
-    private val content = VaultSelection(viewModelScope, repository) { items.value.orEmpty() }
-    val selection: StateFlow<Set<Long>> = content.selected
-    val busy: StateFlow<Boolean> = content.busy
+    private val selectionState = VaultSelection(viewModelScope, repository) { items.value.orEmpty() }
+    val selection: StateFlow<Set<Long>> = selectionState.selected
+    val busy: StateFlow<Boolean> = combine(selectionState.busy, removingOriginals) { selecting, removing -> selecting || removing }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val channel = Channel<VaultEvent>(Channel.BUFFERED)
-    val events: Flow<VaultEvent> = merge(channel.receiveAsFlow(), content.messages.map { VaultEvent.Message(it) })
+    val events: Flow<VaultEvent> = merge(channel.receiveAsFlow(), selectionState.messages.map { VaultEvent.Message(it) })
 
     private val digits = StringBuilder()
     private var firstEntry: String? = null
@@ -110,7 +143,7 @@ class VaultViewModel @Inject constructor(
                     VaultMode.SETUP -> resetPin(PinStep.CREATE)
                     VaultMode.LOCKED -> {
                         _changingPin.value = false
-                        content.clear()
+                        selectionState.clear()
                         resetPin(PinStep.UNLOCK)
                     }
                     else -> Unit
@@ -232,18 +265,49 @@ class VaultViewModel @Inject constructor(
 
     // ── Contenu ─────────────────────────────────────────────────────────────────────
 
-    fun toggle(id: Long) = content.toggle(id)
+    fun toggle(id: Long) = selectionState.toggle(id)
 
-    fun selectAll() = content.selectAll()
+    fun selectAll() = selectionState.selectAll()
 
-    fun clearSelection() = content.clear()
+    fun clearSelection() = selectionState.clear()
 
-    fun restoreSelection() = content.restore()
+    fun restoreSelection() = selectionState.restore()
 
-    fun deleteSelection() = content.delete()
+    fun deleteSelection() = selectionState.delete()
 
     /** Range la sélection dans un album : de la métadonnée seulement, rien n'est rechiffré. */
-    fun moveSelection(destination: VaultDestination) = content.moveTo(destination, albums.value)
+    fun moveSelection(destination: VaultDestination) = selectionState.moveTo(destination, albums.value)
+
+    fun setSort(sort: VaultSort) {
+        viewModelScope.launch { content.setItemSort(sort) }
+    }
+
+    fun setNewMediaAlerts(enabled: Boolean) {
+        viewModelScope.launch {
+            settings.setVaultNewMediaAlerts(enabled)
+            VaultNewMediaWatch.checkNow(workManager)
+        }
+    }
+
+    /** Retire de la galerie les originaux restés après un import interrompu ; rien n'est chiffré. */
+    fun removeLeftOriginals() {
+        if (busy.value) return
+        viewModelScope.launch {
+            removingOriginals.value = true
+            val message = when (val result = repository.removeLeftOriginals()) {
+                is OperationResult.Success -> UiText.Plural(R.plurals.vault_left_removed, result.count)
+                is OperationResult.Partial -> UiText.Res(R.string.message_partial, listOf(result.succeeded, result.succeeded + result.failed))
+                is OperationResult.Failure -> UiText.Res(R.string.message_operation_failed)
+                OperationResult.Cancelled -> null
+            }
+            removingOriginals.value = false
+            message?.let { channel.send(VaultEvent.Message(it)) }
+        }
+    }
+
+    fun setAlbumSort(sort: VaultAlbumSort) {
+        viewModelScope.launch { content.setAlbumSort(sort) }
+    }
 
     override fun onCleared() {
         clearDigits()

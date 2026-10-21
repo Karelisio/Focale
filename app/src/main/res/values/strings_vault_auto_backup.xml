@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : sauvegarde automatique -->
+    <string name="vault_auto_backup_action">Automatic backup</string>
+    <string name="vault_auto_backup_title">Automatic backup</string>
+    <string name="vault_auto_backup_message">Focale regularly saves an encrypted copy of the vault to a folder of your choice: SD card, USB drive, folder synced by another app… The last 3 backups are kept, and each one restores with its password, like a manual backup.</string>
+    <string name="vault_auto_backup_frequency">Frequency</string>
+    <string name="vault_auto_backup_off">Off</string>
+    <string name="vault_auto_backup_daily">Every day</string>
+    <string name="vault_auto_backup_weekly">Every week</string>
+    <string name="vault_auto_backup_destination">Destination</string>
+    <string name="vault_auto_backup_folder">Change folder</string>
+    <string name="vault_auto_backup_folder_unknown">Chosen folder</string>
+    <string name="vault_auto_backup_password">Change password</string>
+    <string name="vault_auto_backup_password_summary">Not stored: only a key derived from it stays on this device</string>
+    <string name="vault_auto_backup_last">Last backup: %1$s</string>
+    <string name="vault_auto_backup_pending">First backup as soon as possible</string>
+    <string name="vault_auto_backup_failed_on">Failed on %1$s</string>
+    <string name="vault_auto_backup_password_message">Choose the password for automatic backups. You’ll need it to restore them, and it can’t be recovered. Focale doesn’t store it: only a key derived from it stays on this device, protected by the Android Keystore.</string>
+    <string name="vault_auto_backup_choose_folder">Choose folder</string>
+    <string name="vault_auto_backup_password_changed">Password changed: the next backups will use it.</string>
+    <string name="vault_auto_backup_folder_refused">This folder can’t receive the backups. Choose another one.</string>
+    <string name="vault_auto_backup_no_picker">No app on this device can choose a folder</string>
+
+    <!-- Coffre-fort : notifications de la sauvegarde automatique -->
+    <string name="vault_auto_backup_channel">Automatic vault backup</string>
+    <string name="vault_auto_backup_channel_description">Automatic backups in progress and their failures</string>
+    <string name="vault_auto_backup_running">Automatic vault backup…</string>
+    <string name="vault_auto_backup_failed_title">Automatic vault backup failed</string>
+    <string name="vault_auto_backup_error_folder">The backup folder can no longer be reached. Choose it again in the vault.</string>
+    <string name="vault_auto_backup_error_space">Not enough space left in the backup folder.</string>
+    <string name="vault_auto_backup_error_write">The backup couldn’t be written. It will be retried next time.</string>
+    <string name="vault_auto_backup_error_keys">The backup key is no longer available on this device. Enter the password again in the vault.</string>
+</resources>

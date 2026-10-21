@@ -72,6 +72,7 @@ import app.focale.core.image.thumbnail
 import app.focale.core.model.Album
 import app.focale.core.model.FolderTarget
 import app.focale.core.model.MediaItem
+import app.focale.ui.components.rememberNotificationPermission
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.VaultRoute
 import app.focale.ui.navigation.VaultUnlockRoute
@@ -101,6 +102,8 @@ fun MediaActionsHost(
     val currentOnDone by rememberUpdatedState(onActionDone)
     val currentOnAlbumMoved by rememberUpdatedState(onAlbumMoved)
     val undoLabel = stringResource(R.string.action_undo)
+    // Un dossier lié au coffre signalera ses nouvelles photos par une notification.
+    val requestNotifications = rememberNotificationPermission()
 
     LaunchedEffect(actions) {
         actions.events.collect { event ->
@@ -127,7 +130,7 @@ fun MediaActionsHost(
         }
     }
 
-    progress?.let { ProgressDialog(it.label.asString()) }
+    progress?.let { ProgressDialog(it.label.asString(), onHide = actions::hideProgress.takeIf { _ -> it.background }) }
 
     when (val current = dialog) {
         is ActionDialog.AddToAlbum -> AlbumPickerSheet(
@@ -177,7 +180,10 @@ fun MediaActionsHost(
                 name = current.album.name,
                 photos = current.photos,
                 videos = current.videos,
-                onConfirm = { actions.moveAlbumToVault(current.album, current.photos + current.videos) },
+                onConfirm = {
+                    if (current.album is AlbumSource.Folder) requestNotifications()
+                    actions.moveAlbumToVault(current.album, current.photos + current.videos)
+                },
                 onDismiss = actions::dismissDialog,
             )
         } else {
@@ -322,7 +328,7 @@ private fun VaultSetupDialog(onSetUp: () -> Unit, onDismiss: () -> Unit) {
  * rapide ne fait pas clignoter de dialogue.
  */
 @Composable
-private fun ProgressDialog(label: String) {
+private fun ProgressDialog(label: String, onHide: (() -> Unit)? = null) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(PROGRESS_DELAY_MS)
@@ -334,13 +340,20 @@ private fun ProgressDialog(label: String) {
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
     ) {
         Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                modifier = Modifier.padding(24.dp),
-            ) {
-                LoadingIndicator(modifier = Modifier.size(48.dp))
-                Text(label, style = MaterialTheme.typography.bodyLarge)
+            Column(modifier = Modifier.padding(24.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    LoadingIndicator(modifier = Modifier.size(48.dp))
+                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                }
+                // Opération confiée à une tâche de fond : l'écran peut la laisser continuer seule.
+                if (onHide != null) {
+                    TextButton(onClick = onHide, modifier = Modifier.align(Alignment.End).padding(top = 12.dp)) {
+                        Text(stringResource(R.string.vault_import_background))
+                    }
+                }
             }
         }
     }

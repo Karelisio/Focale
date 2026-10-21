@@ -91,7 +91,9 @@ fun VaultAlbumScreen(
     val otherAlbums by viewModel.otherAlbums.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
+    val sort by viewModel.sort.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var sorting by rememberSaveable { mutableStateOf(false) }
     var renaming by rememberSaveable { mutableStateOf(false) }
     var confirmDeleteAlbum by rememberSaveable { mutableStateOf(false) }
     var confirmRestoreAlbum by rememberSaveable { mutableStateOf(false) }
@@ -115,6 +117,9 @@ fun VaultAlbumScreen(
     if (current == null) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
         return
+    }
+    if (sorting) {
+        VaultSortSheet(sort = sort, onSortChange = viewModel::setSort, onDismiss = { sorting = false })
     }
     if (renaming) {
         NameDialog(
@@ -188,6 +193,7 @@ fun VaultAlbumScreen(
         snackbarHostState = snackbarHostState,
         onBack = onBack,
         onLock = viewModel::lock,
+        onSort = { sorting = true },
         onAdd = onAdd,
         onAddNewMedia = viewModel::addNewMedia,
         onOpen = onOpen,
@@ -214,6 +220,7 @@ internal fun VaultAlbumContent(
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onLock: () -> Unit,
+    onSort: () -> Unit,
     onAdd: () -> Unit,
     onAddNewMedia: () -> Unit,
     onOpen: (VaultItem) -> Unit,
@@ -253,6 +260,7 @@ internal fun VaultAlbumContent(
                         }
                     },
                     actions = {
+                        if (album.count > 1) VaultSortButton(onClick = onSort)
                         IconButton(onClick = onLock, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.Outlined.Lock, contentDescription = stringResource(R.string.action_lock))
                         }

@@ -7,11 +7,13 @@ import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.nio.channels.Pipe
+import java.security.GeneralSecurityException
 import kotlin.concurrent.thread
 import kotlin.random.Random
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -110,6 +112,47 @@ class VaultArchiveTest {
         val second = archive()
         assertFalse(first.copyOfRange(VaultArchive.MAGIC.size, 200).contentEquals(second.copyOfRange(VaultArchive.MAGIC.size, 200)))
         assertFalse(first.contains(second.copyOfRange(HEADER + 100, HEADER + 132)))
+    }
+
+    @Test
+    fun `des clés dérivées une fois écrivent des archives que le mot de passe restaure`() {
+        val keys = VaultArchive.deriveKeys(password, iterations)
+        val first = archiveWith(keys)
+        val second = archiveWith(keys)
+        // Même en-tête en clair (itérations, sel, témoin) : la restauration ne voit pas la différence.
+        assertArrayEquals(first.copyOf(HEADER), second.copyOf(HEADER))
+        // Mais chaque flux tire son sel et son préfixe de nonce (en-tête Tink) : rien de commun ensuite.
+        assertFalse(first.copyOfRange(HEADER, HEADER + TINK_HEADER).contentEquals(second.copyOfRange(HEADER, HEADER + TINK_HEADER)))
+        assertFalse(first.contains(second.copyOfRange(HEADER + 100, HEADER + 132)))
+        for (bytes in listOf(first, second)) {
+            val (read, blobs) = readAll(bytes)
+            assertEquals(manifest, read)
+            assertArrayEquals(photo, blobs[0].first)
+            assertArrayEquals(tiny, blobs[4].first)
+        }
+        assertReason(Reason.WRONG_PASSWORD) { VaultArchive.open(first.inputStream(), "cheval correct agrafé".toCharArray()) }
+        // Effacées, les clés n'écrivent plus rien : elles chiffreraient avec une clé nulle.
+        keys.close()
+        assertThrows(IllegalStateException::class.java) { archiveWith(keys) }
+        assertThrows(IllegalStateException::class.java) { keys.encode() }
+    }
+
+    @Test
+    fun `les clés dérivées se conservent sérialisées, sans le mot de passe`() {
+        val keys = VaultArchive.deriveKeys(password, iterations)
+        val encoded = keys.encode()
+        assertFalse(encoded.contains(password.concatToString().toByteArray(Charsets.UTF_8)))
+        val copy = VaultArchiveKeys.decode(encoded)
+        assertArrayEquals(encoded, copy.encode())
+        assertEquals(manifest, readAll(archiveWith(copy)).first)
+        val damaged = listOf(
+            encoded.copyOf(encoded.size - 1),
+            encoded + byteArrayOf(0),
+            encoded.copyOf().also { it[0] = 9 },
+            // Itérations hors bornes.
+            encoded.copyOf().also { ByteBuffer.wrap(it).putInt(1, VaultArchive.MAX_ITERATIONS + 1) },
+        )
+        for (bytes in damaged) assertThrows(GeneralSecurityException::class.java) { VaultArchiveKeys.decode(bytes) }
     }
 
     @Test
@@ -262,6 +305,17 @@ class VaultArchiveTest {
         return output.toByteArray()
     }
 
+    private fun archiveWith(keys: VaultArchiveKeys): ByteArray {
+        val output = ByteArrayOutputStream()
+        VaultArchive.write(output, keys, manifest) { writer ->
+            for ((media, thumbnail) in contents) {
+                writer.blob { media.inputStream() }
+                writer.blob { thumbnail?.inputStream() }
+            }
+        }
+        return output.toByteArray()
+    }
+
     /** Lit toute l'archive, fin comprise : contenu et intégrité de chaque blob. */
     private fun readAll(bytes: ByteArray): Pair<ArchiveManifest, List<Pair<ByteArray, Boolean>>> {
         val reader = VaultArchive.open(bytes.inputStream(), password)
@@ -344,5 +398,7 @@ class VaultArchiveTest {
         val SALT_AT = ITERATIONS_AT + 5
         /** En-tête en clair : signature, version, dérivation, itérations, sel, chiffrement, témoin. */
         val HEADER = VaultArchive.MAGIC.size + 1 + 1 + 4 + 1 + VaultArchive.SALT_BYTES + 1 + VaultArchive.WITNESS_BYTES
+        /** En-tête du flux Tink : sa longueur, le sel (32 o) et le préfixe de nonce (7 o) propres au flux. */
+        const val TINK_HEADER = 1 + 32 + 7
     }
 }

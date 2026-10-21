@@ -3,6 +3,7 @@ package app.focale
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -21,11 +22,17 @@ import app.focale.core.mediastore.ConsentRequester
 import app.focale.core.permissions.MediaAccessManager
 import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.ThemeMode
+import app.focale.core.util.UiText
+import app.focale.data.OperationResult
 import app.focale.ui.navigation.FocaleApp
 import app.focale.ui.navigation.MainRoute
 import app.focale.ui.navigation.OpenRequest
 import app.focale.ui.theme.FocaleTheme
 import app.focale.update.UpdateRepository
+import app.focale.vault.VaultImportRequest
+import app.focale.vault.VaultImportState
+import app.focale.vault.VaultImports
+import app.focale.vault.VaultNotifications
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +49,8 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var consentRequester: ConsentRequester
     @Inject lateinit var accessManager: MediaAccessManager
     @Inject lateinit var updateRepository: UpdateRepository
+    @Inject lateinit var vaultImports: VaultImports
+    @Inject lateinit var vaultNotifications: VaultNotifications
 
     /** Ouvertures reçues après le lancement (widget, autre application), consommées par l'interface. */
     private val openRequests = MutableStateFlow<OpenRequest?>(null)
@@ -60,7 +69,8 @@ class MainActivity : FragmentActivity() {
         val launch = OpenRequest.of(intent, launched = true, ownPackage = packageName)
         val startRoute: Any = (launch as? OpenRequest.External)?.route ?: MainRoute
         // Après une recréation, la visionneuse déjà ouverte est restaurée par la navigation.
-        if (savedInstanceState == null && launch is OpenRequest.Media) openRequests.value = launch
+        if (savedInstanceState == null && (launch is OpenRequest.Media || launch is OpenRequest.Vault)) openRequests.value = launch
+        if (savedInstanceState == null) addNewToVault(intent)
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -107,6 +117,33 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+        addNewToVault(intent)
+    }
+
+    /**
+     * « Mettre au coffre » d'une notification : les nouveaux médias du dossier lié rejoignent leur
+     * album du coffre, sans le déverrouiller ; Focale reste à l'écran pour la confirmation du
+     * système, puis affiche le bilan.
+     */
+    private fun addNewToVault(intent: Intent?) {
+        if (intent?.action != ACTION_VAULT_ADD_NEW) return
+        val albumId = intent.getLongExtra(EXTRA_VAULT_ALBUM_ID, -1L).takeIf { it >= 0 } ?: return
+        // Une seule fois, même si l'activité est recréée avec cette intention.
+        intent.action = null
+        vaultNotifications.cancelNewMedia(albumId)
+        lifecycleScope.launch {
+            val work = vaultImports.enqueue(VaultImportRequest.NewFromSource(albumId))
+            vaultImports.observe(work).collect { state ->
+                if (state !is VaultImportState.Finished) return@collect
+                val message = when (val result = state.result) {
+                    is OperationResult.Success -> UiText.Plural(R.plurals.message_moved_to_vault, result.count)
+                    is OperationResult.Partial -> UiText.Res(R.string.message_partial, listOf(result.succeeded, result.succeeded + result.failed))
+                    is OperationResult.Failure -> UiText.Res(R.string.message_operation_failed)
+                    OperationResult.Cancelled -> null
+                }
+                message?.let { Toast.makeText(this@MainActivity, it.resolve(this@MainActivity), Toast.LENGTH_SHORT).show() }
+            }
+        }
     }
 
     override fun onResume() {
@@ -125,5 +162,10 @@ class MainActivity : FragmentActivity() {
     companion object {
         const val ACTION_OPEN_MEDIA = "app.focale.action.OPEN_MEDIA"
         const val EXTRA_MEDIA_ID = "media_id"
+
+        /** Notification des nouvelles photos d'un dossier lié : ouvrir le coffre, ou les y ajouter. */
+        const val ACTION_OPEN_VAULT = "app.focale.action.OPEN_VAULT"
+        const val ACTION_VAULT_ADD_NEW = "app.focale.action.VAULT_ADD_NEW"
+        const val EXTRA_VAULT_ALBUM_ID = "vault_album_id"
     }
 }

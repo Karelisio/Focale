@@ -19,7 +19,7 @@ class DatabaseMigrationsTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun `la migration 1 vers 4 conserve les données et produit le schéma attendu par Room`() {
+    fun `la migration 1 vers 5 conserve les données et produit le schéma attendu par Room`() {
         val file = databaseAt(version = 1) { db ->
             db.execSQL("INSERT INTO favorite (media_id, added_at) VALUES (42, 1000)")
             db.execSQL(vaultItem(id = 3))
@@ -76,6 +76,23 @@ class DatabaseMigrationsTest {
             db.execSQL("INSERT INTO person_refusal (person_low, person_high) VALUES (7, 8)")
             db.execSQL("DELETE FROM person WHERE id = 8")
             assertEquals(0L, db.longOf("SELECT COUNT(*) FROM person_refusal"))
+            assertEquals(LATEST, db.version)
+        }
+    }
+
+    @Test
+    fun `la migration 4 vers 5 ajoute les dates d'origine, le journal des imports et la corbeille du coffre`() {
+        val file = databaseAt(version = 4) { db ->
+            db.execSQL(vaultItem(id = 9))
+        }
+        openMigrated(file) { db ->
+            // Éléments existants : dans le coffre, sans original connu, hors corbeille.
+            assertEquals(
+                1L,
+                db.longOf("SELECT COUNT(*) FROM vault_item WHERE id = 9 AND importing = 0 AND source_media_id IS NULL AND deleted_at IS NULL"),
+            )
+            db.execSQL("INSERT INTO media_date (media_id, date_taken) VALUES (12, 1519979400000)")
+            assertEquals(1_519_979_400_000L, db.longOf("SELECT date_taken FROM media_date WHERE media_id = 12"))
             assertEquals(LATEST, db.version)
         }
     }
@@ -138,6 +155,6 @@ class DatabaseMigrationsTest {
         /** Dossier courant des tests : le module app. */
         val SCHEMAS = File("schemas/app.focale.core.database.FocaleDatabase")
         const val TABLE_NAME = "\${TABLE_NAME}"
-        const val LATEST = 4
+        const val LATEST = 5
     }
 }

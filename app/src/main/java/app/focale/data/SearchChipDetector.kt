@@ -57,9 +57,7 @@ object SearchChipDetector {
             }
             types.forEach { (filter, words) -> add(ChipSuggestion(SearchChip.Type(filter), words)) }
             persons.entries.take(MAX_PEOPLE).forEach { (id, words) -> add(ChipSuggestion(SearchChip.Person(id, people[id]), words)) }
-            placeWords.entries.take(MAX_PLACES).forEach { (place, words) ->
-                add(ChipSuggestion(SearchChip.Place(place.name, place.countryCode), words))
-            }
+            placeWords.entries.take(MAX_PLACES).forEach { (place, words) -> add(ChipSuggestion(SearchChip.Place.of(place), words)) }
         }
     }
 
@@ -76,7 +74,9 @@ object SearchChipDetector {
 
     private fun words(text: String): List<String> = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
 
-    private fun placeWords(place: PlaceSuggestion): List<String> = LabelDictionary.normalize(place.name).split(' ')
+    /** Mots du nom GeoNames et des noms français et anglais : « lisb » trouve Lisbon et Lisbonne. */
+    private fun placeWords(place: PlaceSuggestion): List<String> =
+        place.names.forms.flatMap { LabelDictionary.normalize(it).split(' ') }
 
     /** Période d'une requête de dates : plage de jours, ou mois de toutes les années. */
     private fun period(query: MediaQuery, zone: ZoneId): SearchChip.Period? {

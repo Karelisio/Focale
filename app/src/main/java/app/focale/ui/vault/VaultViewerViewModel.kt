@@ -18,6 +18,7 @@ import app.focale.core.util.UiText
 import app.focale.data.OperationResult
 import app.focale.ui.navigation.VaultViewerRoute
 import app.focale.vault.EncryptedFileDataSource
+import app.focale.vault.VaultContent
 import app.focale.vault.VaultCrypto
 import app.focale.vault.VaultItem
 import app.focale.vault.VaultRepository
@@ -42,6 +43,7 @@ import kotlinx.coroutines.launch
 class VaultViewerViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val repository: VaultRepository,
+    content: VaultContent,
     private val crypto: VaultCrypto,
     private val storage: VaultStorage,
     session: VaultSession,
@@ -55,9 +57,9 @@ class VaultViewerViewModel @Inject constructor(
 
     val unlocked: StateFlow<Boolean> = session.unlocked
 
-    /** Contenu parcouru : l'album d'où l'on vient, ou tout le coffre. */
+    /** Contenu parcouru : l'album d'où l'on vient, ou tout le coffre, dans l'ordre de sa grille. */
     val items: StateFlow<List<VaultItem>?> = session.unlocked
-        .flatMapLatest { unlocked -> if (unlocked) repository.observeItems(route.albumId) else flowOf(null) }
+        .flatMapLatest { unlocked -> if (unlocked) content.items(route.albumId) else flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val settings: StateFlow<AppSettings> = settingsRepository.current
@@ -74,7 +76,7 @@ class VaultViewerViewModel @Inject constructor(
 
     fun restore(item: VaultItem) = run(item, R.plurals.message_restored) { repository.restore(listOf(it)) }
 
-    fun delete(item: VaultItem) = run(item, R.plurals.message_deleted) { repository.delete(listOf(it)) }
+    fun delete(item: VaultItem) = run(item, R.plurals.vault_trashed) { repository.trash(listOf(it)) }
 
     /** Lecteur dont la source déchiffre la vidéo à la volée. */
     @OptIn(UnstableApi::class)

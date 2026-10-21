@@ -301,7 +301,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
             locale = locale,
             onPick = { place ->
                 picker = null
-                viewModel.addChip(SearchChip.Place(place.name, place.countryCode))
+                viewModel.addChip(SearchChip.Place.of(place))
             },
             onDismiss = { picker = null },
         )
@@ -474,7 +474,7 @@ private fun SearchExplore(
                         items(places.take(PLACES_ROW), key = { "${it.name}-${it.countryCode}" }) { place ->
                             PlaceCard(place, locale) {
                                 onOpen(
-                                    place.name,
+                                    place.names.display(locale),
                                     MediaQuery(
                                         terms = listOf(
                                             SearchTerm(place = LabelDictionary.normalize(place.name), exactPlace = true),
@@ -709,7 +709,7 @@ private fun PlaceCard(place: PlaceSuggestion, locale: Locale, onClick: () -> Uni
                     .background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f))),
             )
             Column(Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                Text(place.name, style = MaterialTheme.typography.titleMediumEmphasized, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(place.names.display(locale), style = MaterialTheme.typography.titleMediumEmphasized, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     CountryResolver.displayName(place.countryCode, locale),
                     style = MaterialTheme.typography.bodySmall,

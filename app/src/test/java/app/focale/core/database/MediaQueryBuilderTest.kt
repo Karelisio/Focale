@@ -152,4 +152,12 @@ class MediaQueryBuilderTest {
         assertTrue(args.isEmpty())
         assertFalse(MediaQueryBuilder.where(MediaQuery(), mutableListOf()).contains("NOT IN"))
     }
+
+    @Test
+    fun `une carte de lieu cherche son nom GeoNames, suivi ou non de ses traductions`() {
+        val args = mutableListOf<Any?>()
+        val where = MediaQueryBuilder.where(MediaQuery(terms = listOf(SearchTerm(place = "lisbon", exactPlace = true))), args)
+        assertTrue(where.contains("WHERE place_key = ? OR place_key GLOB ?"))
+        assertEquals(listOf<Any?>("lisbon", "lisbon | *"), args)
+    }
 }

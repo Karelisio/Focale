@@ -20,18 +20,26 @@ class ClusterFace(val id: Long, val mediaId: Long, val embedding: FloatArray)
  * - Les visages rattachés à la main n'entrent jamais ici comme nouveaux visages : ils
  *   nourrissent seulement les centroïdes de leur personne.
  *
- * Seuils pensés pour SFace : OpenCV retient 0,363 pour comparer deux visages ; contre un
- * centroïde, plus stable qu'un visage isolé, et sur des milliers de visages en attente,
- * on reste un peu plus strict pour éviter de mélanger deux personnes (un groupe scindé se
- * fusionne d'un geste, un groupe mélangé est pénible à trier).
+ * Seuils mesurés avec SFace sur LFW (`tools/faces/`). OpenCV retient 0,363 pour comparer
+ * deux visages, mais chaque nouveau visage est ici comparé à toutes les personnes : à 0,42,
+ * un inconnu passe le seuil face à une personne une fois sur 2 000 environ, et une
+ * bibliothèque simulée de 150 personnes et 60 % d'inconnus voyait 26 % de visages mal
+ * rattachés, les centroïdes ainsi pollués dérivant vers le « visage moyen » et attirant
+ * d'autres inconnus. À 0,50 : 0,9 % de visages mal rattachés, aucune personne
+ * « fourre-tout », et au moins 99,4 % des visages d'une personne connue la rejoignent (un
+ * groupe scindé se fusionne d'un geste, un groupe mélangé est pénible à trier).
  */
 class FaceClusterer(private val config: Config = Config()) {
 
     data class Config(
         /** Similarité minimale entre un visage et le centroïde d'une personne. */
-        val attach: Float = 0.42f,
-        /** Similarité minimale entre deux visages en attente pour former un groupe. */
-        val seed: Float = 0.45f,
+        val attach: Float = 0.50f,
+        /**
+         * Similarité minimale entre deux visages en attente pour former un groupe (6 paires
+         * d'inconnus sur un million, 94 % des paires d'une même personne), ensuite épuré au
+         * seuil [attach].
+         */
+        val seed: Float = 0.50f,
         /** Nombre de visages (sur autant de photos) pour créer une personne. */
         val minFaces: Int = 3,
     )

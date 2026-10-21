@@ -13,6 +13,8 @@ data class VaultAlbum(
     val coverThumbFileName: String?,
     /** Dossier d'origine (`RELATIVE_PATH`) d'un album-dossier, null sinon. */
     val sourcePath: String?,
+    /** Création de l'album (ms). */
+    val createdAt: Long,
 ) {
     /** Nom du dossier d'origine, comme dans l'onglet Albums. */
     val sourceName: String?
@@ -25,6 +27,7 @@ fun VaultAlbumRow.toModel(): VaultAlbum = VaultAlbum(
     count = count,
     coverThumbFileName = coverThumb,
     sourcePath = album.sourcePath.takeIf { album.sourceBucketId != null },
+    createdAt = album.createdAt,
 )
 
 /** Album du coffre qui reçoit un import ou un déplacement. */

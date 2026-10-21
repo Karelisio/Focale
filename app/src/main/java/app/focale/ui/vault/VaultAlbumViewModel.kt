@@ -5,11 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import app.focale.R
+import app.focale.core.settings.VaultSort
 import app.focale.core.util.UiText
 import app.focale.data.OperationResult
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.navigation.VaultAlbumRoute
 import app.focale.vault.VaultAlbum
+import app.focale.vault.VaultContent
 import app.focale.vault.VaultDestination
 import app.focale.vault.VaultItem
 import app.focale.vault.VaultRepository
@@ -47,6 +49,7 @@ sealed interface VaultAlbumEvent {
 class VaultAlbumViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: VaultRepository,
+    private val content: VaultContent,
     private val session: VaultSession,
     /** Import des nouveaux médias : progression, consentement de suppression et bilan. */
     val actions: MediaActions,
@@ -66,12 +69,12 @@ class VaultAlbumViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val items: StateFlow<List<VaultItem>?> = session.unlocked
-        .flatMapLatest { unlocked -> if (unlocked) repository.observeItems(albumId) else flowOf(null) }
+        .flatMapLatest { unlocked -> if (unlocked) content.items(albumId) else flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Autres albums du coffre, où déplacer une sélection. */
     val otherAlbums: StateFlow<List<VaultAlbum>> = session.unlocked
-        .flatMapLatest { unlocked -> if (unlocked) repository.observeAlbums() else flowOf(emptyList()) }
+        .flatMapLatest { unlocked -> if (unlocked) content.albums() else flowOf(emptyList()) }
         .map { albums -> albums.filter { it.id != albumId } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -91,30 +94,38 @@ class VaultAlbumViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    private val content = VaultSelection(viewModelScope, repository) { items.value.orEmpty() }
-    val selection: StateFlow<Set<Long>> = content.selected
+    /** Tri des éléments, commun à tout le coffre et mémorisé. */
+    val sort: StateFlow<VaultSort> = content.itemSort
+        .stateIn(viewModelScope, SharingStarted.Eagerly, VaultSort())
+
+    private val selectionState = VaultSelection(viewModelScope, repository) { items.value.orEmpty() }
+    val selection: StateFlow<Set<Long>> = selectionState.selected
 
     private val restoring = MutableStateFlow(false)
 
     /** Une opération est en cours : sélection, sortie de l'album ou import des nouveaux médias. */
-    val busy: StateFlow<Boolean> = combine(content.busy, restoring, actions.busy) { selecting, leaving, importing ->
+    val busy: StateFlow<Boolean> = combine(selectionState.busy, restoring, actions.busy) { selecting, leaving, importing ->
         selecting || leaving || importing
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val channel = Channel<VaultAlbumEvent>(Channel.BUFFERED)
-    val events: Flow<VaultAlbumEvent> = merge(channel.receiveAsFlow(), content.messages.map { VaultAlbumEvent.Message(it) })
+    val events: Flow<VaultAlbumEvent> = merge(channel.receiveAsFlow(), selectionState.messages.map { VaultAlbumEvent.Message(it) })
 
-    fun toggle(id: Long) = content.toggle(id)
+    fun toggle(id: Long) = selectionState.toggle(id)
 
-    fun selectAll() = content.selectAll()
+    fun selectAll() = selectionState.selectAll()
 
-    fun clearSelection() = content.clear()
+    fun clearSelection() = selectionState.clear()
 
-    fun restoreSelection() = content.restore()
+    fun restoreSelection() = selectionState.restore()
 
-    fun deleteSelection() = content.delete()
+    fun deleteSelection() = selectionState.delete()
 
-    fun moveSelection(destination: VaultDestination) = content.moveTo(destination, otherAlbums.value)
+    fun moveSelection(destination: VaultDestination) = selectionState.moveTo(destination, otherAlbums.value)
+
+    fun setSort(sort: VaultSort) {
+        viewModelScope.launch { content.setItemSort(sort) }
+    }
 
     fun lock() = session.lock()
 

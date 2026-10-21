@@ -22,13 +22,13 @@ import java.util.concurrent.TimeUnit
 object SearchFilterLabels {
 
     /**
-     * Libellé d'une pastille : nom de la personne (actuel si elle figure dans [people]), lieu,
-     * période ou type.
+     * Libellé d'une pastille : nom de la personne (actuel si elle figure dans [people]), lieu dans
+     * la langue de l'application, période ou type.
      */
     fun chip(resources: Resources, chip: SearchChip, people: Map<Long, Person>): String = when (chip) {
         is SearchChip.Person -> (if (chip.id in people) people.getValue(chip.id).name else chip.name)
             ?: resources.getString(R.string.people_unnamed)
-        is SearchChip.Place -> chip.name
+        is SearchChip.Place -> chip.names.display(resources.locale)
         is SearchChip.Period -> period(resources, chip)
         is SearchChip.Type -> resources.getString(chip.filter.labelRes())
     }

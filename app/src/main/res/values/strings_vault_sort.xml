@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : tri -->
+    <string name="vault_sort_title">Sort</string>
+    <string name="vault_sort_items">Items</string>
+    <string name="vault_sort_date_added">Date added to vault</string>
+    <string name="vault_sort_album_created">Date created</string>
+    <string name="vault_sort_album_count">Number of items</string>
+</resources>

@@ -30,10 +30,12 @@ import app.focale.ui.vault.NewMedia
 import app.focale.ui.vault.VaultAlbumContent
 import app.focale.ui.vault.VaultAlbumsShelf
 import app.focale.ui.vault.VaultSectionHeader
+import app.focale.ui.vault.VaultTrashContent
 import app.focale.ui.vault.vaultItems
 import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultImage
 import app.focale.vault.VaultItem
+import app.focale.vault.VaultTrashEntry
 import coil3.Image
 import coil3.asImage
 import coil3.compose.AsyncImagePreviewHandler
@@ -49,7 +51,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Captures de référence des albums du coffre : section « Albums » au-dessus de « Tous les
- * éléments », et album-dossier avec la bannière de ses nouvelles photos ; en français et en
+ * éléments », album-dossier avec la bannière de ses nouvelles photos, et corbeille ; en français et en
  * thème clair, en anglais et en thème sombre (couleurs Focale). Les miniatures chiffrées sont
  * remplacées par des dégradés servis par l'aperçu de Coil. Régénérer avec
  * `./gradlew recordRoborazziStandardDebug` quand le changement est voulu.
@@ -65,10 +67,10 @@ class VaultAlbumsScreenshotTest {
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
     private val albums = listOf(
-        VaultAlbum(id = 1, name = "WhatsApp Images", count = 342, coverThumbFileName = "c1.thumb", sourcePath = "Pictures/WhatsApp Images/"),
-        VaultAlbum(id = 2, name = "Vacances 2025", count = 57, coverThumbFileName = "c2.thumb", sourcePath = null),
-        VaultAlbum(id = 3, name = "Papiers", count = 0, coverThumbFileName = null, sourcePath = null),
-        VaultAlbum(id = 4, name = "Plage", count = 18, coverThumbFileName = "c3.thumb", sourcePath = null),
+        VaultAlbum(id = 1, name = "WhatsApp Images", count = 342, coverThumbFileName = "c1.thumb", sourcePath = "Pictures/WhatsApp Images/", createdAt = 4),
+        VaultAlbum(id = 2, name = "Vacances 2025", count = 57, coverThumbFileName = "c2.thumb", sourcePath = null, createdAt = 3),
+        VaultAlbum(id = 3, name = "Papiers", count = 0, coverThumbFileName = null, sourcePath = null, createdAt = 2),
+        VaultAlbum(id = 4, name = "Plage", count = 18, coverThumbFileName = "c3.thumb", sourcePath = null, createdAt = 1),
     )
 
     private val items = List(15) { index ->
@@ -84,6 +86,7 @@ class VaultAlbumsScreenshotTest {
             durationMs = if (id == 2L) 83_000 else 0,
             fileName = "$id.bin",
             thumbFileName = "i${id % PALETTES.size}.thumb",
+            addedAt = 1_760_000_000_000,
         )
     }
 
@@ -100,6 +103,33 @@ class VaultAlbumsScreenshotTest {
 
     @Test
     fun albumAvecNouvellesPhotosSombre() = capture(dark = true) { AlbumWithNewPhotos() }
+
+    @Test
+    @Config(qualifiers = "fr-w400dp-h800dp-xxhdpi")
+    fun corbeilleDuCoffreClair() = capture(dark = false) { Trash() }
+
+    @Test
+    fun corbeilleDuCoffreSombre() = capture(dark = true) { Trash() }
+
+    /** Corbeille du coffre : éléments supprimés il y a 1 à 25 jours, avec les jours qui leur restent. */
+    @Composable
+    private fun Trash() {
+        VaultTrashContent(
+            entries = items.take(7).mapIndexed { index, item -> VaultTrashEntry(item, deletedAt = NOW - (index * 4 + 1) * DAY) },
+            selection = emptySet(),
+            busy = false,
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onLock = {},
+            onToggle = {},
+            onSelectAll = {},
+            onClearSelection = {},
+            onRestoreSelection = {},
+            onDeleteSelection = {},
+            onEmpty = {},
+            now = NOW,
+        )
+    }
 
     /** Haut de l'écran du coffre, sous la barre : albums puis le début de « Tous les éléments ». */
     @Composable
@@ -128,6 +158,7 @@ class VaultAlbumsScreenshotTest {
             snackbarHostState = remember { SnackbarHostState() },
             onBack = {},
             onLock = {},
+            onSort = {},
             onAdd = {},
             onAddNewMedia = {},
             onOpen = {},
@@ -176,6 +207,8 @@ class VaultAlbumsScreenshotTest {
 
     private companion object {
         const val SIZE = 256
+        const val NOW = 1_760_000_000_000L
+        const val DAY = 86_400_000L
 
         /** Couvertures des albums : conversation au soleil, mer, sable. */
         val COVERS = mapOf(

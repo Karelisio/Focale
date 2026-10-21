@@ -20,7 +20,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.RestorePage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingToolbarDefaults
@@ -114,9 +114,9 @@ private fun VaultViewerContent(viewModel: VaultViewerViewModel, onBack: () -> Un
     if (confirmDelete && current != null) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            icon = { Icon(Icons.Outlined.DeleteForever, contentDescription = null) },
-            title = { Text(pluralStringResource(R.plurals.trash_delete_confirm, 1, 1)) },
-            text = { Text(stringResource(R.string.vault_delete_message)) },
+            icon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null) },
+            title = { Text(pluralStringResource(R.plurals.vault_trash_confirm, 1, 1)) },
+            text = { Text(stringResource(R.string.vault_trash_confirm_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
@@ -188,7 +188,7 @@ private fun VaultViewerContent(viewModel: VaultViewerViewModel, onBack: () -> Un
                     Text(stringResource(R.string.action_restore), modifier = Modifier.padding(start = 8.dp))
                 }
                 IconButton(onClick = { confirmDelete = true }, enabled = !busy, shapes = IconButtonDefaults.shapes()) {
-                    Icon(Icons.Outlined.DeleteForever, contentDescription = stringResource(R.string.action_delete))
+                    Icon(Icons.Outlined.DeleteOutline, contentDescription = stringResource(R.string.action_delete))
                 }
             }
         }

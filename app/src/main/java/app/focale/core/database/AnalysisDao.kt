@@ -35,6 +35,15 @@ data class GeoPhoto(
     @ColumnInfo(name = "date_taken") val dateTaken: Long,
     @ColumnInfo(name = "date_modified") val dateModified: Long,
     val place: String?,
+    /** Pays du lieu (ISO 3166-1 alpha-2), pour en traduire le nom. */
+    val country: String? = null,
+)
+
+/** Lieu de la bibliothèque et sa clé de recherche enregistrée. */
+data class PlaceKeyRow(
+    val place: String,
+    val country: String?,
+    @ColumnInfo(name = "place_key") val placeKey: String?,
 )
 
 @Dao
@@ -138,11 +147,35 @@ interface AnalysisDao {
         """
         SELECT a.media_id AS media_id, a.latitude AS latitude, a.longitude AS longitude,
                m.media_type AS media_type, m.date_taken AS date_taken,
-               m.date_modified AS date_modified, a.place AS place
+               m.date_modified AS date_modified, a.place AS place, a.country AS country
         FROM media_analysis a JOIN media m ON m.id = a.media_id
         WHERE m.is_trashed = 0 AND a.latitude IS NOT NULL AND a.longitude IS NOT NULL
         ORDER BY m.date_taken DESC
         """,
     )
     fun observeGeoPhotos(): Flow<List<GeoPhoto>>
+
+    @Query("SELECT place, country, place_key FROM media_analysis WHERE place IS NOT NULL GROUP BY place, country, place_key")
+    suspend fun placeKeys(): List<PlaceKeyRow>
+
+    @Query("UPDATE media_analysis SET place_key = :key WHERE place = :place AND country IS :country")
+    suspend fun updatePlaceKey(place: String, country: String?, key: String)
+
+    /**
+     * Recalcule les clés de recherche des lieux déjà analysés ([keyOf] : nom et pays → clé) qui
+     * diffèrent, par exemple quand la base embarquée gagne des noms traduits : sans nouvelle
+     * analyse des médias. Renvoie le nombre de lieux mis à jour.
+     */
+    @Transaction
+    suspend fun refreshPlaceKeys(keyOf: (String, String?) -> String): Int {
+        var updated = 0
+        for (row in placeKeys()) {
+            val key = keyOf(row.place, row.country)
+            if (key != row.placeKey) {
+                updatePlaceKey(row.place, row.country, key)
+                updated++
+            }
+        }
+        return updated
+    }
 }

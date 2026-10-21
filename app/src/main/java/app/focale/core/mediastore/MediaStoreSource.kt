@@ -23,9 +23,11 @@ class MediaStoreSource @Inject constructor(
 
     /**
      * Parcourt toutes les lignes modifiées depuis [sinceGeneration] (ou toutes si null).
+     * Un média sans date de prise de vue dans MediaStore prend celle de [originalDates]
+     * (média restauré ou copié par l'application), sinon sa date de modification.
      * Fonction `inline` : [onRow] peut appeler des fonctions suspendues (écriture par lots).
      */
-    inline fun scan(sinceGeneration: Long?, onRow: (MediaEntity) -> Unit) {
+    inline fun scan(sinceGeneration: Long?, originalDates: Map<Long, Long> = emptyMap(), onRow: (MediaEntity) -> Unit) {
         val selection = buildString {
             append("${FileColumns.MEDIA_TYPE} IN (${FileColumns.MEDIA_TYPE_IMAGE}, ${FileColumns.MEDIA_TYPE_VIDEO})")
             if (sinceGeneration != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -37,7 +39,7 @@ class MediaStoreSource @Inject constructor(
         query(PROJECTION, selection, args)?.use { cursor ->
             val columns = Columns(cursor)
             while (cursor.moveToNext()) {
-                onRow(columns.read(cursor))
+                onRow(columns.read(cursor, originalDates))
             }
         }
     }
@@ -121,7 +123,8 @@ class MediaStoreSource @Inject constructor(
             -1
         }
 
-        fun read(c: Cursor): MediaEntity {
+        fun read(c: Cursor, originalDates: Map<Long, Long> = emptyMap()): MediaEntity {
+            val mediaId = c.getLong(id)
             val type = c.getInt(mediaType)
             val mimeType = c.getString(mime).orEmpty()
             val displayName = c.getString(name).orEmpty()
@@ -131,11 +134,10 @@ class MediaStoreSource @Inject constructor(
             val taken = c.getLong(dateTaken)
             val sortDate = when {
                 taken > 0 -> taken
-                modifiedSeconds > 0 -> modifiedSeconds * 1000
-                else -> addedSeconds * 1000
+                else -> originalDates[mediaId] ?: if (modifiedSeconds > 0) modifiedSeconds * 1000 else addedSeconds * 1000
             }
             return MediaEntity(
-                id = c.getLong(id),
+                id = mediaId,
                 mediaType = if (type == FileColumns.MEDIA_TYPE_VIDEO) {
                     MediaQueryBuilder.MEDIA_TYPE_VIDEO
                 } else {

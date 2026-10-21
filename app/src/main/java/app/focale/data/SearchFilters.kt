@@ -6,6 +6,7 @@ import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaQuery
 import app.focale.core.model.SearchTerm
 import app.focale.ml.LabelDictionary
+import app.focale.ml.PlaceName
 import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
@@ -31,10 +32,26 @@ sealed interface SearchChip {
         val name: String? = null,
     ) : SearchChip
 
-    /** Lieu exact (ville du géocodage hors ligne), dans son pays. */
+    /**
+     * Lieu exact (ville du géocodage hors ligne), dans son pays : [name] est le nom GeoNames, celui
+     * que cherche la requête ; [french] et [english], ses noms affichés quand ils en diffèrent.
+     */
     @Serializable
     @SerialName("place")
-    data class Place(val name: String, val country: String? = null) : SearchChip
+    data class Place(
+        val name: String,
+        val country: String? = null,
+        val french: String? = null,
+        val english: String? = null,
+    ) : SearchChip {
+        /** Noms du lieu, pour l'afficher dans la langue de l'application. */
+        val names: PlaceName get() = PlaceName(name, french, english)
+
+        companion object {
+            /** Pastille d'un lieu de la bibliothèque, avec ses noms traduits. */
+            fun of(place: PlaceSuggestion): Place = Place(place.name, place.countryCode, place.names.french, place.names.english)
+        }
+    }
 
     /** Jours [start] à [end] inclus (`LocalDate.toEpochDay`), ou [month] de toutes les années. */
     @Serializable

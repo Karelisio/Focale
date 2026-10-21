@@ -1,6 +1,7 @@
 package app.focale.data
 
 import app.focale.core.model.MediaFilter
+import app.focale.ml.PlaceName
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -14,7 +15,8 @@ class SearchChipDetectorTest {
     private val zone = ZoneId.of("Europe/Paris")
     private val today = LocalDate.of(2026, 10, 21)
     private val people = mapOf(1L to "Alice Martin", 2L to "Bob", 3L to "Avril")
-    private val places = listOf(place("Paris"), place("Saint-Malo"), place("Parisot"), place("Venice", "IT"))
+    private val lisbon = PlaceSuggestion("Lisbon", "PT", count = 3, cover = null, names = PlaceName("Lisbon", french = "Lisbonne"))
+    private val places = listOf(place("Paris"), place("Saint-Malo"), place("Parisot"), place("Venice", "IT"), lisbon)
 
     private fun place(name: String, country: String = "FR") = PlaceSuggestion(name, country, count = 3, cover = null)
     private fun detect(text: String) = SearchChipDetector.detect(text, people, places, today, zone)
@@ -52,6 +54,13 @@ class SearchChipDetectorTest {
         assertEquals(listOf(ChipSuggestion(SearchChip.Place("Saint-Malo", "FR"), listOf("saint", "malo"))), detect("saint malo"))
         // « nice » ne trouve pas « Venice ».
         assertTrue(detect("nice").isEmpty())
+    }
+
+    @Test
+    fun `un lieu se trouve aussi par ses noms traduits, et sa pastille les garde`() {
+        val chip = SearchChip.Place("Lisbon", "PT", french = "Lisbonne")
+        assertEquals(listOf(ChipSuggestion(chip, listOf("Lisbonne"))), detect("Lisbonne"))
+        assertEquals(listOf(ChipSuggestion(chip, listOf("lisb"))), detect("lisb"))
     }
 
     @Test

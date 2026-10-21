@@ -53,6 +53,10 @@ data class VaultPickerRoute(val albumId: Long? = null)
 @Serializable
 data class VaultAlbumRoute(val albumId: Long)
 
+/** Corbeille du coffre. */
+@Serializable
+data object VaultTrashRoute
+
 /** Déverrouillage du coffre seul, depuis la galerie : retour à l'écran d'origine une fois fait. */
 @Serializable
 data object VaultUnlockRoute

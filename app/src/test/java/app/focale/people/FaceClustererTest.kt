@@ -147,7 +147,7 @@ class FaceClustererTest {
         val clusterer = FaceClusterer()
         clusterer.addPending(intruder)
         others.forEach { clusterer.addPending(it) }
-        assertTrue(FaceEmbeddings.dot(seed.embedding, intruder.embedding) >= 0.45f)
+        assertTrue(FaceEmbeddings.dot(seed.embedding, intruder.embedding) >= FaceClusterer.Config().seed)
         val outcome = clusterer.cluster(listOf(seed))
         assertEquals(1, outcome.created.size)
         assertEquals(setOf(seed.id) + others.map { it.id }, outcome.assignments.keys)

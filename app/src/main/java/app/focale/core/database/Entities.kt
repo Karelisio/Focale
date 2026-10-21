@@ -50,6 +50,17 @@ data class MediaEntity(
     @ColumnInfo(name = "date_expires") val dateExpires: Long,
 )
 
+/**
+ * Date d'origine d'un média que l'application a restauré ou copié, quand MediaStore n'en a
+ * trouvé aucune : ni date de prise de vue dans le fichier, ni date de modification fixée à la
+ * bonne valeur (Android 10). L'index la retient à la place de la date du jour.
+ */
+@Entity(tableName = "media_date")
+data class MediaDateEntity(
+    @PrimaryKey @ColumnInfo(name = "media_id") val mediaId: Long,
+    @ColumnInfo(name = "date_taken") val dateTaken: Long,
+)
+
 /** Projection légère utilisée pour la synchronisation incrémentale. */
 data class MediaSyncKey(
     val id: Long,
@@ -124,7 +135,11 @@ data class MediaAnalysisEntity(
     val longitude: Double?,
     /** Ville la plus proche (géocodage hors ligne). */
     val place: String?,
-    /** [place] normalisé (minuscules, sans accents) pour la recherche. */
+    /**
+     * Clé de recherche du lieu : ses noms normalisés (minuscules, sans accents), celui de
+     * GeoNames d'abord puis ses formes française et anglaise (« lisbon | lisbonne »,
+     * `PlaceTranslations.searchKey`).
+     */
     @ColumnInfo(name = "place_key") val placeKey: String?,
     /** Code pays ISO 3166-1 alpha-2. */
     val country: String?,
@@ -178,10 +193,17 @@ data class VaultAlbumEntity(
     @ColumnInfo(name = "last_import_at") val lastImportAt: Long? = null,
 )
 
-/** Média déplacé dans le coffre-fort (fichier chiffré dans le stockage privé). */
+/**
+ * Média déplacé dans le coffre-fort (fichier chiffré dans le stockage privé).
+ *
+ * Journal de l'import : tant que l'original n'a pas quitté MediaStore, [sourceMediaId] le
+ * désigne. Une copie faite par un import en cours ([importing]) reste cachée ; elle entre dans le
+ * coffre une fois l'original supprimé, ou est effacée s'il reste dans la galerie (refus). Une
+ * copie visible dont l'original est encore là (import interrompu) est signalée dans le coffre.
+ */
 @Entity(
     tableName = "vault_item",
-    indices = [Index("album_id")],
+    indices = [Index("album_id"), Index("source_media_id")],
     foreignKeys = [
         ForeignKey(
             entity = VaultAlbumEntity::class,
@@ -207,6 +229,12 @@ data class VaultItemEntity(
     @ColumnInfo(name = "added_at") val addedAt: Long,
     /** Album du coffre, null si l'élément n'est rangé dans aucun. */
     @ColumnInfo(name = "album_id") val albumId: Long? = null,
+    /** Original (`_ID` MediaStore) peut-être encore dans la galerie, null une fois supprimé. */
+    @ColumnInfo(name = "source_media_id") val sourceMediaId: Long? = null,
+    /** Copie d'un import inachevé, cachée jusqu'à la suppression de son original. */
+    @ColumnInfo(name = "importing", defaultValue = "0") val importing: Boolean = false,
+    /** Mise à la corbeille du coffre (ms), null hors corbeille ; effacé 30 jours après. */
+    @ColumnInfo(name = "deleted_at") val deletedAt: Long? = null,
 )
 
 @Entity(tableName = "search_history")

@@ -8,6 +8,20 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 /** Ordre de la liste des personnes ; les personnes épinglées restent en tête. */
 enum class PeopleSort { PHOTOS, NAME, RECENT }
 
+/** Champ de tri des éléments du coffre-fort. */
+enum class VaultItemOrder { DATE_TAKEN, DATE_ADDED, NAME, SIZE }
+
+/** Tri des éléments du coffre-fort, commun à toutes ses grilles et à sa visionneuse. */
+@Immutable
+data class VaultSort(val order: VaultItemOrder = VaultItemOrder.DATE_TAKEN, val ascending: Boolean = false)
+
+/** Champ de tri des albums du coffre-fort. */
+enum class VaultAlbumOrder { NAME, DATE, COUNT }
+
+/** Tri des albums du coffre-fort ; par date, celle de leur création. */
+@Immutable
+data class VaultAlbumSort(val order: VaultAlbumOrder = VaultAlbumOrder.DATE, val ascending: Boolean = false)
+
 /** Réglages utilisateur persistés (DataStore). */
 @Immutable
 data class AppSettings(
@@ -41,6 +55,10 @@ data class AppSettings(
     val hiddenFolders: Set<Long> = emptySet(),
     /** Ordre de l'écran Personnes et de la rangée Personnes de l'onglet Albums. */
     val peopleSort: PeopleSort = PeopleSort.PHOTOS,
+    val vaultSort: VaultSort = VaultSort(),
+    val vaultAlbumSort: VaultAlbumSort = VaultAlbumSort(),
+    /** Notification des nouvelles photos des dossiers liés à un album du coffre. */
+    val vaultNewMediaAlerts: Boolean = true,
 ) {
     companion object {
         const val MIN_COLUMNS = 2

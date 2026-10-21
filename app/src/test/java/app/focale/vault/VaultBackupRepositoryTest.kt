@@ -257,6 +257,41 @@ class VaultBackupRepositoryTest {
     }
 
     @Test
+    fun `un élément déjà présent rejoint son album restauré s'il n'est dans aucun`() = runTest {
+        val phone = Device("ancien")
+        val trip = phone.dao.insertAlbum(VaultAlbumEntity(name = "Vacances", createdAt = 1_751_000_000_000))
+        val papers = phone.dao.insertAlbum(VaultAlbumEntity(name = "Papiers", createdAt = 1_752_000_000_000))
+        val beach = random.nextBytes(70_000)
+        val receipt = random.nextBytes(30_000)
+        val sunset = random.nextBytes(45_000)
+        phone.add("IMG_0001.jpg", beach, thumbnail = null, album = trip)
+        phone.add("IMG_0002.jpg", receipt, thumbnail = null, album = papers)
+        phone.add("IMG_0003.jpg", sunset, thumbnail = null, album = trip)
+        phone.backups.export(archive, password())
+
+        // Autre coffre : deux de ces photos y sont déjà, l'une hors album, l'autre dans un album à elle.
+        wipeVault()
+        val newPhone = Device("nouveau")
+        val mine = newPhone.dao.insertAlbum(VaultAlbumEntity(name = "Mes reçus", createdAt = 1_760_000_000_000))
+        val loose = newPhone.add("plage.jpg", beach, thumbnail = null)
+        val filed = newPhone.add("ticket.jpg", receipt, thumbnail = null, album = mine)
+
+        assertEquals(RestoreResult.Success(added = 1, duplicates = 2, unreadable = 0), newPhone.backups.restore(archive, password()))
+
+        val albums = newPhone.dao.albums().associateBy { it.name }
+        val items = newPhone.items().associateBy { it.displayName }
+        // Rangée dans son album restauré, sans copie supplémentaire.
+        assertEquals(albums.getValue("Vacances").id, items.getValue("plage.jpg").albumId)
+        assertEquals(loose.id, items.getValue("plage.jpg").id)
+        assertEquals(albums.getValue("Vacances").id, items.getValue("IMG_0003.jpg").albumId)
+        // Déjà rangée : elle reste dans son album, et « Papiers » n'est pas recréé pour rien.
+        assertEquals(mine, items.getValue("ticket.jpg").albumId)
+        assertEquals(filed.id, items.getValue("ticket.jpg").id)
+        assertEquals(setOf("Mes reçus", "Vacances"), albums.keys)
+        assertEquals(3, items.size)
+    }
+
+    @Test
     fun `une sauvegarde antérieure aux albums se restaure, sans albums`() = runTest {
         requireNotNull(javaClass.getResourceAsStream(LEGACY_ARCHIVE)).use { input ->
             archiveFile.outputStream().use { input.copyTo(it) }

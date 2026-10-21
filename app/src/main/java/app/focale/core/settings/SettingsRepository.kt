@@ -53,6 +53,15 @@ class SettingsRepository @Inject constructor(
     suspend fun setVaultAutoLockSeconds(seconds: Int) = edit { it[Keys.VAULT_AUTO_LOCK] = seconds.coerceAtLeast(0) }
     suspend fun setAutoCheckUpdates(enabled: Boolean) = edit { it[Keys.AUTO_UPDATES] = enabled }
     suspend fun setPeopleSort(sort: PeopleSort) = edit { it[Keys.PEOPLE_SORT] = sort.name }
+    suspend fun setVaultSort(sort: VaultSort) = edit {
+        it[Keys.VAULT_SORT] = sort.order.name
+        it[Keys.VAULT_SORT_ASCENDING] = sort.ascending
+    }
+    suspend fun setVaultNewMediaAlerts(enabled: Boolean) = edit { it[Keys.VAULT_NEW_MEDIA_ALERTS] = enabled }
+    suspend fun setVaultAlbumSort(sort: VaultAlbumSort) = edit {
+        it[Keys.VAULT_ALBUM_SORT] = sort.order.name
+        it[Keys.VAULT_ALBUM_SORT_ASCENDING] = sort.ascending
+    }
     suspend fun setFolderHidden(bucketId: Long, hidden: Boolean) = edit { prefs ->
         val current = prefs[Keys.HIDDEN_FOLDERS].orEmpty()
         prefs[Keys.HIDDEN_FOLDERS] = if (hidden) current + bucketId.toString() else current - bucketId.toString()
@@ -84,6 +93,15 @@ class SettingsRepository @Inject constructor(
             autoCheckUpdates = prefs[Keys.AUTO_UPDATES] ?: defaults.autoCheckUpdates,
             hiddenFolders = prefs[Keys.HIDDEN_FOLDERS].orEmpty().mapNotNullTo(HashSet()) { it.toLongOrNull() },
             peopleSort = prefs[Keys.PEOPLE_SORT].toEnum(defaults.peopleSort),
+            vaultSort = VaultSort(
+                order = prefs[Keys.VAULT_SORT].toEnum(defaults.vaultSort.order),
+                ascending = prefs[Keys.VAULT_SORT_ASCENDING] ?: defaults.vaultSort.ascending,
+            ),
+            vaultAlbumSort = VaultAlbumSort(
+                order = prefs[Keys.VAULT_ALBUM_SORT].toEnum(defaults.vaultAlbumSort.order),
+                ascending = prefs[Keys.VAULT_ALBUM_SORT_ASCENDING] ?: defaults.vaultAlbumSort.ascending,
+            ),
+            vaultNewMediaAlerts = prefs[Keys.VAULT_NEW_MEDIA_ALERTS] ?: defaults.vaultNewMediaAlerts,
         )
     }
 
@@ -109,5 +127,10 @@ class SettingsRepository @Inject constructor(
         val AUTO_UPDATES = booleanPreferencesKey("auto_check_updates")
         val HIDDEN_FOLDERS = stringSetPreferencesKey("hidden_folders")
         val PEOPLE_SORT = stringPreferencesKey("people_sort")
+        val VAULT_SORT = stringPreferencesKey("vault_sort")
+        val VAULT_SORT_ASCENDING = booleanPreferencesKey("vault_sort_ascending")
+        val VAULT_ALBUM_SORT = stringPreferencesKey("vault_album_sort")
+        val VAULT_ALBUM_SORT_ASCENDING = booleanPreferencesKey("vault_album_sort_ascending")
+        val VAULT_NEW_MEDIA_ALERTS = booleanPreferencesKey("vault_new_media_alerts")
     }
 }

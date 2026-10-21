@@ -18,6 +18,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaEntity
+import app.focale.core.database.VaultAlbumEntity
+import app.focale.core.database.VaultItemEntity
 import app.focale.core.mediastore.ConsentRequester
 import app.focale.core.mediastore.MediaStoreSource
 import app.focale.core.mediastore.MediaSyncManager
@@ -109,7 +111,8 @@ class VaultAlbumImportTest {
             io = Dispatchers.IO,
         )
         val operations = MediaOperations(
-            context, context.contentResolver, consent, sync, database.trashDao(), database.favoriteDao(), Dispatchers.IO,
+            context, context.contentResolver, consent, sync, database.trashDao(), database.favoriteDao(), database.mediaDao(),
+            Dispatchers.IO,
         )
         repository = VaultRepository(
             resolver = context.contentResolver,
@@ -211,6 +214,164 @@ class VaultAlbumImportTest {
         assertEquals(2, store.size)
     }
 
+    @Test
+    fun `un import repris après la fin du processus ne rechiffre pas ses copies`() = runTest {
+        val albumId = repository.createAlbum("Perso")
+        gallery(photo(1), photo(2), photo(3))
+        // Processus tué pendant la confirmation : deux copies faites, cachées, originaux en place.
+        val first = interruptedCopy(1, albumId)
+        val second = interruptedCopy(2, albumId)
+        assertTrue(repository.observeItems().first().isEmpty())
+        aead.touched.clear()
+
+        assertEquals(
+            OperationResult.Success(3),
+            repository.import(listOf(media(1), media(2), media(3)), VaultDestination.Album(albumId)),
+        )
+
+        // Seul le troisième média a été chiffré ; les deux copies sont entrées telles quelles.
+        assertTrue(first.fileName !in aead.touched && second.fileName !in aead.touched)
+        assertEquals(1, aead.touched.count { it.endsWith(VaultStorage.MEDIA_SUFFIX) })
+        val inAlbum = repository.observeItems(albumId).first().map { it.id }
+        assertEquals(3, inAlbum.size)
+        assertTrue(inAlbum.containsAll(listOf(first.id, second.id)))
+        assertEquals(0, store.size)
+        assertTrue(database.vaultDao().importing().isEmpty())
+    }
+
+    @Test
+    fun `le contrôle au lancement fait entrer les copies et signale les originaux restés`() = runTest {
+        gallery(photo(1), photo(2))
+        val gone = interruptedCopy(1, albumId = null)
+        val left = interruptedCopy(2, albumId = null)
+        // L'original 1 a été supprimé juste avant que l'application soit tuée.
+        store.remove(1)
+
+        // Un import planifié reprendra lui-même ses copies : rien n'est touché.
+        repository.repair(importActive = true)
+        assertTrue(repository.observeItems().first().isEmpty())
+
+        repository.repair(importActive = false)
+        assertEquals(setOf(gone.id, left.id), repository.observeItems().first().map { it.id }.toSet())
+        syncIndex()
+        assertEquals(1, repository.observeLeftInGallery().first())
+        // Pas proposé comme nouveau dans l'album lié au dossier : sa copie est déjà dans le coffre.
+        val folderAlbum = database.vaultDao().insertAlbum(
+            VaultAlbumEntity(name = "WhatsApp Images", sourceBucketId = BUCKET, sourcePath = "Pictures/WhatsApp Images/", createdAt = 0),
+        )
+        assertTrue(database.vaultDao().newInSource(folderAlbum).isEmpty())
+
+        // Retirer de la galerie : rien n'est chiffré, l'original part.
+        aead.touched.clear()
+        assertEquals(OperationResult.Success(1), repository.removeLeftOriginals())
+        assertTrue(aead.touched.isEmpty())
+        assertEquals(0, store.size)
+        syncIndex()
+        assertEquals(0, repository.observeLeftInGallery().first())
+        assertEquals(2, repository.observeItems().first().size)
+    }
+
+    @Test
+    fun `un refus pendant la reprise annule les copies de l'import`() = runTest {
+        gallery(photo(1))
+        interruptedCopy(1, albumId = null)
+        approveDeletion = false
+
+        assertEquals(OperationResult.Cancelled, repository.import(listOf(media(1))))
+
+        assertTrue(database.vaultDao().importing().isEmpty())
+        assertTrue(repository.observeItems().first().isEmpty())
+        assertTrue(storage.directory.list().isNullOrEmpty())
+        assertEquals(1, store.size)
+    }
+
+    @Test
+    fun `les doublons des versions précédentes sont réparés au lancement`() = runTest {
+        val albumId = repository.createAlbum("Vacances")
+        gallery(photo(1), photo(2))
+        // Import interrompu d'une version antérieure : copie visible, original identique resté.
+        val kept = visibleCopy(1, albumId = null)
+        // Import relancé ensuite : le même contenu chiffré deux fois, l'original parti.
+        val inAlbum = visibleCopy(2, albumId = albumId)
+        val duplicate = visibleCopy(2, albumId = null)
+        store.remove(2)
+        syncIndex()
+        // Fichier chiffré orphelin d'une écriture interrompue, et un autre tout récent.
+        val orphan = storage.file("orphelin.bin").apply { writeBytes(ByteArray(10)) }
+        orphan.setLastModified(System.currentTimeMillis() - 2 * 60 * 60_000L)
+        val recent = storage.file("en-cours.bin").apply { writeBytes(ByteArray(10)) }
+
+        repository.repair(importActive = false)
+
+        // Une seule copie du contenu en double, celle rangée dans un album.
+        assertEquals(setOf(kept.id, inAlbum.id), repository.observeItems().first().map { it.id }.toSet())
+        assertTrue(!storage.file(duplicate.fileName).exists())
+        // L'original resté dans la galerie est signalé, prêt à être retiré.
+        assertEquals(1, repository.observeLeftInGallery().first())
+        assertTrue(!orphan.exists())
+        assertTrue(recent.exists())
+    }
+
+    @Test
+    fun `sortir du coffre un élément dont l'original est resté ne crée pas de doublon`() = runTest {
+        gallery(photo(1))
+        val copy = interruptedCopy(1, albumId = null)
+        repository.repair(importActive = false)
+
+        assertEquals(OperationResult.Success(1), repository.restore(listOf(copy.toModel())))
+
+        // L'original est toujours là, seul ; la copie chiffrée est effacée.
+        assertEquals(1, store.size)
+        assertTrue(repository.observeItems().first().isEmpty())
+        assertTrue(!storage.file(copy.fileName).exists())
+    }
+
+    @Test
+    fun `la corbeille du coffre garde les éléments 30 jours, puis les efface`() = runTest {
+        val albumId = repository.createAlbum("Vacances")
+        gallery(photo(1), photo(2), photo(3))
+        repository.import(listOf(media(1), media(2), media(3)), VaultDestination.Album(albumId))
+        val (first, second, third) = repository.observeItems(albumId).first().sortedBy { it.displayName }
+
+        assertEquals(OperationResult.Success(2), repository.trash(listOf(first, second)))
+        // Hors de l'album, de son nombre et de sa couverture ; dans la corbeille.
+        assertEquals(listOf(third.id), repository.observeItems(albumId).first().map { it.id })
+        assertEquals(1, repository.observeAlbums().first().single().count)
+        assertEquals(setOf(first.id, second.id), repository.observeTrash().first().map { it.item.id }.toSet())
+
+        // Remis dans le coffre : de retour dans son album.
+        repository.untrash(listOf(first))
+        assertEquals(setOf(first.id, third.id), repository.observeItems(albumId).first().map { it.id }.toSet())
+
+        // Trente jours plus tard, la corbeille est purgée : fichiers chiffrés compris.
+        val entry = repository.observeTrash().first().single()
+        assertEquals(0, repository.purgeTrash(now = entry.deletedAt + VaultRepository.TRASH_RETENTION_MS - 1))
+        assertEquals(1, repository.purgeTrash(now = entry.deletedAt + VaultRepository.TRASH_RETENTION_MS + 1))
+        assertTrue(repository.observeTrash().first().isEmpty())
+        assertTrue(!storage.file(second.fileName).exists())
+        assertTrue(storage.file(first.fileName).exists())
+    }
+
+    /** Copie chiffrée du média [id] laissée par un import interrompu (cachée, original en place). */
+    private suspend fun interruptedCopy(id: Long, albumId: Long?): VaultItemEntity = copyOf(id, albumId, importing = true)
+
+    /** Copie visible du média [id], sans lien avec son original (versions antérieures). */
+    private suspend fun visibleCopy(id: Long, albumId: Long?): VaultItemEntity = copyOf(id, albumId, importing = false)
+
+    private suspend fun copyOf(id: Long, albumId: Long?, importing: Boolean): VaultItemEntity {
+        val photo = database.mediaDao().get(id)!!
+        val file = storage.file("copie-$id-${random.nextInt(1_000_000)}${VaultStorage.MEDIA_SUFFIX}")
+        val size = VaultCrypto { aead }.encrypt(store.read(id).inputStream(), file)
+        val entity = VaultItemEntity(
+            displayName = photo.displayName, mimeType = photo.mimeType, mediaType = photo.mediaType,
+            originalPath = photo.relativePath, dateTaken = photo.dateTaken, size = size, width = photo.width,
+            height = photo.height, duration = 0, fileName = file.name, thumbFileName = null,
+            addedAt = System.currentTimeMillis(), albumId = albumId,
+            sourceMediaId = if (importing) id else null, importing = importing,
+        )
+        return entity.copy(id = database.vaultDao().insert(entity))
+    }
+
     /** Médias arrivés dans la galerie : dans MediaStore et dans l'index. */
     private suspend fun gallery(vararg photos: MediaEntity) {
         photos.forEach { store.put(it.id, random.nextBytes(4_000 + it.id.toInt())) }
@@ -273,6 +434,13 @@ class VaultAlbumImportTest {
         }
 
         fun contains(id: Long): Boolean = contents.containsKey(id)
+
+        fun read(id: Long): ByteArray = contents.getValue(id)
+
+        /** Original supprimé hors de l'application. */
+        fun remove(id: Long) {
+            contents.remove(id)
+        }
 
         fun deletePending() {
             pending.forEach(contents::remove)

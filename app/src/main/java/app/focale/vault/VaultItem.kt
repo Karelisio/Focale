@@ -24,9 +24,17 @@ data class VaultItem(
     val durationMs: Long,
     val fileName: String,
     val thumbFileName: String?,
+    /** Entrée dans le coffre (ms). */
+    val addedAt: Long,
 ) {
     /** Fichier complet, pour Coil. */
     fun image(): VaultImage = VaultImage(fileName)
+}
+
+/** Élément de la corbeille du coffre, effacé définitivement à [expiresAt]. */
+@Immutable
+data class VaultTrashEntry(val item: VaultItem, val deletedAt: Long) {
+    val expiresAt: Long get() = deletedAt + VaultRepository.TRASH_RETENTION_MS
 }
 
 fun VaultItemEntity.toModel(): VaultItem = VaultItem(
@@ -40,6 +48,7 @@ fun VaultItemEntity.toModel(): VaultItem = VaultItem(
     durationMs = duration,
     fileName = fileName,
     thumbFileName = thumbFileName,
+    addedAt = addedAt,
 )
 
 /**

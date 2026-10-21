@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : corbeille -->
+    <string name="vault_trash_title">Corbeille du coffre</string>
+    <string name="vault_trash_menu">Corbeille</string>
+    <string name="vault_trash_subtitle">Les éléments y restent chiffrés 30 jours, puis sont effacés définitivement</string>
+    <string name="vault_trash_empty_title">La corbeille du coffre est vide</string>
+    <string name="vault_trash_empty_message">Les éléments supprimés du coffre restent ici, chiffrés, 30 jours avant d\'être effacés définitivement.</string>
+    <plurals name="vault_trash_confirm">
+        <item quantity="one">Mettre %d élément à la corbeille du coffre ?</item>
+        <item quantity="many">Mettre %,d éléments à la corbeille du coffre ?</item>
+        <item quantity="other">Mettre %,d éléments à la corbeille du coffre ?</item>
+    </plurals>
+    <string name="vault_trash_confirm_message">Ils y restent chiffrés 30 jours, puis sont effacés définitivement. D\'ici là, vous pouvez les remettre dans le coffre.</string>
+    <string name="vault_trash_restore">Remettre</string>
+    <plurals name="vault_trashed">
+        <item quantity="one">%d élément mis à la corbeille du coffre</item>
+        <item quantity="many">%,d éléments mis à la corbeille du coffre</item>
+        <item quantity="other">%,d éléments mis à la corbeille du coffre</item>
+    </plurals>
+    <plurals name="vault_untrashed">
+        <item quantity="one">%d élément remis dans le coffre</item>
+        <item quantity="many">%,d éléments remis dans le coffre</item>
+        <item quantity="other">%,d éléments remis dans le coffre</item>
+    </plurals>
+</resources>

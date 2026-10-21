@@ -134,4 +134,27 @@ interface MediaDao {
 
     @Query("DELETE FROM media_embedding WHERE media_id NOT IN (SELECT id FROM media)")
     suspend fun deleteOrphanEmbeddings()
+
+    // ── Dates d'origine retenues par l'application ──────────────────────────────────
+
+    @Query("SELECT * FROM media_date")
+    suspend fun originalDates(): List<MediaDateEntity>
+
+    @Upsert
+    suspend fun upsertOriginalDate(date: MediaDateEntity)
+
+    /** Date de tri d'un média déjà indexé. */
+    @Query("UPDATE media SET date_taken = :dateTaken WHERE id = :id")
+    suspend fun setDateTaken(id: Long, dateTaken: Long)
+
+    /**
+     * Dates de médias disparus. Un média tout juste publié n'est peut-être pas encore indexé :
+     * son identifiant, attribué après tous ceux de l'index, est épargné.
+     */
+    @Query("DELETE FROM media_date WHERE media_id NOT IN (SELECT id FROM media) AND media_id < (SELECT COALESCE(MAX(id), 0) FROM media)")
+    suspend fun deleteOrphanDates()
+
+    /** Base MediaStore recréée : ses identifiants ne désignent plus les mêmes médias. */
+    @Query("DELETE FROM media_date")
+    suspend fun clearOriginalDates()
 }

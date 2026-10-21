@@ -15,6 +15,8 @@ import android.webkit.MimeTypeMap
 import androidx.annotation.RequiresApi
 import app.focale.core.database.FavoriteDao
 import app.focale.core.database.FavoriteEntity
+import app.focale.core.database.MediaDao
+import app.focale.core.database.MediaDateEntity
 import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.database.TrashDao
 import app.focale.core.database.TrashItemEntity
@@ -59,6 +61,7 @@ class MediaOperations @Inject constructor(
     private val syncManager: MediaSyncManager,
     private val trashDao: TrashDao,
     private val favoriteDao: FavoriteDao,
+    private val mediaDao: MediaDao,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
     /** Corbeille système MediaStore disponible (Android 11+). */
@@ -281,8 +284,16 @@ class MediaOperations @Inject constructor(
     /**
      * Crée une entrée MediaStore « en attente », écrit son contenu puis la publie.
      * En cas d'échec, l'entrée incomplète est supprimée.
+     *
+     * Le média garde la date [dateTaken] (restauration, copie, édition en copie). À la
+     * publication, MediaStore relit le fichier : il efface `DATE_TAKEN`, qu'une application ne
+     * peut pas fixer, ne le retrouve que dans les métadonnées (EXIF, vidéo) et prend la date du
+     * fichier comme `DATE_MODIFIED`. Le fichier en attente reçoit donc d'abord [dateTaken] comme
+     * date de modification : `DATE_MODIFIED` vaut la date d'origine, et un EXIF sans fuseau
+     * horaire est daté comme l'original. Si c'est impossible (Android 10, sans accès au
+     * fichier) et que MediaStore n'a trouvé aucune date, l'index retient [dateTaken].
      */
-    fun insertAndWrite(
+    suspend fun insertAndWrite(
         displayName: String,
         mimeType: String,
         relativePath: String,
@@ -310,11 +321,47 @@ class MediaOperations @Inject constructor(
             ?: error("Insertion MediaStore refusée pour $relativePath")
         try {
             resolver.openOutputStream(uri, "w")?.use(write) ?: error("Écriture impossible")
+            if (dateTaken > 0) setFileDate(uri, dateTaken)
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-            return uri
         } catch (error: Throwable) {
             resolver.delete(uri, null, null)
             throw error
+        }
+        if (dateTaken > 0) keepDate(uri, dateTaken)
+        return uri
+    }
+
+    /**
+     * Date de modification du fichier en attente, par son chemin : Android 11+ y donne accès à
+     * l'application qui l'a créé. Faux si le chemin est inaccessible (Android 10).
+     */
+    @Suppress("DEPRECATION") // DATA : seul accès au fichier lui-même.
+    private fun setFileDate(uri: Uri, dateTaken: Long): Boolean = runCatching {
+        val path = resolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
+        path != null && File(path).setLastModified(dateTaken)
+    }.onFailure { Log.w(TAG, "Date du fichier non fixée", it) }.getOrDefault(false)
+
+    /**
+     * Après publication : si MediaStore n'a trouvé aucune date de prise de vue et que sa date de
+     * modification n'est pas [dateTaken], l'index retient [dateTaken] pour ce média.
+     */
+    private suspend fun keepDate(uri: Uri, dateTaken: Long) {
+        try {
+            val (taken, modifiedSeconds) = resolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns.DATE_TAKEN, MediaStore.MediaColumns.DATE_MODIFIED),
+                null,
+                null,
+                null,
+            )?.use { if (it.moveToFirst()) it.getLong(0) to it.getLong(1) else null } ?: return
+            if (taken > 0 || modifiedSeconds == dateTaken / 1000) return
+            val id = ContentUris.parseId(uri)
+            mediaDao.upsertOriginalDate(MediaDateEntity(id, dateTaken))
+            mediaDao.setDateTaken(id, dateTaken)
+        } catch (error: Exception) {
+            // Le média est publié : seule sa place dans la timeline est en jeu.
+            Log.w(TAG, "Date d'origine non retenue", error)
         }
     }
 

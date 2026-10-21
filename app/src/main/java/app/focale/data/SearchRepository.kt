@@ -10,6 +10,8 @@ import app.focale.core.di.IoDispatcher
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
 import app.focale.ml.CountryResolver
+import app.focale.ml.PlaceName
+import app.focale.ml.PlaceNames
 import app.focale.ml.SearchQueryParser
 import app.focale.ml.semantic.QueryTranslator
 import app.focale.ml.semantic.SemanticSearch
@@ -27,9 +29,15 @@ import kotlinx.coroutines.withContext
 @Immutable
 data class ThingSuggestion(val label: String, val count: Int, val cover: MediaItem?)
 
-/** Lieu visité, avec la photo la plus récente prise sur place. */
+/** Lieu visité, avec la photo la plus récente prise sur place ; [names] : ses noms traduits. */
 @Immutable
-data class PlaceSuggestion(val name: String, val countryCode: String, val count: Int, val cover: MediaItem?)
+data class PlaceSuggestion(
+    val name: String,
+    val countryCode: String,
+    val count: Int,
+    val cover: MediaItem?,
+    val names: PlaceName = PlaceName(name),
+)
 
 /** Recherche : analyse des requêtes, catégories à explorer et historique local. */
 @Singleton
@@ -38,6 +46,7 @@ class SearchRepository @Inject constructor(
     private val historyDao: SearchHistoryDao,
     private val embeddingDao: EmbeddingDao,
     private val mediaRepository: MediaRepository,
+    private val placeNames: PlaceNames,
     private val semanticSearch: SemanticSearch,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
@@ -104,7 +113,7 @@ class SearchRepository @Inject constructor(
     fun observePlaces(limit: Int = 40): Flow<List<PlaceSuggestion>> =
         analysisDao.observePlaceStats(limit).mapLatest { stats ->
             val covers = mediaRepository.getByIds(stats.map { it.coverId }).associateBy { it.id }
-            stats.map { PlaceSuggestion(it.place, it.country, it.count, covers[it.coverId]) }
+            stats.map { PlaceSuggestion(it.place, it.country, it.count, covers[it.coverId], placeNames.of(it.place, it.country)) }
         }.flowOn(io)
 
     /** Recherches récentes : texte seul, ou clé d'une recherche avec pastilles ([SearchFilters.historyKey]). */

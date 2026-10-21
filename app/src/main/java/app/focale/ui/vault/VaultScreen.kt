@@ -1,6 +1,7 @@
 package app.focale.ui.vault
 
 import android.content.ActivityNotFoundException
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,9 +40,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.Backup
-import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.RestorePage
 import androidx.compose.material.icons.outlined.SelectAll
@@ -108,6 +110,7 @@ import androidx.lifecycle.withResumed
 import app.focale.R
 import app.focale.core.util.Formatters
 import app.focale.ui.components.EmptyState
+import app.focale.ui.components.rememberNotificationPermission
 import app.focale.ui.components.SelectionIndicator
 import app.focale.ui.components.SelectionTopBar
 import app.focale.vault.VaultAlbum
@@ -132,9 +135,11 @@ fun VaultScreen(
     onOpen: (VaultItem) -> Unit,
     onAdd: () -> Unit,
     onOpenAlbum: (VaultAlbum) -> Unit,
+    onOpenTrash: () -> Unit = {},
     onUnlocked: (() -> Unit)? = null,
     viewModel: VaultViewModel = hiltViewModel(),
     backupViewModel: VaultBackupViewModel = hiltViewModel(),
+    autoBackupViewModel: VaultAutoBackupViewModel = hiltViewModel(),
 ) {
     SecureWindow()
     val context = LocalContext.current
@@ -188,6 +193,14 @@ fun VaultScreen(
             openArchive.launch(arrayOf("*/*"))
         } catch (error: ActivityNotFoundException) {
             backupViewModel.onPickerUnavailable()
+        }
+    }
+    val openFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree(), autoBackupViewModel::onFolderChosen)
+    val pickBackupFolder: (Uri?) -> Unit = { initial ->
+        try {
+            openFolder.launch(initial)
+        } catch (error: ActivityNotFoundException) {
+            autoBackupViewModel.onPickerUnavailable()
         }
     }
     if (backupRunning) KeepScreenOn()
@@ -252,11 +265,14 @@ fun VaultScreen(
                 onOpen = onOpen,
                 onAdd = onAdd,
                 onOpenAlbum = onOpenAlbum,
+                onOpenTrash = onOpenTrash,
                 onToggleBiometric = { enabled ->
                     if (enabled) enableBiometrics?.invoke() else viewModel.setBiometricEnabled(false)
                 },
                 onPickBackupTarget = pickBackupTarget,
                 onRestoreBackup = pickArchive,
+                autoBackupViewModel = autoBackupViewModel,
+                onPickBackupFolder = pickBackupFolder,
             )
         }
     }
@@ -347,9 +363,12 @@ private fun VaultContentPane(
     onOpen: (VaultItem) -> Unit,
     onAdd: () -> Unit,
     onOpenAlbum: (VaultAlbum) -> Unit,
+    onOpenTrash: () -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
     onPickBackupTarget: () -> Unit,
     onRestoreBackup: () -> Unit,
+    autoBackupViewModel: VaultAutoBackupViewModel,
+    onPickBackupFolder: (Uri?) -> Unit,
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
     val albums by viewModel.albums.collectAsStateWithLifecycle()
@@ -357,9 +376,16 @@ private fun VaultContentPane(
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
     val lastBackupAt by backupViewModel.lastBackupAt.collectAsStateWithLifecycle()
+    val sort by viewModel.sort.collectAsStateWithLifecycle()
+    val albumSort by viewModel.albumSort.collectAsStateWithLifecycle()
+    val leftInGallery by viewModel.leftInGallery.collectAsStateWithLifecycle()
+    val newMediaAlerts by viewModel.newMediaAlerts.collectAsStateWithLifecycle()
+    val trashCount by viewModel.trashCount.collectAsStateWithLifecycle()
+    val requestNotifications = rememberNotificationPermission()
     val selecting = selection.isNotEmpty()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var choosingAlbum by rememberSaveable { mutableStateOf(false) }
+    var sorting by rememberSaveable { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyGridState()
     val fabExpanded by remember { derivedStateOf { gridState.firstVisibleItemIndex == 0 } }
@@ -387,7 +413,17 @@ private fun VaultContentPane(
             onDismiss = { choosingAlbum = false },
         )
     }
+    if (sorting) {
+        VaultSortSheet(
+            sort = sort,
+            onSortChange = viewModel::setSort,
+            albumSort = albumSort,
+            onAlbumSortChange = viewModel::setAlbumSort,
+            onDismiss = { sorting = false },
+        )
+    }
     VaultBackupDialogs(viewModel = backupViewModel, onPickTarget = onPickBackupTarget)
+    VaultAutoBackupDialogs(viewModel = autoBackupViewModel, onPickFolder = onPickBackupFolder)
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -411,6 +447,7 @@ private fun VaultContentPane(
                         }
                     },
                     actions = {
+                        if (!items.isNullOrEmpty() || albums.isNotEmpty()) VaultSortButton(onClick = { sorting = true })
                         IconButton(onClick = viewModel::lock, shapes = IconButtonDefaults.shapes()) {
                             Icon(Icons.Outlined.Lock, contentDescription = stringResource(R.string.action_lock))
                         }
@@ -418,9 +455,17 @@ private fun VaultContentPane(
                             canBackup = !items.isNullOrEmpty(),
                             biometricAvailable = biometricAvailable,
                             biometricEnabled = biometricEnabled,
+                            newMediaAlerts = newMediaAlerts,
+                            trashCount = trashCount,
+                            onOpenTrash = onOpenTrash,
                             onBackup = backupViewModel::requestBackup,
                             onRestoreBackup = onRestoreBackup,
+                            onAutoBackup = autoBackupViewModel::open,
                             onToggleBiometric = onToggleBiometric,
+                            onToggleNewMediaAlerts = { enabled ->
+                                viewModel.setNewMediaAlerts(enabled)
+                                if (enabled) requestNotifications()
+                            },
                             onChangePin = viewModel::startChangePin,
                         )
                     },
@@ -476,6 +521,11 @@ private fun VaultContentPane(
                         bottom = padding.calculateBottomPadding() + 104.dp,
                     ),
                 ) {
+                    if (leftInGallery > 0) {
+                        item(key = "left", span = { GridItemSpan(maxLineSpan) }, contentType = "left") {
+                            LeftInGalleryBanner(count = leftInGallery, enabled = !busy, onRemove = viewModel::removeLeftOriginals)
+                        }
+                    }
                     lastBackupAt?.let { at ->
                         item(key = "backup", span = { GridItemSpan(maxLineSpan) }, contentType = "backup") {
                             BackupStatus(lastBackupAt = at, onBackup = backupViewModel::requestBackup)
@@ -566,20 +616,20 @@ internal fun VaultSelectionToolbar(
             Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = stringResource(R.string.vault_move_to_album))
         }
         TextButton(onClick = onDelete, enabled = !busy) {
-            Icon(Icons.Outlined.DeleteForever, contentDescription = null)
+            Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
             Text(stringResource(R.string.action_delete), modifier = Modifier.padding(start = 8.dp))
         }
     }
 }
 
-/** Confirmation de la suppression définitive de [count] éléments du coffre. */
+/** Confirmation de la mise à la corbeille du coffre de [count] éléments. */
 @Composable
 internal fun VaultDeleteDialog(count: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.DeleteForever, contentDescription = null) },
-        title = { Text(pluralStringResource(R.plurals.trash_delete_confirm, count, count)) },
-        text = { Text(stringResource(R.string.vault_delete_message)) },
+        icon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null) },
+        title = { Text(pluralStringResource(R.plurals.vault_trash_confirm, count, count)) },
+        text = { Text(stringResource(R.string.vault_trash_confirm_message)) },
         confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.action_delete)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
@@ -591,9 +641,14 @@ private fun VaultMenu(
     canBackup: Boolean,
     biometricAvailable: Boolean,
     biometricEnabled: Boolean,
+    newMediaAlerts: Boolean,
+    trashCount: Int,
+    onOpenTrash: () -> Unit,
     onBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
+    onAutoBackup: () -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
+    onToggleNewMediaAlerts: (Boolean) -> Unit,
     onChangePin: () -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -602,6 +657,20 @@ private fun VaultMenu(
             Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.vault_trash_menu)) },
+                leadingIcon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null) },
+                trailingIcon = if (trashCount > 0) {
+                    { Text(trashCount.toString(), style = MaterialTheme.typography.labelLarge) }
+                } else {
+                    null
+                },
+                onClick = {
+                    open = false
+                    onOpenTrash()
+                },
+            )
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.vault_backup_action)) },
                 leadingIcon = { Icon(Icons.Outlined.Backup, contentDescription = null) },
@@ -617,6 +686,14 @@ private fun VaultMenu(
                 onClick = {
                     open = false
                     onRestoreBackup()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.vault_auto_backup_action)) },
+                leadingIcon = { Icon(AutoBackupIcon, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onAutoBackup()
                 },
             )
             HorizontalDivider()
@@ -646,6 +723,19 @@ private fun VaultMenu(
                 onClick = {
                     open = false
                     onToggleBiometric(!biometricEnabled)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.vault_notify_setting)) },
+                leadingIcon = { Icon(Icons.Outlined.NotificationsActive, contentDescription = null) },
+                trailingIcon = if (newMediaAlerts) {
+                    { Icon(Icons.Rounded.Check, contentDescription = null) }
+                } else {
+                    null
+                },
+                onClick = {
+                    open = false
+                    onToggleNewMediaAlerts(!newMediaAlerts)
                 },
             )
         }

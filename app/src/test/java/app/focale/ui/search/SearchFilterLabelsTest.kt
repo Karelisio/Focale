@@ -47,6 +47,19 @@ class SearchFilterLabelsTest {
     }
 
     @Test
+    fun `un lieu s'affiche par son nom anglais, sinon par celui de GeoNames`() {
+        assertEquals("Cologne", SearchFilterLabels.chip(resources, SearchChip.Place("Köln", "DE", french = "Cologne", english = "Cologne"), emptyMap()))
+        assertEquals("Lisbon", SearchFilterLabels.chip(resources, SearchChip.Place("Lisbon", "PT", french = "Lisbonne"), emptyMap()))
+    }
+
+    @Test
+    @Config(qualifiers = "fr")
+    fun `un lieu s'affiche par son nom français`() {
+        assertEquals("Lisbonne", SearchFilterLabels.chip(resources, SearchChip.Place("Lisbon", "PT", french = "Lisbonne"), emptyMap()))
+        assertEquals("Paris", SearchFilterLabels.chip(resources, SearchChip.Place("Paris", "FR"), emptyMap()))
+    }
+
+    @Test
     @Config(qualifiers = "fr")
     fun `pastilles et recherche mémorisée, lisibles`() {
         val people = mapOf(lea.id to lea, unnamed.id to unnamed)

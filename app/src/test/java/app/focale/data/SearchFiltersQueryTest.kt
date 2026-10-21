@@ -58,12 +58,15 @@ class SearchFiltersQueryTest {
                     item(6, LocalDate.of(2023, 7, 14), trashed = true),
                     item(7, LocalDate.of(2023, 7, 16), gif = true),
                     item(8, LocalDate.of(2023, 7, 18)),
+                    item(9, LocalDate.of(2024, 5, 2)),
                 ),
             )
             database.analysisDao().save(
                 listOf(
                     place(1, "Paris"), place(2, "Paris"), place(3, "Lyon"), place(4, "Paris"),
                     place(6, "Paris"), place(7, "Paris"), place(8, "Parisot"),
+                    // Clé multilingue : nom GeoNames puis nom français.
+                    place(9, "Lisbon", country = "PT", key = "lisbon | lisbonne"),
                 ),
                 listOf(MediaLabelEntity(1, "Beach", 0.9f), MediaLabelEntity(3, "Beach", 0.8f)),
             )
@@ -102,6 +105,16 @@ class SearchFiltersQueryTest {
         val chip = (SearchFilters() + SearchChip.Place("Paris", "FR")).query(zone = zone)
         assertEquals(listOf(2L, 7L, 1L, 4L), ids(chip))
         assertEquals(listOf(2L, 8L, 7L, 1L, 4L), ids(text("paris")))
+    }
+
+    @Test
+    fun `la pastille d'un lieu traduit cherche son nom GeoNames, le texte l'un de ses noms`() {
+        val lisbon = SearchChip.Place("Lisbon", "PT", french = "Lisbonne")
+        assertEquals(listOf(9L), ids((SearchFilters() + lisbon).query(zone = zone)))
+        assertEquals(listOf(9L), ids(text("lisbonne")))
+        assertEquals(listOf(9L), ids(text("lisbon")))
+        // Le nom français ne change pas la requête.
+        assertEquals((SearchFilters() + SearchChip.Place("Lisbon", "PT")).query(zone = zone), (SearchFilters() + lisbon).query(zone = zone))
     }
 
     @Test
@@ -157,9 +170,9 @@ class SearchFiltersQueryTest {
         return id
     }
 
-    private fun place(mediaId: Long, name: String) = MediaAnalysisEntity(
+    private fun place(mediaId: Long, name: String, country: String = "FR", key: String = name.lowercase()) = MediaAnalysisEntity(
         mediaId = mediaId, analyzedModified = 0, version = 1, phash = null, blurScore = null,
-        latitude = 48.85, longitude = 2.35, place = name, placeKey = name.lowercase(), country = "FR",
+        latitude = 48.85, longitude = 2.35, place = name, placeKey = key, country = country,
     )
 
     /** Média pris à midi (heure locale) du jour [day]. */

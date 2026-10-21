@@ -15,8 +15,8 @@ import app.focale.data.toModel
 import app.focale.ml.AnalysisKind
 import app.focale.ml.AnalysisStep
 import app.focale.ml.ImageAnalyzer
-import app.focale.ml.LabelDictionary
 import app.focale.ml.OfflineGeocoder
+import app.focale.ml.PlaceNames
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
@@ -36,6 +36,7 @@ class AnalysisWorker @AssistedInject constructor(
     private val dao: AnalysisDao,
     private val analyzer: ImageAnalyzer,
     private val geocoder: OfflineGeocoder,
+    private val placeNames: PlaceNames,
     private val settings: SettingsRepository,
     private val scheduler: AnalysisScheduler,
     private val issues: AnalysisIssues,
@@ -50,6 +51,10 @@ class AnalysisWorker @AssistedInject constructor(
         var processed = 0
         var labelingUnavailable = false
         try {
+            // Clés de recherche des lieux (noms traduits compris) : celles des médias déjà analysés
+            // suivent la base embarquée, sans nouvelle analyse.
+            val translations = placeNames.translations()
+            dao.refreshPlaceKeys(translations::searchKey)
             while (!isStopped) {
                 val batch = dao.pending(ImageAnalyzer.VERSION, BATCH_SIZE)
                 if (batch.isEmpty()) break
@@ -80,7 +85,7 @@ class AnalysisWorker @AssistedInject constructor(
                         latitude = result?.latitude,
                         longitude = result?.longitude,
                         place = result?.place?.name,
-                        placeKey = result?.place?.name?.let(LabelDictionary::normalize),
+                        placeKey = result?.place?.let { translations.searchKey(it.name, it.countryCode) },
                         country = result?.place?.countryCode,
                     )
                     result?.labels?.forEach { (label, confidence) ->

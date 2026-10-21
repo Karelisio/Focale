@@ -112,6 +112,8 @@ class SearchFiltersTest {
     fun `l'état sauvegardé se relit à l'identique`() {
         val filters = SearchFilters("plage", listOf(alice, paris, july2023, videos))
         assertEquals(filters, SearchFilters.decode(filters.encode()))
+        val translated = SearchFilters(chips = listOf(SearchChip.Place("Köln", "DE", french = "Cologne", english = "Cologne")))
+        assertEquals(translated, SearchFilters.decode(translated.encode()))
         assertEquals(SearchFilters(text = "x", chips = listOf(SearchChip.Period.everyYear(8))), SearchFilters.decode(SearchFilters("x", listOf(SearchChip.Period.everyYear(8))).encode()))
         assertEquals(SearchFilters(), SearchFilters.decode(null))
         assertEquals(SearchFilters(), SearchFilters.decode("pas du JSON"))

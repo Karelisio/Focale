@@ -3,6 +3,7 @@ package app.focale.data
 import android.app.Application
 import android.content.res.Resources
 import androidx.test.core.app.ApplicationProvider
+import app.focale.ml.PlaceName
 import java.time.LocalDate
 import java.util.Locale
 import org.junit.Assert.assertEquals
@@ -19,7 +20,9 @@ class MemoryTitlesTest {
 
     private val june = LocalDate.of(2023, 6, 10)
 
-    private fun trip(place: String?, country: String?, first: LocalDate = june, last: LocalDate = june.plusDays(7)) =
+    private val lisbon = PlaceName("Lisbon", french = "Lisbonne")
+
+    private fun trip(place: PlaceName?, country: String?, first: LocalDate = june, last: LocalDate = june.plusDays(7)) =
         MemoryKind.Trip(yearsAgo = 3, place = place, country = country, firstDay = first, lastDay = last)
 
     private fun withPerson(yearsAgo: Int, name: String?) = MemoryKind.WithPerson(yearsAgo, personId = 1, name = name, face = null)
@@ -31,9 +34,9 @@ class MemoryTitlesTest {
         assertEquals("Il y a 1 an avec Alice", MemoryTitles.title(resources, withPerson(1, "Alice")))
         assertEquals("Il y a 2 ans avec Alice", MemoryTitles.title(resources, withPerson(2, "Alice")))
         assertEquals("Il y a 3 ans, ensemble", MemoryTitles.title(resources, withPerson(3, null)))
-        assertEquals("Lisbonne · juin 2023", MemoryTitles.title(resources, trip("Lisbonne", "PT")))
+        assertEquals("Lisbonne · juin 2023", MemoryTitles.title(resources, trip(lisbon, "PT")))
         // Sur sa carte, un voyage tient sur deux lignes ; les autres gardent leur titre.
-        assertEquals("Lisbonne\njuin 2023", MemoryTitles.cardTitle(resources, trip("Lisbonne", "PT")))
+        assertEquals("Lisbonne\njuin 2023", MemoryTitles.cardTitle(resources, trip(lisbon, "PT")))
         assertEquals("Il y a 2 ans avec Alice", MemoryTitles.cardTitle(resources, withPerson(2, "Alice")))
     }
 
@@ -50,6 +53,7 @@ class MemoryTitlesTest {
         assertEquals("1 year ago with Alice", MemoryTitles.title(resources, withPerson(1, "Alice")))
         assertEquals("2 years ago with Alice", MemoryTitles.title(resources, withPerson(2, "Alice")))
         assertEquals("1 year ago, together", MemoryTitles.title(resources, withPerson(1, null)))
+        assertEquals("Lisbon · June 2023", MemoryTitles.title(resources, trip(lisbon, "PT")))
         assertEquals("Italy · June 2023", MemoryTitles.title(resources, trip(null, "IT")))
         assertEquals("Trip · June 2023", MemoryTitles.title(resources, trip(null, null)))
     }

@@ -15,14 +15,18 @@ import app.focale.data.MediaRepository
 import app.focale.data.MediaSharer
 import app.focale.data.OperationResult
 import app.focale.vault.VaultAlbum
+import app.focale.vault.VaultContent
 import app.focale.vault.VaultDestination
+import app.focale.vault.VaultImportRequest
+import app.focale.vault.VaultImportState
+import app.focale.vault.VaultImports
+import app.focale.vault.wholeAlbum
 import app.focale.vault.VaultPinStore
 import app.focale.vault.VaultRepository
 import app.focale.vault.VaultSession
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +37,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** Dialogue ouvert par une action (choix d'album, de dossier, renommage…). */
 @Immutable
@@ -72,9 +75,12 @@ sealed interface AlbumSource {
     }
 }
 
-/** Opération longue en cours (chiffrement vers le coffre…). */
+/**
+ * Opération longue en cours (chiffrement vers le coffre…). [background] : elle se poursuit
+ * sans l'écran, qui peut cesser de l'attendre.
+ */
 @Immutable
-data class ActionProgress(val label: UiText)
+data class ActionProgress(val label: UiText, val background: Boolean = false)
 
 /** Événement ponctuel à traiter par l'interface. */
 sealed interface ActionEvent {
@@ -102,6 +108,8 @@ class MediaActions @Inject constructor(
     private val media: MediaRepository,
     private val sharer: MediaSharer,
     private val vault: VaultRepository,
+    private val vaultContent: VaultContent,
+    private val vaultImports: VaultImports,
     private val vaultPins: VaultPinStore,
     private val vaultSession: VaultSession,
 ) {
@@ -126,7 +134,7 @@ class MediaActions @Inject constructor(
 
     /** Albums du coffre, vides tant qu'il est verrouillé : leurs noms ne s'affichent pas autrement. */
     val vaultAlbums: Flow<List<VaultAlbum>>
-        get() = vaultSession.unlocked.flatMapLatest { unlocked -> if (unlocked) vault.observeAlbums() else flowOf(emptyList()) }
+        get() = vaultSession.unlocked.flatMapLatest { unlocked -> if (unlocked) vaultContent.albums() else flowOf(emptyList()) }
 
     fun bind(scope: CoroutineScope) {
         this.scope = scope
@@ -245,13 +253,12 @@ class MediaActions @Inject constructor(
     fun moveToVault(ids: List<Long>, destination: VaultDestination = VaultDestination.None) = run(busy = true) {
         _dialog.value = null
         relockIfTemporary()
-        val items = media.getByIds(ids)
-        encryptionProgress(0, items.size)
-        try {
-            report(vault.import(items, destination, ::encryptionProgress), R.plurals.message_moved_to_vault)
-        } finally {
-            _progress.value = null
+        val request = when (destination) {
+            VaultDestination.None -> VaultImportRequest.Selection(ids, albumId = null)
+            is VaultDestination.Album -> VaultImportRequest.Selection(ids, destination.id)
+            is VaultDestination.NewAlbum -> vault.createAlbum(destination.name).let { VaultImportRequest.Selection(ids, it, createdAlbumId = it) }
         }
+        followImport(request, ids.size)
     }
 
     fun requestMoveAlbumToVault(album: AlbumSource) = run {
@@ -268,42 +275,63 @@ class MediaActions @Inject constructor(
      */
     fun moveAlbumToVault(album: AlbumSource, count: Int) = run(busy = true) {
         _dialog.value = null
-        encryptionProgress(0, count)
-        try {
-            val result = when (album) {
-                is AlbumSource.Folder -> vault.importFolder(album.bucketId, album.name, ::encryptionProgress)
-                // Comme l'import, la suppression de l'album vidé va à son terme si l'écran se ferme.
-                is AlbumSource.User -> withContext(NonCancellable) {
-                    val items = media.list(album.query)
-                    val result = vault.import(items, VaultDestination.NewAlbum(album.name), ::encryptionProgress)
-                    if (result is OperationResult.Success && result.count > 0) albums.delete(album.id)
-                    result
-                }
-            }
-            if (result is OperationResult.Success && result.count > 0) {
-                // Hors du coffre (écran non protégé) : le nom de l'album n'apparaît pas.
-                val text = UiText.Plural(R.plurals.vault_album_moved, result.count, listOf(result.count))
-                channel.send(ActionEvent.AlbumMoved(text))
-            } else {
-                report(result, R.plurals.message_moved_to_vault)
-            }
-        } finally {
-            _progress.value = null
+        val request = when (album) {
+            is AlbumSource.Folder -> VaultImportRequest.Folder(album.bucketId, album.name)
+            is AlbumSource.User -> vault.createAlbum(album.name).let { VaultImportRequest.UserAlbum(album.id, it, createdAlbumId = it) }
         }
+        followImport(request, count)
     }
 
     /** Ajoute à l'album du coffre [albumId] les médias arrivés dans son dossier d'origine depuis le dernier import. */
     fun moveNewToVault(albumId: Long, count: Int) = run(busy = true) {
-        encryptionProgress(0, count)
+        followImport(VaultImportRequest.NewFromSource(albumId), count)
+    }
+
+    /** Vrai une fois l'attente masquée (« Continuer en arrière-plan ») : l'import se poursuit sans elle. */
+    private var importProgressHidden = false
+
+    /** Cesse d'afficher la progression de l'import ; son bilan s'affichera tout de même. */
+    fun hideProgress() {
+        importProgressHidden = true
+        _progress.value = null
+    }
+
+    /**
+     * Confie l'import à WorkManager, qui le mène à terme même si l'écran se ferme, puis en suit
+     * la progression et le bilan tant que l'écran est là.
+     */
+    private suspend fun followImport(request: VaultImportRequest, count: Int) {
+        importProgressHidden = false
+        importProgress(VaultImportState.Running(0, count))
         try {
-            report(vault.importNewFromSource(albumId, ::encryptionProgress), R.plurals.message_moved_to_vault)
+            vaultImports.observe(vaultImports.enqueue(request)).collect { state ->
+                if (state !is VaultImportState.Finished) {
+                    importProgress(state)
+                    return@collect
+                }
+                _progress.value = null
+                val result = state.result
+                if (request.wholeAlbum && result is OperationResult.Success && result.count > 0) {
+                    // Hors du coffre (écran non protégé) : le nom de l'album n'apparaît pas.
+                    channel.send(ActionEvent.AlbumMoved(UiText.Plural(R.plurals.vault_album_moved, result.count, listOf(result.count))))
+                } else {
+                    report(result, R.plurals.message_moved_to_vault)
+                }
+            }
         } finally {
             _progress.value = null
         }
     }
 
-    private fun encryptionProgress(done: Int, total: Int) {
-        _progress.value = ActionProgress(UiText.Res(R.string.vault_progress, listOf(done, total)))
+    private fun importProgress(state: VaultImportState) {
+        if (importProgressHidden) return
+        val label = when {
+            state is VaultImportState.Queued -> UiText.Res(R.string.vault_import_waiting)
+            state is VaultImportState.Running && state.confirming -> UiText.Res(R.string.vault_import_confirm)
+            state is VaultImportState.Running -> UiText.Res(R.string.vault_progress, listOf(state.done, state.total))
+            else -> return
+        }
+        _progress.value = ActionProgress(label, background = true)
     }
 
     /** Retire des médias d'un album virtuel (les fichiers ne sont pas touchés). */

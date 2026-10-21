@@ -10,6 +10,8 @@ import app.focale.core.settings.SettingsRepository
 import app.focale.data.MediaRepository
 import app.focale.map.Basemap
 import app.focale.map.OfflineBasemap
+import app.focale.ml.PlaceName
+import app.focale.ml.PlaceNames
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +32,7 @@ class MapViewModel @Inject constructor(
     basemapSource: OfflineBasemap,
     settingsRepository: SettingsRepository,
     private val mediaRepository: MediaRepository,
+    private val placeNames: PlaceNames,
 ) : ViewModel() {
 
     /** Photos géolocalisées, de la plus récente à la plus ancienne. */
@@ -58,4 +61,7 @@ class MapViewModel @Inject constructor(
     }
 
     suspend fun item(id: Long): MediaItem? = mediaRepository.get(id)
+
+    /** Noms du lieu de [photo], traduits. */
+    suspend fun placeName(photo: GeoPhoto): PlaceName? = photo.place?.let { placeNames.of(it, photo.country) }
 }
