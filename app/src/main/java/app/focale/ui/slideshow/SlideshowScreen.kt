@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.focale.R
 import app.focale.core.image.ThumbnailSizes
+import app.focale.core.image.version
 import app.focale.core.model.MediaItem
 import app.focale.ui.viewer.ImmersiveSystemBars
 import coil3.SingletonImageLoader
@@ -230,6 +231,7 @@ private fun KenBurnsSlide(item: MediaItem, durationMs: Long) {
 private fun slideRequest(context: Context, item: MediaItem): ImageRequest =
     ImageRequest.Builder(context)
         .data(item.uri)
+        .version(item)
         .size(context.resources.displayMetrics.widthPixels, context.resources.displayMetrics.heightPixels)
         .placeholderMemoryCacheKey(
             MemoryCache.Key(ThumbnailSizes.memoryKey(item.id, item.dateModified, ThumbnailSizes.lastGridBucket)),

@@ -8,6 +8,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.util.Log
 import android.webkit.MimeTypeMap
@@ -24,6 +25,7 @@ import app.focale.core.model.FolderTarget
 import app.focale.core.model.MediaItem
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.nio.channels.FileChannel
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -206,7 +208,20 @@ class MediaOperations @Inject constructor(
     }
 
     /** Remplace le contenu d'un média existant (édition « remplacer l'original »). */
-    suspend fun overwrite(item: MediaItem, write: (java.io.OutputStream) -> Unit): OperationResult = withContext(io) {
+    suspend fun overwrite(item: MediaItem, write: (java.io.OutputStream) -> Unit): OperationResult = writeWithConsent(item) {
+        resolver.openOutputStream(item.uri, "wt")?.use(write) ?: error("Écriture impossible")
+    }
+
+    /**
+     * Modifie un média sur place, sans le tronquer (quelques octets à une position donnée),
+     * après le même consentement que [overwrite].
+     */
+    suspend fun patch(item: MediaItem, edit: (FileChannel) -> Unit): OperationResult = writeWithConsent(item) {
+        val descriptor = resolver.openFileDescriptor(item.uri, "rw") ?: error("Écriture impossible")
+        ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { edit(it.channel) }
+    }
+
+    private suspend fun writeWithConsent(item: MediaItem, write: () -> Unit): OperationResult = withContext(io) {
         val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             consent.request(MediaStore.createWriteRequest(resolver, listOf(item.uri)).intentSender)
         } else {
@@ -214,7 +229,7 @@ class MediaOperations @Inject constructor(
         }
         if (!granted) return@withContext OperationResult.Cancelled
         val result = runCatching {
-            resolver.openOutputStream(item.uri, "wt")?.use(write) ?: error("Écriture impossible")
+            write()
             OperationResult.Success(1)
         }.getOrElse { OperationResult.Failure(it) }
         syncManager.sync()

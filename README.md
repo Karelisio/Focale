@@ -17,7 +17,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   très grandes images), glisser vers le bas pour fermer, transition partagée depuis la
   grille, vidéos (Media3) aux commandes Material You, photos animées (Motion Photos
   Google et Samsung, appui long pour les lire), GIF animés, photos Ultra HDR affichées
-  en HDR (Android 14+), panneau d'infos EXIF / localisation, texte de la photo
+  en HDR (Android 14+), rotation à deux doigts (enregistrée sans perte dans l'orientation
+  EXIF des JPEG et WebP), panneau d'infos EXIF / localisation, texte de la photo
   sélectionnable et copiable.
 - **Material You** : couleurs du fond d'écran (Android 12+), thème clair / sombre /
   système, noir pur AMOLED, palette « couleur depuis la photo », police variable

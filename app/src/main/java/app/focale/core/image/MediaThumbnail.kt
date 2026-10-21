@@ -13,6 +13,7 @@ import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
 import coil3.key.Keyer
+import coil3.request.ImageRequest
 import coil3.request.Options
 import coil3.size.pxOrElse
 import kotlin.coroutines.coroutineContext
@@ -30,6 +31,13 @@ data class MediaThumbnail(
 )
 
 fun MediaItem.thumbnail(): MediaThumbnail = MediaThumbnail(id, uri, dateModified)
+
+/**
+ * Lie la clé mémoire d'une image chargée par son URI à la version du fichier : une photo
+ * modifiée sur place (rotation, édition) n'est jamais servie depuis l'ancienne image.
+ */
+fun ImageRequest.Builder.version(item: MediaItem): ImageRequest.Builder =
+    memoryCacheKeyExtra("modified", item.dateModified.toString())
 
 /**
  * Charge les miniatures via `ContentResolver.loadThumbnail`, qui s'appuie sur le cache

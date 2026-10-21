@@ -420,6 +420,21 @@ de la grille et l'image de la visionneuse partagent la même clé
 - Sélection : appui long puis glissement (calcul de l'élément sous le doigt +
   défilement automatique en bord d'écran), retour haptique à chaque ajout.
 
+### 7.4 Visionneuse
+- `HorizontalPager` sur la `PagingSource` de la grille ; photos zoomables par telephoto
+  (sous-échantillonnage des grandes images), glisser vers le bas pour fermer.
+- Rotation à deux doigts : geste observé à la passe initiale sans rien consommer (zoom,
+  balayage, double appui restent à telephoto), rotations parasites d'un pincement ignorées
+  sous 15° (`RotationMath`). Au relâchement, ressort vers le quart de tour le plus proche,
+  puis cadre aux dimensions de l'écran échangées pour que zoom et bords restent justes.
+  Barre « Enregistrer la rotation » / « Annuler » ; changer de photo ou quitter annule.
+- Enregistrement (`PhotoRotator`) : JPEG et WebP sans perte, orientation EXIF composée avec
+  l'actuelle, miroirs compris (`ExifOrientation`) ; deux octets réécrits sur place si la
+  balise existe (carte de gain Ultra HDR, vidéo de photo animée intactes), sinon segment
+  EXIF refait ; consentement de « remplacer l'original ». Autres formats (PNG, dont Android
+  ignore l'orientation EXIF ; HEIF et AVIF) : rendu de l'éditeur, en copie ou à la place.
+  Clé mémoire Coil des images pleine taille liée à `date_modified`.
+
 ---
 
 ## 8. Découpage du développement
