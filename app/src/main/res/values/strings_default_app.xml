@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Application par défaut pour les photos (réglages) et médias ouverts depuis d'autres applications -->
+    <string name="default_app_title">Default app for photos</string>
+    <string name="default_app_focale">Focale opens your photos from other apps</string>
+    <string name="default_app_none">No default app: Android asks every time. Tap, then choose Focale and “Always”.</string>
+    <string name="default_app_none_no_photo">No default app: Android asks every time. Open a photo from another app, then choose Focale and “Always”.</string>
+    <string name="default_app_other">%1$s opens your photos. Tap to choose Focale instead.</string>
+    <string name="default_app_clear_title">Open photos with Focale</string>
+    <string name="default_app_clear_message">%1$s opens your photos by default. Android only lets you choose another app once its defaults are cleared: on its settings page, open “Open by default” (or “Set as default”) and clear them. Then come back to Focale and tap this setting again.</string>
+    <string name="default_app_open_settings">Open its settings</string>
+    <string name="external_unreadable">Focale can’t open this file</string>
+</resources>

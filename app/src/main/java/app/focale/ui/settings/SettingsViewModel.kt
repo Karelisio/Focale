@@ -4,10 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.focale.core.model.Album
 import app.focale.core.model.GroupMode
+import app.focale.core.model.MediaFilter
+import app.focale.core.model.MediaItem
+import app.focale.core.model.MediaQuery
 import app.focale.core.settings.AppSettings
 import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.ThemeMode
 import app.focale.data.AlbumRepository
+import app.focale.data.MediaRepository
 import app.focale.work.AnalysisScheduler
 import app.focale.work.AnalysisStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +26,7 @@ class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
     albumRepository: AlbumRepository,
     private val analysisScheduler: AnalysisScheduler,
+    private val mediaRepository: MediaRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = repository.current
@@ -35,6 +40,15 @@ class SettingsViewModel @Inject constructor(
     /** Dossiers de l'appareil, pour choisir ceux masqués de la timeline. */
     val folders: StateFlow<List<Album.Folder>> = albumRepository.observeFolders()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Photo récente ouverte pour que le système propose Focale « Toujours » : un JPEG de préférence,
+     * le type dont dépend l'état « application par défaut ».
+     */
+    suspend fun samplePhoto(): MediaItem? {
+        val photos = mediaRepository.list(MediaQuery(filter = MediaFilter.PHOTOS), limit = SAMPLE_CANDIDATES)
+        return photos.firstOrNull { it.mimeType.equals("image/jpeg", ignoreCase = true) } ?: photos.firstOrNull()
+    }
 
     private fun update(block: suspend SettingsRepository.() -> Unit) {
         viewModelScope.launch { repository.block() }
@@ -56,4 +70,8 @@ class SettingsViewModel @Inject constructor(
     fun setVaultAutoLock(seconds: Int) = update { setVaultAutoLockSeconds(seconds) }
     fun setAutoCheckUpdates(enabled: Boolean) = update { setAutoCheckUpdates(enabled) }
     fun setFolderHidden(bucketId: Long, hidden: Boolean) = update { setFolderHidden(bucketId, hidden) }
+
+    private companion object {
+        const val SAMPLE_CANDIDATES = 50
+    }
 }

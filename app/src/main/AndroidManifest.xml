@@ -21,6 +21,15 @@
          La variante strict retire cette permission (src/strict/AndroidManifest.xml). -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Réglages : application qui ouvre les photos par défaut (visibilité des paquets, Android 11+). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="content" />
+            <data android:mimeType="image/*" />
+        </intent>
+    </queries>
+
     <application
         android:name=".FocaleApplication"
         android:allowBackup="false"
@@ -47,6 +56,20 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Photos et vidéos des autres applications (« Ouvrir avec », application par défaut) et
+                 revue des prises de vue de l'appareil photo. Pas de REVIEW_SECURE : cette activité
+                 unique donne accès à toute la galerie et au coffre, elle ne doit jamais s'afficher
+                 par-dessus l'écran verrouillé. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.provider.action.REVIEW" />
+                <action android:name="com.android.camera.action.REVIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
 

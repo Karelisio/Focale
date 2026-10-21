@@ -12,6 +12,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import app.focale.core.model.MediaQuery
 import app.focale.ui.components.LocalNavAnimatedVisibilityScope
 import app.focale.ui.components.LocalSharedTransitionScope
@@ -22,19 +23,34 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Racine de l'interface : un NavHost plein écran (onglets, visionneuse…) enveloppé
  * dans un [SharedTransitionLayout] pour les transitions grille → visionneuse.
+ *
+ * @param startRoute [MainRoute], ou [ExternalMediaRoute] quand l'activité est lancée pour ouvrir
+ *   le média d'une autre application : la timeline n'est alors pas construite dessous.
+ * @param openRequests ouvertures reçues par l'activité déjà lancée, consommées par [onOpenHandled].
  */
 @Composable
-fun FocaleApp(openMediaRequests: StateFlow<Long?>, onOpenMediaHandled: () -> Unit) {
+fun FocaleApp(startRoute: Any, openRequests: StateFlow<OpenRequest?>, onOpenHandled: () -> Unit) {
     val rootNav = rememberNavController()
     val chrome = remember { MainChromeState() }
     val motion = rememberNavMotion()
-    val openMedia by openMediaRequests.collectAsStateWithLifecycle()
+    val openRequest by openRequests.collectAsStateWithLifecycle()
 
-    // Appui sur le widget : ouvre la photo dans la visionneuse, au sein de la timeline.
-    LaunchedEffect(openMedia) {
-        val mediaId = openMedia ?: return@LaunchedEffect
-        rootNav.navigate(ViewerRoute(RouteCodec.encode(MediaQuery.Timeline), mediaId)) { launchSingleTop = true }
-        onOpenMediaHandled()
+    LaunchedEffect(openRequest) {
+        val request = openRequest ?: return@LaunchedEffect
+        // Icône ou widget de Focale alors que l'activité ne montrait que le média d'une autre
+        // application : la galerie est rétablie (absente de la pile, getBackStackEntry lève une exception).
+        if (request !is OpenRequest.External && runCatching { rootNav.getBackStackEntry<MainRoute>() }.isFailure) {
+            rootNav.navigate(MainRoute) { popUpTo(rootNav.graph.id) { inclusive = true } }
+        }
+        when (request) {
+            OpenRequest.Home -> Unit
+            // Appui sur le widget : ouvre la photo dans la visionneuse, au sein de la timeline.
+            is OpenRequest.Media ->
+                rootNav.navigate(ViewerRoute(RouteCodec.encode(MediaQuery.Timeline), request.mediaId)) { launchSingleTop = true }
+            // Autre application : par-dessus l'écran courant, que le retour retrouve.
+            is OpenRequest.External -> rootNav.navigate(request.route) { launchSingleTop = true }
+        }
+        onOpenHandled()
     }
 
     SharedTransitionLayout {
@@ -48,7 +64,7 @@ fun FocaleApp(openMediaRequests: StateFlow<Long?>, onOpenMediaHandled: () -> Uni
             // photo partagée rejoint sa miniature, sans réduction de l'écran.
             NavHost(
                 navController = rootNav,
-                startDestination = MainRoute,
+                startDestination = startRoute,
                 enterTransition = { motion.fadeIn },
                 exitTransition = { ExitTransition.KeepUntilTransitionsFinished },
                 popEnterTransition = { EnterTransition.None },
@@ -61,15 +77,17 @@ fun FocaleApp(openMediaRequests: StateFlow<Long?>, onOpenMediaHandled: () -> Uni
                         MainScaffold()
                     }
                 }
-                composable<ViewerRoute> {
+                composable<ViewerRoute> { entry ->
+                    val onBack = rememberRootBack(closeOnBack = remember(entry) { entry.toRoute<ViewerRoute>().closeOnBack })
                     CompositionLocalProvider(LocalNavAnimatedVisibilityScope provides this) {
-                        ViewerScreen(onBack = { rootNav.popBackStack() })
+                        ViewerScreen(onBack = onBack)
                     }
                 }
                 additionalRootDestinations(rootNav)
             }
-            // Premier lancement après une mise à jour : nouveautés de la version.
-            WhatsNewHost()
+            // Premier lancement après une mise à jour : nouveautés de la version, pas par-dessus la
+            // photo d'une autre application.
+            if (startRoute == MainRoute) WhatsNewHost()
         }
     }
 }

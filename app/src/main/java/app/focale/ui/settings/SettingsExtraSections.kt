@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Update
+import androidx.compose.material3.ListItemShapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,9 +46,7 @@ fun LazyListScope.settingsExtraSections(settings: AppSettings, viewModel: Settin
     }
     item { PrivacySection(settings, viewModel) }
     item { AnalysisSection(settings, viewModel) }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        item { FilesSection() }
-    }
+    item { FilesSection(viewModel) }
 }
 
 @Composable
@@ -160,32 +160,39 @@ private fun AnalysisSection(settings: AppSettings, viewModel: SettingsViewModel)
     }
 }
 
-/** Accès spécial « Gestion des médias » : supprime les confirmations à chaque opération. */
+/** Application par défaut pour les photos et, Android 12+, accès spécial « Gestion des médias ». */
 @Composable
-private fun FilesSection() {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+private fun FilesSection(viewModel: SettingsViewModel) {
+    SettingsGroup(stringResource(R.string.settings_files)) {
+        item { shapes -> DefaultAppSetting(shapes = shapes, samplePhoto = viewModel::samplePhoto) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            item { shapes -> ManageMediaSetting(shapes) }
+        }
+    }
+}
+
+/** Accès spécial « Gestion des médias » : supprime les confirmations à chaque opération. */
+@RequiresApi(Build.VERSION_CODES.S)
+@Composable
+private fun ManageMediaSetting(shapes: ListItemShapes) {
     val context = LocalContext.current
     var granted by remember { mutableStateOf(MediaStore.canManageMedia(context)) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { granted = MediaStore.canManageMedia(context) }
     LaunchedEffect(Unit) { granted = MediaStore.canManageMedia(context) }
-    SettingsGroup(stringResource(R.string.settings_files)) {
-        item { shapes ->
-            SettingsAction(
-                title = stringResource(R.string.settings_manage_media),
-                subtitle = stringResource(
-                    if (granted) R.string.settings_manage_media_on else R.string.settings_manage_media_off,
-                ),
-                icon = Icons.Outlined.PermMedia,
-                shapes = shapes,
-                onClick = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA, Uri.fromParts("package", context.packageName, null))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                },
+    SettingsAction(
+        title = stringResource(R.string.settings_manage_media),
+        subtitle = stringResource(
+            if (granted) R.string.settings_manage_media_on else R.string.settings_manage_media_off,
+        ),
+        icon = Icons.Outlined.PermMedia,
+        shapes = shapes,
+        onClick = {
+            context.startActivity(
+                Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA, Uri.fromParts("package", context.packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
-        }
-    }
+        },
+    )
 }
 
 /** Version installée, recherche et installation des mises à jour (variante standard). */

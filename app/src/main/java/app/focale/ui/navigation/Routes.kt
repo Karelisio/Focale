@@ -10,9 +10,20 @@ import kotlinx.serialization.json.Json
 @Serializable
 data object MainRoute
 
-/** Visionneuse ; [query] est la [MediaQuery] encodée en JSON de la grille d'origine. */
+/**
+ * Visionneuse ; [query] est la [MediaQuery] encodée en JSON de la grille d'origine. [closeOnBack] :
+ * ouverte pour une autre application, le retour referme l'activité (voir [ExternalMediaRoute]).
+ */
 @Serializable
-data class ViewerRoute(val query: String, val mediaId: Long)
+data class ViewerRoute(val query: String, val mediaId: Long, val closeOnBack: Boolean = false)
+
+/**
+ * Photo ou vidéo [uri] reçue d'une autre application : un média de l'index rejoint la visionneuse,
+ * un autre fichier s'affiche seul. [closeOnBack] : l'activité a été lancée pour cette ouverture, le
+ * retour ramène à l'application appelante plutôt qu'à la timeline.
+ */
+@Serializable
+data class ExternalMediaRoute(val uri: String, val mimeType: String? = null, val closeOnBack: Boolean = false)
 
 /** Éditeur photo. */
 @Serializable

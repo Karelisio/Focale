@@ -20,6 +20,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   en HDR (Android 14+), rotation à deux doigts (enregistrée sans perte dans l'orientation
   EXIF des JPEG et WebP), panneau d'infos EXIF / localisation, texte de la photo
   sélectionnable et copiable.
+- **Application par défaut** : photos et vidéos des autres applications (« Ouvrir avec »,
+  revue de l'appareil photo) ouvertes parmi celles de leur dossier, ou seules (messageries,
+  téléchargements) ; Réglages → Fichiers indique l'application par défaut et aide à choisir Focale.
 - **Material You** : couleurs du fond d'écran (Android 12+), thème clair / sombre /
   système, noir pur AMOLED, palette « couleur depuis la photo », police variable
   Google Sans Flex, formes et morphing Expressive, retours haptiques.
