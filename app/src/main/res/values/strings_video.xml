@@ -18,4 +18,16 @@
     <!-- Photos animées -->
     <string name="motion_photo_chip">Motion</string>
     <string name="motion_photo_badge">Motion photo</string>
+
+    <!-- Lecture vidéo : sauts par double appui (cumul affiché) et actions TalkBack -->
+    <string name="video_seek_forward_amount">+%1$d s</string>
+    <string name="video_seek_back_amount">−%1$d s</string>
+    <plurals name="video_seek_forward">
+        <item quantity="one">Fast forward %d second</item>
+        <item quantity="other">Fast forward %d seconds</item>
+    </plurals>
+    <plurals name="video_seek_back">
+        <item quantity="one">Rewind %d second</item>
+        <item quantity="other">Rewind %d seconds</item>
+    </plurals>
 </resources>

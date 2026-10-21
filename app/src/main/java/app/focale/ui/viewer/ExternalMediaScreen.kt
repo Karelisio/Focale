@@ -165,6 +165,7 @@ private fun StandaloneViewer(
                     mediaItem = { ExoMediaItem.fromUri(media.uri) },
                     poster = { ExternalPreview(media.uri) },
                     controlsWidth = toolbarWidth,
+                    contentDescription = media.displayName,
                 )
             } else {
                 ExternalPhoto(media = media, onTap = toggleChrome, onZoomChanged = { zoomed = it }, onError = { failed = true })

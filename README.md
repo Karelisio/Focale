@@ -15,7 +15,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   rapide avec bulle de date.
 - **Visionneuse** plein écran : swipe, zoom et double appui (sous-échantillonnage des
   très grandes images), glisser vers le bas pour fermer, transition partagée depuis la
-  grille, vidéos (Media3) aux commandes Material You, photos animées (Motion Photos
+  grille, vidéos (Media3) aux commandes Material You et double appui pour avancer ou
+  reculer de 10 s (appuis rapprochés cumulés), photos animées (Motion Photos
   Google et Samsung, appui long pour les lire), GIF animés, photos Ultra HDR affichées
   en HDR (Android 14+), rotation à deux doigts (enregistrée sans perte dans l'orientation
   EXIF des JPEG et WebP, et dans leur orientation XMP que lisent Lightroom et d'autres

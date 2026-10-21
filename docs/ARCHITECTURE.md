@@ -582,6 +582,17 @@ application ouvre les photos et proposer de choisir Focale.
 ### 7.4 Visionneuse
 - `HorizontalPager` sur la `PagingSource` de la grille ; photos zoomables par telephoto
   (sous-échantillonnage des grandes images), glisser vers le bas pour fermer.
+- Vidéos (galerie, fichiers d'autres applications, coffre : `VideoPlayerPage`) : un appui
+  affiche ou masque les commandes une fois le délai du double appui écoulé, comme sur une
+  photo ; un double appui sur la moitié droite avance de 10 s, sur la gauche recule d'autant
+  (côtés physiques, même en écriture de droite à gauche), puis chaque appui qui suit le
+  précédent de moins de 700 ms saute aussitôt (+20, +30 s… ; de l'autre côté, le cumul
+  repart de 10 s). Position bornée à [0, durée], un appui contre une borne n'ajoute rien
+  (`VideoSeekMath`, `SeekSeries`, logique pure). Détecteur maison (`videoTapGestures`) :
+  seuil de déplacement, un seul doigt, appuis déjà pris par les commandes (boutons,
+  curseur) ignorés, glissements laissés au pager et au glisser pour fermer. Cumul dans un
+  demi-ovale translucide du côté touché, hors des barres système et des commandes
+  (`ViewerChromeMetrics`) ; mêmes sauts en actions TalkBack sur la surface vidéo.
 - Rotation à deux doigts : geste observé à la passe initiale sans rien consommer (zoom,
   balayage, double appui restent à telephoto), rotations parasites d'un pincement ignorées
   sous 15° (`RotationMath`). Au relâchement, ressort vers le quart de tour le plus proche,

@@ -1,12 +1,12 @@
 package app.focale.ui.viewer
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -45,9 +45,11 @@ import androidx.compose.material3.rememberSliderState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,10 +57,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -81,6 +87,7 @@ import app.focale.core.util.Formatters
 import app.focale.ui.theme.ViewerChromeTheme
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import kotlinx.coroutines.delay
 import androidx.media3.common.MediaItem as ExoMediaItem
 
 /**
@@ -111,6 +118,7 @@ fun VideoPage(
         poster = { VideoPoster(item) },
         modifier = modifier,
         controlsWidth = controlsWidth,
+        contentDescription = item.displayName,
     )
 }
 
@@ -120,8 +128,13 @@ fun VideoPage(
  * et son sont conservés par média : la vidéo reprend où on l'a laissée en revenant sur la
  * page, et dans le même état après une recréation de l'activité.
  *
+ * Un appui affiche ou masque les commandes ([onTap]) ; un double appui sur la moitié droite
+ * avance de 10 s, sur la gauche recule d'autant, et les appuis rapprochés qui suivent
+ * s'ajoutent ([videoTapGestures]). TalkBack propose les mêmes sauts en actions.
+ *
  * @param key identité de la vidéo (un nouveau lecteur est créé si elle change).
  * @param controlsWidth largeur de la barre d'outils flottante (voir [VideoControlsLayout]).
+ * @param contentDescription nom de la vidéo, annoncé par TalkBack avec ses actions de saut.
  * @param playerFactory permet une source de données dédiée (vidéos chiffrées du coffre). Par
  *   défaut, aucune donnée de diagnostic n'est transmise à la plateforme.
  */
@@ -138,14 +151,29 @@ fun VideoPlayerPage(
     poster: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     controlsWidth: Dp = Dp.Unspecified,
-    playerFactory: (Context) -> ExoPlayer = { ExoPlayer.Builder(it).setUsePlatformDiagnostics(false).build() },
+    contentDescription: String? = null,
+    playerFactory: (Context) -> Player = { ExoPlayer.Builder(it).setUsePlatformDiagnostics(false).build() },
 ) {
     val context = LocalContext.current
     val memory = rememberSaveable(key, saver = PlaybackMemory.Saver) { PlaybackMemory() }
+    val seeking = remember(key) { VideoSeekState() }
+    val currentOnTap by rememberUpdatedState(onTap)
+    val forwardLabel = pluralStringResource(R.plurals.video_seek_forward, VideoSeekMath.STEP_SECONDS, VideoSeekMath.STEP_SECONDS)
+    val backLabel = pluralStringResource(R.plurals.video_seek_back, VideoSeekMath.STEP_SECONDS, VideoSeekMath.STEP_SECONDS)
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(Unit) { detectTapGestures(onTap = { onTap() }) },
+            .videoTapGestures(seeking) { currentOnTap() }
+            .semantics {
+                if (contentDescription != null) this.contentDescription = contentDescription
+                // Sauts de TalkBack, comme un double appui : même cumul, même retour visuel.
+                if (isCurrent) {
+                    customActions = listOf(
+                        CustomAccessibilityAction(forwardLabel) { seeking.seek(SeekDirection.FORWARD, SystemClock.uptimeMillis()) },
+                        CustomAccessibilityAction(backLabel) { seeking.seek(SeekDirection.BACKWARD, SystemClock.uptimeMillis()) },
+                    )
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         if (!isCurrent) {
@@ -163,7 +191,9 @@ fun VideoPlayerPage(
         }
         DisposableEffect(player) {
             memory.attach(player)
+            seeking.attach(player)
             onDispose {
+                seeking.detach()
                 memory.detach()
                 player.release()
             }
@@ -178,6 +208,15 @@ fun VideoPlayerPage(
             keepContentOnReset = true,
             shutter = poster,
         )
+        // Cumul des sauts, sous les commandes ; effacé peu après le dernier appui de la série.
+        val feedback = seeking.feedback
+        LaunchedEffect(feedback) {
+            if (feedback != null) {
+                delay(VideoSeekMath.SERIES_TIMEOUT_MS)
+                seeking.hide()
+            }
+        }
+        ViewerChromeTheme { VideoSeekFeedback(feedback, controlsVisible) }
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),
@@ -343,13 +382,13 @@ internal fun VideoControlsLayout(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(navigationBottom + rowBottom + ProgressHeight + GradientExtent)
+                    .height(navigationBottom + rowBottom + ViewerChromeMetrics.ProgressHeight + GradientExtent)
                     .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0f), colors.scrim.copy(alpha = 0.5f)))),
             )
 
             // Centré sur la vidéo, remonté si l'écran est trop bas pour laisser la progression libre.
             val buttonSize = IconButtonDefaults.mediumContainerSize()
-            val lowest = maxHeight - navigationBottom - rowBottom - ProgressHeight - ButtonGap - buttonSize.height / 2
+            val lowest = maxHeight - navigationBottom - rowBottom - ViewerChromeMetrics.ProgressHeight - ButtonGap - buttonSize.height / 2
             val center = minOf(maxHeight / 2, lowest)
             FilledTonalIconButton(
                 onClick = onPlayPause,
@@ -385,7 +424,7 @@ internal fun VideoControlsLayout(
                     .padding(horizontal = ViewerChromeMetrics.ScreenOffset)
                     .widthIn(max = ViewerChromeMetrics.BarMaxWidth)
                     .then(if (barWidth.isSpecified) Modifier.width(barWidth) else Modifier.fillMaxWidth())
-                    .height(ProgressHeight),
+                    .height(ViewerChromeMetrics.ProgressHeight),
             )
         }
     }
@@ -505,8 +544,7 @@ private fun VideoSlider(
     )
 }
 
-/** Libellés de temps (une ligne) puis curseur et bouton son (cible tactile de 48 dp). */
-private val ProgressHeight = 64.dp
+/** Bouton son au bout du curseur : cible tactile de 48 dp. */
 private val MuteButtonWidth = 48.dp
 
 /** Retrait des temps, pour tomber à l'aplomb des extrémités de la piste. */
