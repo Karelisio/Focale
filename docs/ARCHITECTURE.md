@@ -297,6 +297,20 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   il reste chiffré 30 jours, hors des grilles, albums, sauvegardes et contrôles ; il peut en être
   remis (dans son album s'il existe encore) ou effacé définitivement. `VaultTrashPurgeWorker`
   efface chaque jour ceux dont le délai est passé (fichiers chiffrés compris).
+- Sauvegarde automatique (`VaultAutoBackup`, réglage du menu du coffre) : chaque jour ou chaque
+  semaine, dans un dossier choisi par `ACTION_OPEN_DOCUMENT_TREE` (autorisation persistante, dossier
+  en lecture seule refusé), avec un mot de passe saisi deux fois qui n'est pas conservé : les clés
+  d'archive en sont tirées une fois (`VaultArchive.deriveKeys` : PBKDF2 à sel aléatoire puis HKDF,
+  témoin et clé du flux) et gardées dans le DataStore du coffre, chiffrées par une AEAD Tink dont le
+  jeu de clés est protégé par le Keystore (`VaultAutoBackupKeys`). Les archives restent au format
+  `.fvault` v1 (en-tête commun, restaurables avec le mot de passe) : Tink tire un sel et un préfixe
+  de nonce par flux, réutiliser la clé est sûr. `VaultAutoBackupWorker` (WorkManager périodique,
+  batterie et stockage non faibles, coffre verrouillé) crée `focale-coffre-auto-AAAA-MM-JJ.fvault`
+  et l'écrit en flux par l'export de la sauvegarde manuelle (document supprimé s'il échoue), ne
+  garde que les 3 dernières (reconnues à leur nom), saute la sauvegarde si l'empreinte du coffre
+  (identifiants, albums, rangements) et des clés n'a pas changé, et met à jour la date de dernière
+  sauvegarde. Échec (dossier inaccessible, autorisation retirée, plus de place) : erreur dans le
+  réglage et notification, sans nom d'album ni de fichier.
 - Tri (`VaultContent`, réglages `vaultSort` et `vaultAlbumSort`) : éléments par date de prise
   de vue, date d'ajout au coffre, nom (`Collator` primaire) ou taille, albums par nom, date de
   création ou nombre d'éléments, dans les deux sens ; même feuille que les grilles de la
