@@ -16,6 +16,9 @@ import app.focale.data.FavoriteRepository
 import app.focale.data.MediaDetails
 import app.focale.data.MediaDetailsRepository
 import app.focale.data.MediaRepository
+import app.focale.data.OperationResult
+import app.focale.data.PhotoRotator
+import app.focale.edit.SaveMode
 import app.focale.people.PeopleRepository
 import app.focale.people.Person
 import app.focale.ui.actions.MediaActions
@@ -25,7 +28,9 @@ import app.focale.video.MotionPhoto
 import app.focale.video.MotionPhotoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -38,8 +43,21 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+/** Issue de l'enregistrement de la rotation d'un média. */
+sealed interface RotationResult {
+    val mediaId: Long
+
+    /** [inPlace] : la photo elle-même a tourné ; sinon, une copie tournée a été créée. */
+    data class Saved(override val mediaId: Long, val inPlace: Boolean) : RotationResult
+    data class Failed(override val mediaId: Long) : RotationResult
+
+    /** Consentement refusé : la rotation reste en attente. */
+    data class Declined(override val mediaId: Long) : RotationResult
+}
 
 /**
  * Visionneuse : parcourt la même [app.focale.core.model.MediaQuery] que la grille
@@ -56,6 +74,7 @@ class ViewerViewModel @Inject constructor(
     private val analysisDao: AnalysisDao,
     private val peopleRepository: PeopleRepository,
     private val motionPhotos: MotionPhotoRepository,
+    private val rotator: PhotoRotator,
     val actions: MediaActions,
 ) : ViewModel() {
 
@@ -124,6 +143,10 @@ class ViewerViewModel @Inject constructor(
     private val _details = MutableStateFlow<MediaDetails?>(null)
     val details: StateFlow<MediaDetails?> = _details.asStateFlow()
 
+    private var rotationJob: Job? = null
+    private val rotationResults = Channel<RotationResult>(Channel.BUFFERED)
+    val rotationEvents: Flow<RotationResult> = rotationResults.receiveAsFlow()
+
     init {
         viewModelScope.launch {
             _initialIndex.value = initialIndexDeferred.await()
@@ -158,6 +181,27 @@ class ViewerViewModel @Inject constructor(
 
     fun clearDetails() {
         _details.value = null
+    }
+
+    fun rotationOptions(item: MediaItem): PhotoRotator.Options = rotator.options(item)
+
+    /**
+     * Enregistre la rotation de [item] : le fichier n'est modifié qu'ici, à la demande de
+     * l'utilisateur. Faux si un enregistrement est déjà en cours ; sinon la réponse arrive
+     * dans [rotationEvents].
+     */
+    fun saveRotation(item: MediaItem, quarterTurns: Int, mode: SaveMode): Boolean {
+        if (rotationJob?.isActive == true) return false
+        val inPlace = rotator.options(item).lossless || mode == SaveMode.REPLACE
+        rotationJob = viewModelScope.launch {
+            val result = when (rotator.save(item, quarterTurns, mode)) {
+                is OperationResult.Success -> RotationResult.Saved(item.id, inPlace)
+                OperationResult.Cancelled -> RotationResult.Declined(item.id)
+                else -> RotationResult.Failed(item.id)
+            }
+            rotationResults.send(result)
+        }
+        return true
     }
 
     private companion object {

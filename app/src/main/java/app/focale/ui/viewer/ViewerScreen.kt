@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -58,6 +59,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -91,6 +93,7 @@ import app.focale.R
 import app.focale.core.image.ThumbnailSizes
 import app.focale.core.image.UltraHdr
 import app.focale.core.image.thumbnail
+import app.focale.core.image.version
 import app.focale.core.model.MediaItem
 import app.focale.core.util.Formatters
 import app.focale.ml.CountryResolver
@@ -106,11 +109,13 @@ import app.focale.ui.theme.PhotoTheme
 import app.focale.ui.theme.ViewerChromeTheme
 import app.focale.video.MotionPhoto
 import coil3.compose.AsyncImage
+import coil3.imageLoader
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.saket.telephoto.flick.FlickToDismiss
 import me.saket.telephoto.flick.FlickToDismissState
@@ -146,6 +151,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val motionPhoto by viewModel.motionPhoto.collectAsStateWithLifecycle()
     // Nouvel état à chaque média : changer de page arrête la lecture d'une photo animée.
     val motionState = remember(current?.id) { MotionPhotoState() }
+    // Rotation de la photo affichée, annulée quand on en change (voir ViewerPager).
+    val rotation = remember { PhotoRotationState() }
 
     val snackbarHostState = remember { SnackbarHostState() }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
@@ -167,6 +174,32 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
         items.loadState.append.endOfPaginationReached
     LaunchedEffect(emptyAfterLoad, initialIndex) {
         if (emptyAfterLoad && initialIndex != null) onBack()
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.rotationEvents.collect { event ->
+            // La nouvelle version du fichier a pu arriver avant et remettre l'état à zéro.
+            val own = rotation.item?.id == event.mediaId
+            val message = when (event) {
+                is RotationResult.Saved -> {
+                    // Fichier tourné : la photo reste tournée jusqu'à sa nouvelle version ; copie : retour à 0°.
+                    if (own) {
+                        rotation.endSave(written = event.inPlace)
+                        if (!event.inPlace) rotation.cancel()
+                    }
+                    if (event.inPlace) R.string.rotation_saved else R.string.editor_saved_copy
+                }
+                is RotationResult.Failed -> {
+                    if (own) rotation.endSave(written = false)
+                    R.string.rotation_failed
+                }
+                is RotationResult.Declined -> {
+                    if (own) rotation.endSave(written = false)
+                    null
+                }
+            }
+            if (message != null) launch { snackbarHostState.showSnackbar(context.getString(message), withDismissAction = true) }
+        }
     }
 
     // Glisser vers le bas : on quitte dès que le geste est validé, la transition
@@ -194,6 +227,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     muted = settings.muteVideosByDefault,
                     motionPhoto = motionPhoto,
                     motionState = motionState,
+                    rotation = rotation,
+                    rotationEnabled = !motionState.isPlaying,
                     controlsWidth = toolbarWidth,
                     onToggleChrome = { chromeVisible = !chromeVisible },
                     onZoomChanged = { zoomed = it },
@@ -226,15 +261,41 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                         viewModel.loadDetails()
                     },
                     actions = {
-                        if (motionPhoto?.mediaId == item.id) {
+                        // Pas de lecture tant qu'une rotation attend : la vidéo, elle, ne tournerait pas.
+                        if (motionPhoto?.mediaId == item.id && rotation.pending == 0) {
                             MotionPhotoChip(playing = motionState.isPlaying, onClick = motionState::toggle)
                         }
                     },
                 )
             }
         }
+        // Rotation en attente : sa barre remplace la barre d'outils, et reste là même habillage masqué.
+        val rotating = rotation.pending != 0 && item != null && rotation.item?.id == item.id
         AnimatedVisibility(
-            visible = chromeVisible && item != null,
+            visible = rotating,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            val photo = rotation.item
+            if (photo != null) {
+                ViewerChromeTheme {
+                    RotationBar(
+                        options = remember(photo.id, photo.mimeType) { viewModel.rotationOptions(photo) },
+                        saving = rotation.saving,
+                        onSave = { mode ->
+                            if (viewModel.saveRotation(photo, rotation.pending, mode)) rotation.beginSave()
+                        },
+                        onCancel = rotation::cancel,
+                        modifier = Modifier
+                            .navigationBarsPadding()
+                            .padding(bottom = ViewerChromeMetrics.ScreenOffset),
+                    )
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = chromeVisible && item != null && !rotating,
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -325,6 +386,8 @@ private fun ViewerPager(
     muted: Boolean,
     motionPhoto: MotionPhoto?,
     motionState: MotionPhotoState,
+    rotation: PhotoRotationState,
+    rotationEnabled: Boolean,
     controlsWidth: Dp,
     onToggleChrome: () -> Unit,
     onZoomChanged: (Boolean) -> Unit,
@@ -336,6 +399,14 @@ private fun ViewerPager(
             .filterNotNull()
             .distinctUntilChanged()
             .collect(onPageChanged)
+    }
+    // Arrêt sur une autre photo : la rotation non enregistrée est annulée (la page quittée est
+    // déjà hors de l'écran).
+    LaunchedEffect(pagerState, items, rotation) {
+        snapshotFlow { if (items.itemCount == 0) null else items.peek(pagerState.settledPage.coerceIn(0, items.itemCount - 1))?.id }
+            .filterNotNull()
+            .distinctUntilChanged()
+            .collect { id -> if (rotation.item != null && rotation.item?.id != id) rotation.reset() }
     }
     HorizontalPager(
         state = pagerState,
@@ -360,13 +431,17 @@ private fun ViewerPager(
                 controlsWidth = controlsWidth,
             )
             else -> MotionPhotoBox(
-                motionPhoto = motionPhoto?.takeIf { isCurrent && it.mediaId == item.id },
+                // Pas de lecture tant qu'une rotation attend : la vidéo, elle, ne tournerait pas.
+                motionPhoto = motionPhoto?.takeIf { isCurrent && it.mediaId == item.id && rotation.pending == 0 },
                 state = motionState,
                 muted = muted,
             ) {
                 ZoomablePhoto(
                     item = item,
                     isCurrent = isCurrent,
+                    rotation = rotation.takeIf { isCurrent },
+                    // GIF animés exclus, comme de l'éditeur ; rien à tourner pendant un enregistrement.
+                    rotatable = rotationEnabled && !item.isGif && !rotation.awaitsNewVersion,
                     onTap = onToggleChrome,
                     onZoomChanged = { if (isCurrent) onZoomChanged(it) },
                 )
@@ -375,38 +450,88 @@ private fun ViewerPager(
     }
 }
 
-/** Photo zoomable (pincement, double appui) avec sous-échantillonnage des grandes images. */
+/**
+ * Photo zoomable (pincement, double appui) avec sous-échantillonnage des grandes images. Sur la
+ * page courante, [rotation] l'affiche tournée et, si [rotatable], la fait tourner à deux doigts.
+ */
 @Composable
 private fun ZoomablePhoto(
     item: MediaItem,
     isCurrent: Boolean,
+    rotation: PhotoRotationState?,
+    rotatable: Boolean,
     onTap: () -> Unit,
     onZoomChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val zoomState = rememberZoomableImageState(rememberZoomableState())
     val zoomFraction = zoomState.zoomableState.zoomFraction ?: 0f
     val zoomed = zoomFraction > 0.01f
     LaunchedEffect(zoomed) { onZoomChanged(zoomed) }
     LaunchedEffect(isCurrent) {
-        if (!isCurrent) zoomState.zoomableState.resetZoom(animationSpec = androidx.compose.animation.core.snap())
+        if (!isCurrent) zoomState.zoomableState.resetZoom(animationSpec = snap())
     }
-    val request = remember(item.id, item.dateModified) {
+    val turned = rotation?.takeIf { it.item?.id == item.id }
+    if (turned != null) {
+        LaunchedEffect(turned, turned.dragging, turned.turns) {
+            if (!turned.dragging) turned.settle(zoomState.zoomableState)
+        }
+    }
+    // Rotation enregistrée : l'image d'avant, tournée à l'écran, reste affichée jusqu'à ce que la
+    // miniature de la nouvelle version (placeholder de la suivante) soit en mémoire ; l'affichage
+    // ne passe jamais par la mauvaise orientation.
+    var shown by remember(item.id) { mutableStateOf(item) }
+    LaunchedEffect(item) {
+        if (item.dateModified != shown.dateModified && turned?.awaitsNewVersion == true) {
+            context.imageLoader.execute(thumbnailRequest(context, item, ThumbnailSizes.lastGridBucket))
+            zoomState.zoomableState.resetZoom(animationSpec = snap())
+            if (turned.item?.id == item.id) turned.reset()
+        }
+        shown = item
+    }
+    val request = remember(shown.id, shown.dateModified) {
         ImageRequest.Builder(context)
-            .data(item.uri)
+            .data(shown.uri)
+            .version(shown)
             .placeholderMemoryCacheKey(
-                MemoryCache.Key(ThumbnailSizes.memoryKey(item.id, item.dateModified, ThumbnailSizes.lastGridBucket)),
+                MemoryCache.Key(ThumbnailSizes.memoryKey(shown.id, shown.dateModified, ThumbnailSizes.lastGridBucket)),
             )
             .build()
     }
-    ZoomableAsyncImage(
-        model = request,
-        contentDescription = item.displayName,
-        state = zoomState,
-        modifier = Modifier.fillMaxSize(),
-        onClick = { onTap() },
-    )
+    val currentItem by rememberUpdatedState(item)
+    // Photo chargée : l'ajustement après un quart de tour se calcule sur ses dimensions affichées.
+    val gesture = rotation?.takeIf { rotatable && zoomState.isImageDisplayed }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .then(if (gesture != null) Modifier.rotationGesture(gesture, { currentItem }, haptics) else Modifier),
+    ) {
+        ZoomableAsyncImage(
+            model = request,
+            contentDescription = item.displayName,
+            state = zoomState,
+            modifier = Modifier
+                .rotationFrame { turned != null && Math.floorMod(turned.frameTurns, 2) == 1 }
+                .graphicsLayer {
+                    if (turned != null) {
+                        rotationZ = turned.angle
+                        scaleX = turned.scale
+                        scaleY = turned.scale
+                    }
+                },
+            onClick = { onTap() },
+        )
+    }
 }
+
+/** Miniature de la grille (même clé mémoire), au palier [bucket]. */
+private fun thumbnailRequest(context: Context, item: MediaItem, bucket: Int): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(item.thumbnail())
+        .size(bucket)
+        .memoryCacheKey(ThumbnailSizes.memoryKey(item.id, item.dateModified, bucket))
+        .build()
 
 /** Image calée sur le cadre réel de la photo, support de la transition partagée. */
 @Composable
@@ -419,13 +544,7 @@ private fun HeroImage(item: MediaItem) {
         val height = if (ratio > containerRatio) maxWidth / ratio else maxHeight
         val bucket = ThumbnailSizes.lastGridBucket
         AsyncImage(
-            model = remember(item.id, bucket) {
-                ImageRequest.Builder(context)
-                    .data(item.thumbnail())
-                    .size(bucket)
-                    .memoryCacheKey(ThumbnailSizes.memoryKey(item.id, item.dateModified, bucket))
-                    .build()
-            },
+            model = remember(item.id, item.dateModified, bucket) { thumbnailRequest(context, item, bucket) },
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
