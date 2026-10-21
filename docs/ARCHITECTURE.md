@@ -523,9 +523,14 @@ application ouvre les photos et proposer de choisir Focale.
 - Enregistrement (`PhotoRotator`) : JPEG et WebP sans perte, orientation EXIF composée avec
   l'actuelle, miroirs compris (`ExifOrientation`) ; deux octets réécrits sur place si la
   balise existe (carte de gain Ultra HDR, vidéo de photo animée intactes), sinon segment
-  EXIF refait ; consentement de « remplacer l'original ». Autres formats (PNG, dont Android
-  ignore l'orientation EXIF ; HEIF et AVIF) : rendu de l'éditeur, en copie ou à la place.
-  Clé mémoire Coil des images pleine taille liée à `date_modified`.
+  EXIF refait ; consentement de « remplacer l'original ». L'orientation XMP
+  (`tiff:Orientation`, que lit Lightroom) du paquet de l'image principale (APP1 du JPEG,
+  bloc « XMP » du WebP ; attribut ou élément, préfixe quelconque) prend la même valeur : un
+  chiffre remplacé à longueur égale (`XmpOrientationSlot`), donc aucun décalage MPF ; le XMP
+  de la carte de gain n'est pas lu, une orientation XMP absente n'est pas ajoutée. Autres
+  formats (PNG, dont Android ignore l'orientation EXIF ; HEIF et AVIF) : rendu de
+  l'éditeur, en copie ou à la place. Clé mémoire Coil des images pleine taille liée à
+  `date_modified`.
 
 ---
 

@@ -12,6 +12,7 @@ import app.focale.edit.ExifOrientation
 import app.focale.edit.SaveMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import javax.inject.Inject
@@ -22,11 +23,12 @@ import kotlinx.coroutines.withContext
 /**
  * Enregistre une rotation par quarts de tour faite dans la visionneuse.
  *
- * JPEG et WebP : sans perte, seule l'orientation EXIF change. Si la balise existe, ses deux
+ * JPEG et WebP : sans perte, seule l'orientation change. Si la balise EXIF existe, ses deux
  * octets sont remplacés sur place : rien d'autre ne bouge (carte de gain Ultra HDR, vidéo
  * d'une photo animée, autres métadonnées). Sinon ExifInterface réécrit le segment EXIF et
- * recopie le reste tel quel. Dans les deux cas, même consentement que « remplacer
- * l'original » dans l'éditeur ([MediaOperations]).
+ * recopie le reste tel quel. Dans les deux cas, l'orientation XMP de l'image principale, si
+ * elle existe, prend la même valeur, d'un chiffre réécrit sur place ([XmpOrientationSlot]) ;
+ * même consentement que « remplacer l'original » dans l'éditeur ([MediaOperations]).
  *
  * Autres formats : Android ignore leur orientation EXIF (PNG) ou se fie à une autre (HEIF,
  * AVIF : propriétés `irot` / `imir`). La photo passe alors par le rendu de l'éditeur,
@@ -72,12 +74,21 @@ class PhotoRotator @Inject constructor(
         val exif = resolver.openInputStream(item.uri)?.use { ExifInterface(it) } ?: error("Lecture impossible")
         val current = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
         val target = ExifOrientation.rotate(current, turns)
-        val slot = OrientationSlot.locate(exif, current) { offset, length -> read(item.uri, offset, length) }
-        if (slot != null) return operations.patch(item) { slot.write(it, target) }
-
-        // Réécriture complète : sans accès à l'original, la localisation lue est masquée (mise
-        // à zéro) et serait perdue.
+        // Original lu si possible : sans ACCESS_MEDIA_LOCATION, la localisation lue est masquée
+        // (mise à zéro), XMP compris.
         val source = details.originalUri(item.uri)
+        val slots = reading(source) { read ->
+            OrientationSlot.locate(exif, current, read)?.let { it to XmpOrientationSlot.locate(read) }
+        }
+        if (slots != null) {
+            val (slot, xmp) = slots
+            return operations.patch(item) { channel ->
+                slot.write(channel, target)
+                xmp?.write(channel, target)
+            }
+        }
+
+        // Réécriture complète : sans accès à l'original, la localisation masquée serait perdue.
         if (source == item.uri && (GPS_TAGS.any { exif.getAttribute(it) != null } || exif.getAttribute(ExifInterface.TAG_XMP) != null)) {
             return OperationResult.Failure(IllegalStateException("Localisation masquée sans ACCESS_MEDIA_LOCATION"))
         }
@@ -92,15 +103,14 @@ class PhotoRotator @Inject constructor(
         }
     }
 
-    /** [length] octets à [offset], ou null si le fichier est plus court. */
-    private fun read(uri: Uri, offset: Long, length: Int): ByteArray? {
+    /**
+     * Lectures positionnées dans [uri] par un même descripteur : [length] octets à [offset], ou
+     * null si le fichier est plus court. Null si le fichier ne s'ouvre pas.
+     */
+    private fun <T> reading(uri: Uri, block: (read: (offset: Long, length: Int) -> ByteArray?) -> T): T? {
         val descriptor = resolver.openFileDescriptor(uri, "r") ?: return null
         return ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { stream ->
-            val buffer = ByteBuffer.allocate(length)
-            while (buffer.hasRemaining()) {
-                if (stream.channel.read(buffer, offset + buffer.position()) < 0) return null
-            }
-            buffer.array()
+            block { offset, length -> stream.channel.readAt(offset, length) }
         }
     }
 
@@ -116,11 +126,18 @@ class PhotoRotator @Inject constructor(
             ExifInterface.TAG_GPS_DATESTAMP,
         )
 
-        /** Écrit l'orientation d'un fichier local par ExifInterface : seul le segment EXIF est refait. */
+        /**
+         * Écrit l'orientation d'un fichier local : ExifInterface refait le segment EXIF et recopie
+         * le XMP tel quel, dont l'orientation est ensuite mise à jour sur place.
+         */
         internal fun rewriteOrientation(file: File, orientation: Int) {
             ExifInterface(file).apply {
                 setAttribute(ExifInterface.TAG_ORIENTATION, orientation.toString())
                 saveAttributes()
+            }
+            RandomAccessFile(file, "rw").use { access ->
+                val channel = access.channel
+                XmpOrientationSlot.locate(channel::readAt)?.write(channel, orientation)
             }
         }
     }
