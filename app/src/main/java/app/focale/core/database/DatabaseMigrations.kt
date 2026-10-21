@@ -30,7 +30,7 @@ object DatabaseMigrations {
     /**
      * Version 5 : dates d'origine des médias restaurés ou copiés que MediaStore n'a pas retrouvées ;
      * journal de l'import dans le coffre (original encore dans la galerie, copie en cours) ;
-     * corbeille du coffre ; index composés de la timeline, des dossiers et des filtres de type.
+     * corbeille du coffre.
      */
     val MIGRATION_4_5 = object : Migration(4, 5) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -38,7 +38,14 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    /** Version 6 : index composés de la timeline, des dossiers et des filtres de type. */
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            CHANGES_V6.forEach(db::execSQL)
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
     private val CREATE_V2 = listOf(
         "CREATE TABLE IF NOT EXISTS `media_text` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `text` TEXT NOT NULL, `text_key` TEXT NOT NULL, PRIMARY KEY(`media_id`))",
@@ -70,6 +77,9 @@ object DatabaseMigrations {
         "ALTER TABLE `vault_item` ADD COLUMN `importing` INTEGER NOT NULL DEFAULT 0",
         "CREATE INDEX IF NOT EXISTS `index_vault_item_source_media_id` ON `vault_item` (`source_media_id`)",
         "ALTER TABLE `vault_item` ADD COLUMN `deleted_at` INTEGER",
+    )
+
+    private val CHANGES_V6 = listOf(
         // Timeline, dossiers et filtres dans l'ordre de la grille, sans trier toute la bibliothèque
         // (docs/PERFORMANCE.md).
         "DROP INDEX IF EXISTS `index_media_is_trashed`",

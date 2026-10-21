@@ -201,7 +201,7 @@ puis triait **toute la bibliothèque** (`USE TEMP B-TREE FOR ORDER BY`) : à cha
 timeline (95 ms), à chaque saut, à chaque lot de l'analyse et, dans la liste des dossiers, une
 fois par dossier pour sa couverture (300 parcours de 50 000 lignes : 2,9 s).
 
-Correction (`DatabaseMigrations.CHANGES_V5`, `DatabaseMigrationsTest`) : des index composés qui
+Correction (version 6 de la base, `DatabaseMigrations.CHANGES_V6`, `DatabaseMigrationsTest`) : des index composés qui
 finissent par la date remplacent les index simples de `is_trashed`, `bucket_id` et `media_type` :
 
 | Index | Requêtes servies dans leur ordre, sans tri |

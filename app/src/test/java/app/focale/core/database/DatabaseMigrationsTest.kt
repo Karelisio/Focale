@@ -20,7 +20,7 @@ class DatabaseMigrationsTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun `la migration 1 vers 5 conserve les données et produit le schéma attendu par Room`() {
+    fun `la migration 1 vers 6 conserve les données et produit le schéma attendu par Room`() {
         val file = databaseAt(version = 1) { db ->
             db.execSQL("INSERT INTO favorite (media_id, added_at) VALUES (42, 1000)")
             db.execSQL(vaultItem(id = 3))
@@ -99,8 +99,9 @@ class DatabaseMigrationsTest {
     }
 
     @Test
-    fun `la migration 4 vers 5 donne à la timeline, aux dossiers et aux filtres des index composés`() {
-        val file = databaseAt(version = 4) { db ->
+    fun `la migration 5 vers 6 donne à la timeline, aux dossiers et aux filtres des index composés`() {
+        // Base de la 1.7.0, avec les index simples de la corbeille, des dossiers et des types.
+        val file = databaseAt(version = 5) { db ->
             db.execSQL(
                 "INSERT INTO media (id, media_type, mime_type, display_name, relative_path, bucket_id, bucket_name, date_taken, " +
                     "date_added, date_modified, generation, size, width, height, orientation, duration, volume_name, " +
@@ -207,6 +208,6 @@ class DatabaseMigrationsTest {
         /** Dossier courant des tests : le module app. */
         val SCHEMAS = File("schemas/app.focale.core.database.FocaleDatabase")
         const val TABLE_NAME = "\${TABLE_NAME}"
-        const val LATEST = 5
+        const val LATEST = 6
     }
 }
