@@ -10,6 +10,7 @@ import androidx.work.workDataOf
 import app.focale.core.database.AnalysisDao
 import app.focale.core.database.MediaAnalysisEntity
 import app.focale.core.database.MediaLabelEntity
+import app.focale.core.model.MediaItem
 import app.focale.core.settings.SettingsRepository
 import app.focale.data.toModel
 import app.focale.ml.AnalysisKind
@@ -49,9 +50,11 @@ class AnalysisWorker @AssistedInject constructor(
         val deadline = SystemClock.elapsedRealtime() + MAX_RUN_MS
         var processed = 0
         var labelingUnavailable = false
+        // Chaque lot reprend après le précédent : coût de sélection constant au fil du passage.
+        val queue = AnalysisQueue(dao)
         try {
             while (!isStopped) {
-                val batch = dao.pending(ImageAnalyzer.VERSION, BATCH_SIZE)
+                val batch = queue.next(BATCH_SIZE)
                 if (batch.isEmpty()) break
 
                 val analyses = ArrayList<MediaAnalysisEntity>(batch.size)
@@ -107,14 +110,17 @@ class AnalysisWorker @AssistedInject constructor(
                     return Result.success()
                 }
             }
-            // Étapes complémentaires, une fois l'analyse principale à jour.
+            // Étapes complémentaires, une fois l'analyse principale à jour ; comme pour celle-ci,
+            // chaque lot reprend après le précédent.
             for (step in steps.sortedBy { it.order }) {
+                var last: MediaItem? = null
                 while (!isStopped) {
-                    val items = step.pending(STEP_BATCH_SIZE)
+                    val items = last?.let { step.pendingAfter(it, STEP_BATCH_SIZE) } ?: step.pending(STEP_BATCH_SIZE)
                     if (items.isEmpty()) {
                         issues.clear(step.kind)
                         break
                     }
+                    last = items.last()
                     try {
                         step.process(items)
                     } catch (cancelled: CancellationException) {
@@ -151,8 +157,12 @@ class AnalysisWorker @AssistedInject constructor(
         private const val TAG = "AnalysisWorker"
         const val KEY_PROCESSED = "processed"
         const val KEY_MANUAL = "manual"
-        private const val BATCH_SIZE = 24
-        private const val STEP_BATCH_SIZE = 16
+
+        /** Médias par lot de l'analyse principale (aussi la taille des lots des tests de charge). */
+        const val BATCH_SIZE = 24
+
+        /** Médias par lot des étapes complémentaires (texte, visages, empreintes). */
+        const val STEP_BATCH_SIZE = 16
         private const val MAX_RUN_MS = 6 * 60 * 1000L
     }
 }

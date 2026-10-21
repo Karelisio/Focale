@@ -65,19 +65,37 @@ interface FaceDao {
         WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
           AND m.is_screenshot = 0 AND m.is_gif = 0
           AND (s.media_id IS NULL OR s.analyzed_modified != m.date_modified OR s.version < :version)
-        ORDER BY m.date_taken DESC
+        ORDER BY m.date_taken DESC, m.id DESC
         LIMIT :limit
         """,
     )
     suspend fun pending(version: Int, limit: Int): List<MediaEntity>
 
-    /** Avancement en direct : photos concernées par [pending] et photos déjà analysées. */
+    /** Suite de [pending] après le média ([dateTaken], [id]) du lot précédent (voir `AnalysisStep.pendingAfter`). */
+    @Query(
+        """
+        SELECT m.* FROM media m LEFT JOIN face_scan s ON s.media_id = m.id
+        WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
+          AND m.is_screenshot = 0 AND m.is_gif = 0
+          AND m.date_taken <= :dateTaken AND (m.date_taken < :dateTaken OR m.id < :id)
+          AND (s.media_id IS NULL OR s.analyzed_modified != m.date_modified OR s.version < :version)
+        ORDER BY m.date_taken DESC, m.id DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun pendingAfter(version: Int, dateTaken: Long, id: Long, limit: Int): List<MediaEntity>
+
+    /**
+     * Avancement en direct : photos concernées par [pending] et photos déjà analysées. Parcours
+     * dans l'ordre des identifiants (« + » écarte les index triés par date) : voir
+     * `AnalysisDao.observePendingCount`.
+     */
     @Query(
         """
         SELECT COUNT(*) AS total,
                COALESCE(SUM(s.media_id IS NOT NULL AND s.analyzed_modified = m.date_modified AND s.version >= :version), 0) AS done
         FROM media m LEFT JOIN face_scan s ON s.media_id = m.id
-        WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
+        WHERE +m.is_trashed = 0 AND +m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
           AND m.is_screenshot = 0 AND m.is_gif = 0
         """,
     )

@@ -56,6 +56,9 @@ class FaceAnalysisStep @Inject constructor(
 
     override suspend fun pending(limit: Int): List<MediaItem> = dao.pending(VERSION, limit).map { it.toModel() }
 
+    override suspend fun pendingAfter(after: MediaItem, limit: Int): List<MediaItem> =
+        dao.pendingAfter(VERSION, after.dateTaken, after.id, limit).map { it.toModel() }
+
     override suspend fun process(items: List<MediaItem>) {
         // Modèles indisponibles : échec global, aucune photo n'est marquée comme vue.
         analyzer.prepare()

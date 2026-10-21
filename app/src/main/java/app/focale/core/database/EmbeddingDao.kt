@@ -21,19 +21,36 @@ interface EmbeddingDao {
         SELECT m.* FROM media m LEFT JOIN media_embedding e ON e.media_id = m.id
         WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
           AND (e.media_id IS NULL OR e.analyzed_modified != m.date_modified OR e.version < :version)
-        ORDER BY m.date_taken DESC
+        ORDER BY m.date_taken DESC, m.id DESC
         LIMIT :limit
         """,
     )
     suspend fun pending(version: Int, limit: Int): List<MediaEntity>
 
-    /** Avancement en direct : photos concernées par [pending] et photos déjà traitées. */
+    /** Suite de [pending] après le média ([dateTaken], [id]) du lot précédent (voir `AnalysisStep.pendingAfter`). */
+    @Query(
+        """
+        SELECT m.* FROM media m LEFT JOIN media_embedding e ON e.media_id = m.id
+        WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
+          AND m.date_taken <= :dateTaken AND (m.date_taken < :dateTaken OR m.id < :id)
+          AND (e.media_id IS NULL OR e.analyzed_modified != m.date_modified OR e.version < :version)
+        ORDER BY m.date_taken DESC, m.id DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun pendingAfter(version: Int, dateTaken: Long, id: Long, limit: Int): List<MediaEntity>
+
+    /**
+     * Avancement en direct : photos concernées par [pending] et photos déjà traitées. Parcours
+     * dans l'ordre des identifiants (« + » écarte les index triés par date) : voir
+     * `AnalysisDao.observePendingCount`.
+     */
     @Query(
         """
         SELECT COUNT(*) AS total,
                COALESCE(SUM(e.media_id IS NOT NULL AND e.analyzed_modified = m.date_modified AND e.version >= :version), 0) AS done
         FROM media m LEFT JOIN media_embedding e ON e.media_id = m.id
-        WHERE m.is_trashed = 0 AND m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
+        WHERE +m.is_trashed = 0 AND +m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
         """,
     )
     fun observeProgress(version: Int): Flow<StepCounts>

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "84866c36e7bb3800d26021d070bed2e2",
+    "identityHash": "e8cdb2099b1a57459dc9686810a008de",
     "entities": [
       {
         "tableName": "media",
@@ -152,31 +152,36 @@
             "createSql": "CREATE INDEX IF NOT EXISTS `index_media_date_taken` ON `${TABLE_NAME}` (`date_taken`)"
           },
           {
-            "name": "index_media_bucket_id",
+            "name": "index_media_bucket_id_is_trashed_date_taken",
             "unique": false,
             "columnNames": [
-              "bucket_id"
+              "bucket_id",
+              "is_trashed",
+              "date_taken"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_bucket_id` ON `${TABLE_NAME}` (`bucket_id`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_bucket_id_is_trashed_date_taken` ON `${TABLE_NAME}` (`bucket_id`, `is_trashed`, `date_taken`)"
           },
           {
-            "name": "index_media_media_type",
+            "name": "index_media_media_type_is_trashed_date_taken",
             "unique": false,
             "columnNames": [
-              "media_type"
+              "media_type",
+              "is_trashed",
+              "date_taken"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_media_type` ON `${TABLE_NAME}` (`media_type`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_media_type_is_trashed_date_taken` ON `${TABLE_NAME}` (`media_type`, `is_trashed`, `date_taken`)"
           },
           {
-            "name": "index_media_is_trashed",
+            "name": "index_media_is_trashed_date_taken",
             "unique": false,
             "columnNames": [
-              "is_trashed"
+              "is_trashed",
+              "date_taken"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_is_trashed` ON `${TABLE_NAME}` (`is_trashed`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_media_is_trashed_date_taken` ON `${TABLE_NAME}` (`is_trashed`, `date_taken`)"
           }
         ]
       },
@@ -1071,7 +1076,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '84866c36e7bb3800d26021d070bed2e2')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e8cdb2099b1a57459dc9686810a008de')"
     ]
   }
 }

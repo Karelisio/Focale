@@ -51,6 +51,22 @@ interface MediaDao {
     @RawQuery(observedEntities = [MediaEntity::class])
     fun observeBuckets(query: SupportSQLiteQuery): Flow<List<BucketRow>>
 
+    // Timeline et dossiers : leur requête ne lit que `media` (MediaQueryBuilder.readsOnlyMedia).
+    // L'analyse, qui écrit dans media_analysis et media_label à chaque lot pendant des heures sur
+    // une grande bibliothèque, ne recharge ni leurs pages, ni leur compteur, ni leur histogramme.
+
+    @RawQuery(observedEntities = [MediaEntity::class])
+    fun pagingSourceOfMedia(query: SupportSQLiteQuery): PagingSource<Int, MediaEntity>
+
+    @RawQuery(observedEntities = [MediaEntity::class])
+    fun observeListOfMedia(query: SupportSQLiteQuery): Flow<List<MediaEntity>>
+
+    @RawQuery(observedEntities = [MediaEntity::class])
+    fun observeCountOfMedia(query: SupportSQLiteQuery): Flow<Int>
+
+    @RawQuery(observedEntities = [MediaEntity::class])
+    fun observeHistogramOfMedia(query: SupportSQLiteQuery): Flow<List<DateBucketRow>>
+
     // Recherche et personnes : suivent aussi les étapes d'analyse complémentaires (texte,
     // visages, empreintes), dont les résultats s'affinent pendant que l'analyse avance ou
     // que l'utilisateur réorganise ses personnes. La timeline n'est pas concernée.

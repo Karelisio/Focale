@@ -39,18 +39,34 @@ class MediaRepository @Inject constructor(
             initialKey = initialIndex,
             pagingSourceFactory = {
                 val sql = MediaQueryBuilder.select(query)
-                if (query.followsAnalysis) dao.pagingSourceWithAnalysis(sql) else dao.pagingSource(sql)
+                when (query.observed) {
+                    Observed.MEDIA -> dao.pagingSourceOfMedia(sql)
+                    Observed.LIBRARY -> dao.pagingSource(sql)
+                    Observed.ANALYSIS -> dao.pagingSourceWithAnalysis(sql)
+                }
             },
         ).flow.map { data -> data.map(MediaEntity::toModel) }
 
     fun observeCount(query: MediaQuery): Flow<Int> =
         MediaQueryBuilder.count(query)
-            .let { if (query.followsAnalysis) dao.observeCountWithAnalysis(it) else dao.observeCount(it) }
+            .let {
+                when (query.observed) {
+                    Observed.MEDIA -> dao.observeCountOfMedia(it)
+                    Observed.LIBRARY -> dao.observeCount(it)
+                    Observed.ANALYSIS -> dao.observeCountWithAnalysis(it)
+                }
+            }
             .distinctUntilChanged()
 
     fun observeList(query: MediaQuery): Flow<List<MediaItem>> =
         MediaQueryBuilder.select(query)
-            .let { if (query.followsAnalysis) dao.observeListWithAnalysis(it) else dao.observeList(it) }
+            .let {
+                when (query.observed) {
+                    Observed.MEDIA -> dao.observeListOfMedia(it)
+                    Observed.LIBRARY -> dao.observeList(it)
+                    Observed.ANALYSIS -> dao.observeListWithAnalysis(it)
+                }
+            }
             .map { rows -> rows.map(MediaEntity::toModel) }
 
     suspend fun list(query: MediaQuery, limit: Int? = null): List<MediaItem> = withContext(io) {
@@ -59,7 +75,9 @@ class MediaRepository @Inject constructor(
 
     /** Premier média de [query] (couverture), observé. */
     fun observeFirst(query: MediaQuery): Flow<MediaItem?> =
-        dao.observeList(MediaQueryBuilder.select(query, limit = 1)).map { it.firstOrNull()?.toModel() }
+        MediaQueryBuilder.select(query, limit = 1)
+            .let { if (query.observed == Observed.MEDIA) dao.observeListOfMedia(it) else dao.observeList(it) }
+            .map { it.firstOrNull()?.toModel() }
 
     suspend fun ids(query: MediaQuery): List<Long> = withContext(io) {
         dao.ids(MediaQueryBuilder.ids(query))
@@ -67,7 +85,13 @@ class MediaRepository @Inject constructor(
 
     fun observeHistogram(query: MediaQuery, level: GroupLevel): Flow<List<DateBucket>> =
         MediaQueryBuilder.histogram(query, level)
-            .let { if (query.followsAnalysis) dao.observeHistogramWithAnalysis(it) else dao.observeHistogram(it) }
+            .let {
+                when (query.observed) {
+                    Observed.MEDIA -> dao.observeHistogramOfMedia(it)
+                    Observed.LIBRARY -> dao.observeHistogram(it)
+                    Observed.ANALYSIS -> dao.observeHistogramWithAnalysis(it)
+                }
+            }
             .map { rows -> rows.map { DateBucket(it.periodStart, it.count) } }
             .distinctUntilChanged()
 
@@ -134,9 +158,26 @@ fun MediaEntity.toModel(): MediaItem {
     )
 }
 
+/** Tables dont les changements relancent une requête observée (voir [MediaQuery.observed]). */
+private enum class Observed {
+    /** `media` seule : timeline, dossiers, filtres de type ou de date. */
+    MEDIA,
+
+    /** Avec les favoris, les albums et l'analyse principale (lieux, étiquettes). */
+    LIBRARY,
+
+    /** Avec aussi les étapes d'analyse complémentaires (texte, visages, empreintes). */
+    ANALYSIS,
+}
+
 /**
- * Requête dont le résultat dépend des étapes d'analyse complémentaires (recherche, personne) :
- * observée aussi sur leurs tables.
+ * Tables à observer pour une requête. Recherche et personne dépendent des étapes d'analyse
+ * complémentaires, dont les résultats s'affinent pendant l'analyse ; une requête qui ne lit que
+ * `media` ne dépend ni des favoris ni de l'analyse, réécrite à chaque lot.
  */
-private val MediaQuery.followsAnalysis: Boolean
-    get() = terms.isNotEmpty() || personId != null
+private val MediaQuery.observed: Observed
+    get() = when {
+        terms.isNotEmpty() || personId != null -> Observed.ANALYSIS
+        MediaQueryBuilder.readsOnlyMedia(this) -> Observed.MEDIA
+        else -> Observed.LIBRARY
+    }

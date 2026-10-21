@@ -37,6 +37,17 @@ class TextRecognitionStep @Inject constructor(
 
     override suspend fun pending(limit: Int): List<MediaItem> = dao.pending(VERSION, limit).map { it.toModel() }
 
+    /** Captures d'abord puis les autres photos, chaque groupe repris après le lot précédent. */
+    override suspend fun pendingAfter(after: MediaItem, limit: Int): List<MediaItem> {
+        val batch = dao.pendingAfter(VERSION, after.isScreenshot, after.dateTaken, after.id, limit)
+        val others = if (after.isScreenshot && batch.size < limit) {
+            dao.pendingAfter(VERSION, screenshot = false, dateTaken = Long.MAX_VALUE, id = Long.MAX_VALUE, limit = limit - batch.size)
+        } else {
+            emptyList()
+        }
+        return (batch + others).map { it.toModel() }
+    }
+
     override suspend fun process(items: List<MediaItem>) {
         val texts = ArrayList<MediaTextEntity>(items.size)
         var recognized = 0

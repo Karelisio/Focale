@@ -139,6 +139,13 @@ object MediaQueryBuilder {
         )
     }
 
+    /**
+     * Vrai si la clause WHERE de [query] ne lit que la table `media` (timeline, dossiers, filtres
+     * de type ou de date) : tout autre critère passe par une sous-requête sur sa table. Ses grilles
+     * n'ont pas à suivre les tables des favoris, des albums ni de l'analyse.
+     */
+    fun readsOnlyMedia(query: MediaQuery): Boolean = !where(query, mutableListOf()).contains("SELECT")
+
     /** Clause WHERE commune ; les arguments positionnels sont ajoutés à [args]. */
     fun where(query: MediaQuery, args: MutableList<Any?>): String {
         val clauses = mutableListOf("m.is_trashed = 0")

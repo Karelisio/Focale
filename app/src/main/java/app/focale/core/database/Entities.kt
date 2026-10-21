@@ -11,14 +11,21 @@ import androidx.room.PrimaryKey
  *
  * La clé primaire est le `_ID` MediaStore : il est unique pour toute la table `Files`
  * du volume externe, images et vidéos confondues.
+ *
+ * Index composés (docs/PERFORMANCE.md) : toute requête écarte la corbeille (`is_trashed = 0`)
+ * et trie par date ; (`is_trashed`, `date_taken`) sert la timeline dans son ordre, sans tri
+ * temporaire, ainsi que ses compteurs et son histogramme ; (`bucket_id`, …) et
+ * (`media_type`, …) servent de même la grille d'un dossier (et la couverture de chaque
+ * dossier), les filtres Photos et Vidéos et les files de l'analyse. Un index sur `is_trashed`
+ * seul faisait trier toute la bibliothèque à chaque page.
  */
 @Entity(
     tableName = "media",
     indices = [
         Index("date_taken"),
-        Index("bucket_id"),
-        Index("media_type"),
-        Index("is_trashed"),
+        Index("bucket_id", "is_trashed", "date_taken"),
+        Index("media_type", "is_trashed", "date_taken"),
+        Index("is_trashed", "date_taken"),
     ],
 )
 data class MediaEntity(

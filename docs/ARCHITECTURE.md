@@ -11,7 +11,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Principe | Conséquence concrète |
 |---|---|
 | **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. Les seules connexions réseau sont le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement, et la recherche quotidienne de mises à jour sur GitHub (désactivable) ; la variante `strict` retire même la permission `INTERNET`. |
-| **Fluide avec 50 000+ médias** | MediaStore est indexé dans Room ; toutes les listes passent par Paging 3 (placeholders + sauts) ; les miniatures viennent du cache système de MediaStore (`loadThumbnail`) via un `Fetcher` Coil dédié. |
+| **Fluide avec 50 000+ médias** | MediaStore est indexé dans Room ; toutes les listes passent par Paging 3 (placeholders + sauts) ; les miniatures viennent du cache système de MediaStore (`loadThumbnail`) via un `Fetcher` Coil dédié. Tests de charge sur 50 000 médias, plans d'exécution surveillés, profil de référence : [PERFORMANCE.md](PERFORMANCE.md). |
 | **MediaStore reste la source de vérité** | Room n'est qu'un miroir (index) + les métadonnées propres à l'app (favoris, albums virtuels, étiquettes ML, empreintes, coffre). |
 | **Material You partout** | Couleurs dynamiques du fond d'écran, palette maison en repli, thème « couleur depuis la photo » dans la visionneuse et les albums. |
 | **Adaptatif** | `NavigationSuiteScaffold` (barre/rail), grille dont le nombre de colonnes dépend de la largeur, panneaux latéraux sur grand écran. |
@@ -126,7 +126,10 @@ Clé = `_ID` MediaStore (unique pour images et vidéos dans la table `Files`).
 | `size`, `width`, `height`, `orientation`, `duration` | infos et mise en page |
 | `is_screenshot`, `is_gif` | filtres rapides (dérivés à l'indexation) |
 
-Index : `date_taken`, `bucket_id`, `media_type`.
+Index : `date_taken`, et trois index composés qui finissent par la date, pour lire les grilles
+dans leur ordre sans trier la bibliothèque : (`is_trashed`, `date_taken`) pour la timeline,
+(`bucket_id`, `is_trashed`, `date_taken`) pour les dossiers, (`media_type`, `is_trashed`,
+`date_taken`) pour les filtres et les files de l'analyse (voir [PERFORMANCE.md](PERFORMANCE.md)).
 
 ### 5.2 Métadonnées de l'app
 
@@ -163,6 +166,10 @@ l'on vient, calcule la position de départ par un `COUNT(*)` et ouvre une
 `PagingSource` démarrant à cet index (`initialKey`). Le swipe parcourt donc
 exactement les mêmes éléments, dans le même ordre, même sur 50 000 médias.
 
+Une requête qui ne lit que `media` (timeline, dossiers, filtres de type ou de date :
+`MediaQueryBuilder.readsOnlyMedia`) n'est observée que sur cette table : les lots de l'analyse ne
+rechargent ni ses pages, ni son nombre, ni son histogramme.
+
 ---
 
 ## 6. Flux clés
@@ -173,8 +180,8 @@ exactement les mêmes éléments, dans le même ordre, même sur 50 000 médias.
 2. API 30+ : synchro incrémentale par `GENERATION_MODIFIED` + détection des
    suppressions par la liste des `_ID` ; sinon comparaison complète
    (`id` + `date_modified`).
-3. Écritures par lots de 500 dans des transactions ; Room invalide les
-   `PagingSource` → l'UI se met à jour seule.
+3. Écritures par lots (1 000 lignes ajoutées ou modifiées, 500 suppressions) dans des
+   transactions ; Room invalide les `PagingSource` → l'UI se met à jour seule.
 4. Date de tri : `DATE_TAKEN`, sinon la date retenue dans `media_date`, sinon `DATE_MODIFIED`.
 
 Médias écrits par l'application (sortie du coffre, corbeille d'Android 10, copie, édition en
@@ -254,6 +261,12 @@ manuel, qui ignore « en charge uniquement » jusqu'à la fin (ses continuations
 Un échec global (modèle indisponible, étiquetage en échec sur tout un lot) est noté par
 `AnalysisIssues` jusqu'au prochain lot réussi et affiché sous l'analyse concernée, avec
 l'état « interrompue » plutôt que « en attente ».
+
+Files d'attente : un passage parcourt chaque file une fois, des plus récents aux plus anciens
+(le texte : captures d'abord) ; chaque lot reprend après le dernier média du précédent
+(`AnalysisQueue`, `AnalysisStep.pendingAfter`) au lieu de relire les médias déjà traités, si bien
+que le coût d'une sélection ne croît pas avec l'avancement. Un média arrivé pendant le passage,
+plus récent que le curseur, va au passage suivant (voir [PERFORMANCE.md](PERFORMANCE.md)).
 
 Release : le mode strict de R8 (AGP 9) retire le constructeur des « registrars » ML Kit,
 instanciés par réflexion depuis le manifeste ; `proguard-rules.pro` le garde, et la CI
@@ -506,7 +519,9 @@ application ouvre les photos et proposer de choisir Focale.
 
 ### 7.3 Grille
 - `LazyVerticalGrid` + Paging 3, en-têtes de date pleine largeur insérés par
-  `insertSeparators` (jour / mois / année, ou automatique selon le zoom).
+  `insertSeparators` (jour / mois / année, ou automatique selon le zoom). Pages lues dans
+  l'ordre d'un index (§ 5.1), sans tri : quelques millisecondes par page de 120 médias sur
+  50 000, même tout au bout (mesures : [PERFORMANCE.md](PERFORMANCE.md)).
 - Pincement : 2 à 7 colonnes (décalées sur tablette), ancrage sur l'élément visé.
 - Défilement rapide : poignée + bulle de date calculée depuis un histogramme
   mensuel (`GROUP BY` mois) — exact et sans charger les pages.
