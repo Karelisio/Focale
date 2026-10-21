@@ -33,15 +33,16 @@ object MergeSuggester {
     class Candidate(val id: Long, val name: String?, val photoCount: Int, val centroid: FloatArray)
 
     /**
-     * Similarité minimale de deux centroïdes, un peu sous [FaceClusterer.Config.attach] (0,42).
-     * Moyenne de nombreux visages, un centroïde est bien moins bruité qu'un visage isolé : ceux
-     * de deux personnes distinctes restent éloignés. Une personne scindée par le regroupement
-     * (âge, lunettes, lumière) garde au contraire deux centroïdes proches, sans que ses visages,
-     * un à un, aient atteint 0,42 face à l'autre groupe. On reste au-dessus du seuil d'OpenCV
-     * pour deux visages (0,363) : deux groupes ne sont proposés que s'ils se ressemblent au
-     * moins comme deux photos d'une même personne, et l'utilisateur tranche.
+     * Similarité minimale de deux centroïdes, mesurée sur LFW (`tools/faces/`) : au plus une
+     * fausse suggestion pour 5 000 paires de personnes distinctes, en retrouvant au moins 99 %
+     * des personnes coupées en deux (âge, lunettes, lumière). Moyenner les visages ne sépare pas
+     * deux personnes, au contraire : les empreintes SFace partagent une composante commune que
+     * le bruit de chaque photo masquait. À 0,38, 0,3 % (3 + 3 visages) à 0,6 % (7 + 7) des
+     * paires d'inconnus étaient proposées ; à 0,55, 0,001 à 0,005 %, et environ 0,014 % pour
+     * de très grandes personnes. Deux moitiés d'une même personne restent bien au-dessus :
+     * 0,62 au 1er centile quand on la coupe là où ses visages diffèrent le plus.
      */
-    const val THRESHOLD = 0.38f
+    const val THRESHOLD = 0.55f
 
     /**
      * Paires d'au moins [threshold], les plus probables d'abord, hors paires [refused] (plus

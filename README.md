@@ -190,5 +190,6 @@ ML Kit (modèles embarqués) · ONNX Runtime · osmdroid · Tink · Glance.
   sa télémétrie Android est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
 
 Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
-carte, modèles de la recherche en langage naturel) à partir des données sources ; ils ne
-sont pas nécessaires à la compilation.
+carte, modèles de la recherche en langage naturel) à partir des données sources, ou
+calibrent des seuils sur des données publiques (`tools/faces/` : regroupement des visages,
+sur LFW) ; ils ne sont pas nécessaires à la compilation.

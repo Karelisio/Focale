@@ -65,12 +65,12 @@ class MergeSuggesterTest {
         val suggestions = MergeSuggester.suggest(
             listOf(
                 candidate(1, around(1f, 0), photos = 30),
-                // Avec 1 : 0,45 ; avec 3 : 0,45 × 0,7 = 0,315.
-                candidate(2, around(0.45f, 2), photos = 20),
+                // Avec 1 : 0,6 ; avec 3 : 0,6 × 0,7 = 0,42.
+                candidate(2, around(0.6f, 2), photos = 20),
                 // Avec 1 : 0,7.
                 candidate(3, around(0.7f, 3), photos = 10),
-                // Avec 1 : 0,3, sous le seuil.
-                candidate(4, around(0.3f, 4), photos = 5),
+                // Avec 1 : 0,5, sous le seuil (deux inconnus de même allure, voir tools/faces/).
+                candidate(4, around(0.5f, 4), photos = 5),
             ),
             refused = emptySet(),
         )

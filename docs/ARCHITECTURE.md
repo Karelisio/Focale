@@ -398,9 +398,12 @@ similitude vers le gabarit ArcFace 112 × 112 (`FaceAlignment`, conventions de
 `FaceRecognizerSF` d'OpenCV) → SFace int8 via ONNX Runtime (entrée RVB 0..255) →
 empreinte de 128 flottants normalisée (`face.embedding`). Après chaque lot,
 `FaceClusterer` (logique pure) rattache les nouveaux visages au centroïde le plus proche
-(cosinus ≥ 0,42, un visage par photo et par personne) ou crée une personne quand trois
-visages en attente sur trois photos forment un groupe cohérent (voisins ≥ 0,45, chacun
-proche du centroïde des autres). Les rattachements manuels (`face.manual`) ne sont jamais
+(cosinus ≥ 0,50, un visage par photo et par personne) ou crée une personne quand trois
+visages en attente sur trois photos forment un groupe cohérent (voisins ≥ 0,50, chacun
+proche du centroïde des autres). Seuils mesurés sur LFW (`tools/faces/`) : chaque visage
+étant comparé à toutes les personnes, 0,42 laissait des inconnus rejoindre des personnes,
+dont le centroïde dérivait alors vers le « visage moyen » (26 % de visages mal rattachés
+dans une bibliothèque simulée de 150 personnes, 0,9 % à 0,50). Les rattachements manuels (`face.manual`) ne sont jamais
 modifiés ; une personne sans nom n'est proposée qu'à partir de trois photos. Vignettes
 rondes : `FaceThumbnailFetcher` Coil (découpe dans la miniature MediaStore, sinon décodage
 réduit de la région utile de l'original). Recherche : `SearchTerm.personIds`. La télémétrie
@@ -414,8 +417,9 @@ d'ONNX Runtime est neutralisée (fournisseur retiré du manifeste, `setTelemetry
   de l'onglet Albums.
 - **« Est-ce la même personne ? »** (`MergeSuggestions`) : paires de personnes visibles dont
   les centroïdes (moyenne normalisée des empreintes de leurs visages) ont une similarité d'au
-  moins 0,38, un peu sous le seuil de rattachement (0,42) : la moyenne de nombreux visages est
-  peu bruitée. Une carte en tête de l'écran Personnes les propose une à une, les plus
+  moins 0,55 : au plus une fausse suggestion pour 5 000 paires de personnes distinctes, 99 %
+  des personnes coupées en deux retrouvées (LFW). Moyenner les visages rapproche aussi deux
+  inconnus (composante commune des empreintes) : 0,38 proposait 0,3 à 0,6 % des paires. Une carte en tête de l'écran Personnes les propose une à une, les plus
   probables d'abord, sans les paires refusées ni deux personnes nommées différemment ; la
   cible est la personne nommée, sinon la plus présente. Recalcul hors thread principal à
   chaque changement des personnes ou des refus (flux Room) : seules les personnes dont les
