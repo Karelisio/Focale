@@ -1,32 +1,20 @@
 package app.focale.ui.collection
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Slideshow
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.pluralStringResource
@@ -35,10 +23,13 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.focale.R
+import app.focale.ui.actions.DeleteAlbumDialog
 import app.focale.ui.actions.ExtraAction
-import app.focale.ui.actions.NameDialog
+import app.focale.ui.actions.RenameAlbumDialog
+import app.focale.ui.actions.albumOptions
 import app.focale.ui.components.EmptyState
 import app.focale.ui.components.MediaGridScaffold
+import app.focale.ui.components.OptionsMenu
 import app.focale.ui.components.SortSheet
 import app.focale.ui.navigation.CollectionKind
 import app.focale.ui.navigation.LocalRootNavController
@@ -68,6 +59,7 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val isUserAlbum = viewModel.kind == CollectionKind.USER_ALBUM
+    val album by viewModel.album.collectAsStateWithLifecycle()
     val folderHidden by viewModel.folderHidden.collectAsStateWithLifecycle()
 
     var showSort by rememberSaveable { mutableStateOf(false) }
@@ -83,29 +75,12 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
             onDismiss = { showSort = false },
         )
     }
+    // Dialogues des options de l'album, les mêmes que depuis l'appui long sur sa carte.
     if (renaming) {
-        NameDialog(
-            title = stringResource(R.string.album_rename),
-            label = stringResource(R.string.album_name),
-            confirm = stringResource(R.string.action_rename),
-            initial = title,
-            onConfirm = viewModel::renameAlbum,
-            onDismiss = { renaming = false },
-        )
+        RenameAlbumDialog(name = title, onConfirm = viewModel::renameAlbum, onDismiss = { renaming = false })
     }
     if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text(stringResource(R.string.album_delete_title)) },
-            text = { Text(stringResource(R.string.album_delete_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    viewModel.deleteAlbum(onBack)
-                }) { Text(stringResource(R.string.action_delete)) }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.action_cancel)) } },
-        )
+        DeleteAlbumDialog(onConfirm = { viewModel.deleteAlbum(onBack) }, onDismiss = { confirmDelete = false })
     }
 
     val extraActions = if (isUserAlbum) {
@@ -154,12 +129,18 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
                     IconButton(onClick = { showSort = true }, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Rounded.Tune, contentDescription = stringResource(R.string.sort_title))
                     }
-                    val onMoveToVault = viewModel::requestMoveToVault.takeIf { viewModel.canMoveToVault && count > 0 }
-                    if (isUserAlbum) {
-                        AlbumMenu(onRename = { renaming = true }, onDelete = { confirmDelete = true }, onMoveToVault = onMoveToVault)
-                    }
-                    folderHidden?.let { hidden ->
-                        FolderMenu(hidden = hidden, onHiddenChange = viewModel::setFolderHidden, onMoveToVault = onMoveToVault)
+                    album?.let { current ->
+                        OptionsMenu(
+                            albumOptions(
+                                album = current,
+                                count = count,
+                                hidden = folderHidden == true,
+                                onRename = { renaming = true },
+                                onHiddenChange = viewModel::setFolderHidden,
+                                onMoveToVault = viewModel::requestMoveToVault,
+                                onDelete = { confirmDelete = true },
+                            ),
+                        )
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -174,77 +155,5 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
                 message = if (isUserAlbum) stringResource(R.string.album_empty_message) else null,
             )
         },
-    )
-}
-
-@Composable
-private fun AlbumMenu(onRename: () -> Unit, onDelete: () -> Unit, onMoveToVault: (() -> Unit)?) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }, shapes = IconButtonDefaults.shapes()) {
-            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.album_rename)) },
-                leadingIcon = { Icon(Icons.Outlined.DriveFileRenameOutline, contentDescription = null) },
-                onClick = {
-                    open = false
-                    onRename()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.album_delete_title)) },
-                leadingIcon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null) },
-                onClick = {
-                    open = false
-                    onDelete()
-                },
-            )
-            onMoveToVault?.let { move ->
-                MoveToVaultItem {
-                    open = false
-                    move()
-                }
-            }
-        }
-    }
-}
-
-/** Menu d'un album dossier : masquer ou réafficher ses médias dans la timeline, le passer dans le coffre. */
-@Composable
-private fun FolderMenu(hidden: Boolean, onHiddenChange: (Boolean) -> Unit, onMoveToVault: (() -> Unit)?) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }, shapes = IconButtonDefaults.shapes()) {
-            Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(if (hidden) R.string.folder_show_in_timeline else R.string.folder_hide_from_timeline)) },
-                leadingIcon = {
-                    Icon(if (hidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, contentDescription = null)
-                },
-                onClick = {
-                    open = false
-                    onHiddenChange(!hidden)
-                },
-            )
-            onMoveToVault?.let { move ->
-                MoveToVaultItem {
-                    open = false
-                    move()
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MoveToVaultItem(onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(stringResource(R.string.vault_album_move_action)) },
-        leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
-        onClick = onClick,
     )
 }

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Options d'un album, ouvertes par un appui long sur sa carte (onglet Albums, coffre-fort) -->
+    <string name="album_options">Album options</string>
+</resources>

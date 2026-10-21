@@ -1,5 +1,7 @@
 package app.focale.ui.vault
 
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,24 +33,29 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.focale.R
 import app.focale.ui.actions.NameDialog
+import app.focale.ui.components.clickableWithOptions
 import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultDestination
 import app.focale.vault.VaultImage
@@ -73,9 +80,32 @@ internal fun VaultSectionHeader(title: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Section « Albums » du coffre : titre et rangée de tuiles. */
+/**
+ * Section « Albums » du coffre : titre et rangée de tuiles. Appui long sur une tuile : les options
+ * de l'album, celles de son menu (renommer, sortir du coffre, supprimer), sans l'ouvrir.
+ */
 @Composable
-internal fun VaultAlbumsShelf(albums: List<VaultAlbum>, onOpen: (VaultAlbum) -> Unit, modifier: Modifier = Modifier) {
+internal fun VaultAlbumsShelf(
+    albums: List<VaultAlbum>,
+    onOpen: (VaultAlbum) -> Unit,
+    onRename: (VaultAlbum, String) -> Unit,
+    onRestore: (VaultAlbum) -> Unit,
+    onDelete: (VaultAlbum) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Album dont les options sont ouvertes, relu dans [albums] : il s'efface s'il disparaît.
+    var optionsId by rememberSaveable { mutableStateOf<Long?>(null) }
+    albums.firstOrNull { it.id == optionsId }?.let { album ->
+        key(album.id) {
+            VaultAlbumOptions(
+                album = album,
+                onRename = { onRename(album, it) },
+                onRestore = { onRestore(album) },
+                onDelete = { onDelete(album) },
+                onDismiss = { optionsId = null },
+            )
+        }
+    }
     Column(modifier.fillMaxWidth()) {
         VaultSectionHeader(stringResource(R.string.vault_albums_title))
         LazyRow(
@@ -84,23 +114,41 @@ internal fun VaultAlbumsShelf(albums: List<VaultAlbum>, onOpen: (VaultAlbum) -> 
             modifier = Modifier.fillMaxWidth(),
         ) {
             items(albums, key = { it.id }) { album ->
-                VaultAlbumTile(album, onClick = { onOpen(album) }, modifier = Modifier.width(TILE_WIDTH))
+                VaultAlbumTile(
+                    album = album,
+                    onClick = { onOpen(album) },
+                    onLongClick = { optionsId = album.id },
+                    modifier = Modifier.width(TILE_WIDTH),
+                )
             }
         }
     }
 }
 
-/** Tuile d'album : couverture (miniature chiffrée), nom et nombre d'éléments. */
+/**
+ * Tuile d'album : couverture (miniature chiffrée), nom et nombre d'éléments. Toute la tuile se
+ * touche, lue d'un bloc par TalkBack ; l'ondulation reste sur la couverture. [onLongClick] : options
+ * de l'album (retour haptique de l'appui long, action « Options de l'album » pour TalkBack).
+ */
 @Composable
-internal fun VaultAlbumTile(album: VaultAlbum, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier) {
+internal fun VaultAlbumTile(
+    album: VaultAlbum,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Column(
+        modifier.clickableWithOptions(interactionSource, stringResource(R.string.album_options), onOptions = onLongClick, onClick = onClick),
+    ) {
         Surface(
-            onClick = onClick,
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f),
+                .aspectRatio(1f)
+                .clip(MaterialTheme.shapes.extraLarge)
+                .indication(interactionSource, ripple()),
         ) {
             val cover = album.coverThumbFileName
             if (cover != null) {
@@ -265,12 +313,13 @@ internal fun VaultAlbumPickerSheet(
     }
 }
 
+/** Couverture d'un album du coffre en vignette arrondie ; l'icône de l'album faute de couverture. */
 @Composable
-private fun VaultAlbumThumb(album: VaultAlbum) {
+internal fun VaultAlbumThumb(album: VaultAlbum, size: Dp = 48.dp) {
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.size(48.dp),
+        modifier = Modifier.size(size),
     ) {
         val cover = album.coverThumbFileName
         if (cover != null) {

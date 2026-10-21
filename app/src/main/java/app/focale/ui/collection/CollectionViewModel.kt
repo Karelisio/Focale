@@ -19,6 +19,7 @@ import app.focale.data.AlbumRepository
 import app.focale.data.DateGrouping
 import app.focale.data.MediaRepository
 import app.focale.data.toGridItems
+import app.focale.ui.actions.AlbumActions
 import app.focale.ui.actions.AlbumSource
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.components.GridSelection
@@ -125,32 +126,47 @@ class CollectionViewModel @Inject constructor(
 
     suspend fun gridIndexOf(mediaId: Long): Int? = mediaRepository.gridPositionOf(query.value, mediaId, groupLevel.value)
 
+    // ── Album entier ───────────────────────────────────────────────────────────────
+
+    /**
+     * Album dossier ou de l'application, sous son nom actuel ; null pour les favoris et les
+     * catégories. Les options de son menu sont celles de l'appui long sur sa carte ([AlbumActions]).
+     */
+    val album: StateFlow<AlbumSource?> = title.map(::albumSource)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, albumSource(route.title))
+
+    private val albumActions = AlbumActions(viewModelScope, albumRepository, settingsRepository, actions)
+
+    private fun albumSource(name: String): AlbumSource? = when {
+        kind == CollectionKind.FOLDER && baseQuery.bucketId != null -> AlbumSource.Folder(baseQuery.bucketId, name)
+        kind == CollectionKind.USER_ALBUM && albumId != null -> AlbumSource.User(albumId, name)
+        else -> null
+    }
+
     // ── Album dossier ──────────────────────────────────────────────────────────────
 
     /** Dossier masqué de la timeline (null hors album dossier). */
     val folderHidden: StateFlow<Boolean?> = (baseQuery.bucketId?.let { bucket ->
         settingsRepository.settings.map { bucket in it.hiddenFolders }
     } ?: flowOf(null))
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        // Connu dès l'ouverture : le menu propose d'emblée la bonne option (masquer ou afficher).
+        .stateIn(viewModelScope, SharingStarted.Eagerly, baseQuery.bucketId?.let { it in settingsRepository.current.value.hiddenFolders })
 
     fun setFolderHidden(hidden: Boolean) {
         val bucket = baseQuery.bucketId ?: return
-        viewModelScope.launch { settingsRepository.setFolderHidden(bucket, hidden) }
+        albumActions.setFolderHidden(bucket, hidden)
     }
 
     // ── Album virtuel ──────────────────────────────────────────────────────────────
 
     fun renameAlbum(name: String) {
         val id = albumId ?: return
-        viewModelScope.launch { albumRepository.rename(id, name) }
+        albumActions.rename(id, name)
     }
 
     fun deleteAlbum(onDeleted: () -> Unit) {
         val id = albumId ?: return
-        viewModelScope.launch {
-            albumRepository.delete(id)
-            onDeleted()
-        }
+        albumActions.delete(id, onDeleted)
     }
 
     fun removeSelectionFromAlbum() {
@@ -169,17 +185,8 @@ class CollectionViewModel @Inject constructor(
 
     // ── Coffre-fort ────────────────────────────────────────────────────────────────
 
-    /** Album dossier ou virtuel : il peut passer en entier dans le coffre. */
-    val canMoveToVault: Boolean = (kind == CollectionKind.FOLDER && baseQuery.bucketId != null) ||
-        (kind == CollectionKind.USER_ALBUM && albumId != null)
-
     /** Tout l'album, filtres et tri de la grille mis à part. */
     fun requestMoveToVault() {
-        val source = when {
-            kind == CollectionKind.FOLDER && baseQuery.bucketId != null -> AlbumSource.Folder(baseQuery.bucketId, title.value)
-            kind == CollectionKind.USER_ALBUM && albumId != null -> AlbumSource.User(albumId, title.value)
-            else -> return
-        }
-        actions.requestMoveAlbumToVault(source)
+        album.value?.let(albumActions::moveToVault)
     }
 }

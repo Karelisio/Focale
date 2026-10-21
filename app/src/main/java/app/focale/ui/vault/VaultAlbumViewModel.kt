@@ -4,10 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
-import app.focale.R
 import app.focale.core.settings.VaultSort
-import app.focale.core.util.UiText
-import app.focale.data.OperationResult
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.navigation.VaultAlbumRoute
 import app.focale.vault.VaultAlbum
@@ -18,9 +15,7 @@ import app.focale.vault.VaultRepository
 import app.focale.vault.VaultSession
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -29,16 +24,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-sealed interface VaultAlbumEvent {
-    data class Message(val text: UiText) : VaultAlbumEvent
-
-    /** Album supprimé ou sorti du coffre : l'écran se ferme, sur [text] s'il y en a un. */
-    data class Closed(val text: UiText?) : VaultAlbumEvent
-}
 
 /**
  * Album du coffre : son contenu, ses actions et, pour un album-dossier, les médias arrivés
@@ -101,15 +88,15 @@ class VaultAlbumViewModel @Inject constructor(
     private val selectionState = VaultSelection(viewModelScope, repository) { items.value.orEmpty() }
     val selection: StateFlow<Set<Long>> = selectionState.selected
 
-    private val restoring = MutableStateFlow(false)
+    /** Options de l'album (menu), les mêmes que l'appui long sur sa tuile. */
+    private val albumActions = VaultAlbumActions(viewModelScope, repository)
 
     /** Une opération est en cours : sélection, sortie de l'album ou import des nouveaux médias. */
-    val busy: StateFlow<Boolean> = combine(selectionState.busy, restoring, actions.busy) { selecting, leaving, importing ->
+    val busy: StateFlow<Boolean> = combine(selectionState.busy, albumActions.busy, actions.busy) { selecting, leaving, importing ->
         selecting || leaving || importing
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    private val channel = Channel<VaultAlbumEvent>(Channel.BUFFERED)
-    val events: Flow<VaultAlbumEvent> = merge(channel.receiveAsFlow(), selectionState.messages.map { VaultAlbumEvent.Message(it) })
+    val events: Flow<VaultAlbumEvent> = merge(albumActions.events, selectionState.messages.map { VaultAlbumEvent.Message(it) })
 
     fun toggle(id: Long) = selectionState.toggle(id)
 
@@ -136,33 +123,16 @@ class VaultAlbumViewModel @Inject constructor(
     }
 
     fun rename(name: String) {
-        viewModelScope.launch { repository.renameAlbum(albumId, name) }
+        albumActions.rename(albumId, name)
     }
 
     /** Supprime l'album ; ses éléments restent dans le coffre. */
     fun deleteAlbum() {
-        viewModelScope.launch {
-            repository.deleteAlbum(albumId)
-            channel.send(VaultAlbumEvent.Closed(null))
-        }
+        albumActions.delete(albumId)
     }
 
     /** Sort tout l'album du coffre : ses éléments retournent dans leurs dossiers d'origine. */
     fun restoreAlbum() {
-        if (busy.value) return
-        viewModelScope.launch {
-            restoring.value = true
-            val result = repository.restoreAlbum(albumId)
-            restoring.value = false
-            val event = when (result) {
-                is OperationResult.Success -> VaultAlbumEvent.Closed(UiText.Plural(R.plurals.message_restored, result.count))
-                is OperationResult.Partial -> VaultAlbumEvent.Message(
-                    UiText.Res(R.string.message_partial, listOf(result.succeeded, result.succeeded + result.failed)),
-                )
-                is OperationResult.Failure -> VaultAlbumEvent.Message(UiText.Res(R.string.message_operation_failed))
-                OperationResult.Cancelled -> null
-            }
-            event?.let { channel.send(it) }
-        }
+        if (!busy.value) albumActions.restore(albumId)
     }
 }

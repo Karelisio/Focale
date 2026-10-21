@@ -63,7 +63,7 @@ fun MediaGridScaffold(
     extraSelectionActions: List<ExtraAction> = emptyList(),
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    onAlbumMovedToVault: () -> Unit = {},
+    onAlbumMovedToVault: (() -> Unit)? = null,
     emptyContent: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current

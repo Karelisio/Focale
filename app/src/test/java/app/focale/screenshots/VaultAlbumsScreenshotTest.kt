@@ -6,16 +6,21 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
@@ -25,12 +30,15 @@ import androidx.compose.ui.unit.dp
 import app.focale.R
 import app.focale.core.settings.AppSettings
 import app.focale.core.settings.ThemeMode
+import app.focale.ui.components.OptionsSheetContent
 import app.focale.ui.theme.FocaleTheme
 import app.focale.ui.vault.NewMedia
 import app.focale.ui.vault.VaultAlbumContent
+import app.focale.ui.vault.VaultAlbumOptionsHeader
 import app.focale.ui.vault.VaultAlbumsShelf
 import app.focale.ui.vault.VaultSectionHeader
 import app.focale.ui.vault.VaultTrashContent
+import app.focale.ui.vault.vaultAlbumOptions
 import app.focale.ui.vault.vaultItems
 import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultImage
@@ -51,9 +59,10 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Captures de référence des albums du coffre : section « Albums » au-dessus de « Tous les
- * éléments », album-dossier avec la bannière de ses nouvelles photos, et corbeille ; en français et en
- * thème clair, en anglais et en thème sombre (couleurs Focale). Les miniatures chiffrées sont
- * remplacées par des dégradés servis par l'aperçu de Coil. Régénérer avec
+ * éléments », album-dossier avec la bannière de ses nouvelles photos, feuille de l'appui long sur
+ * une tuile (reproduite sans sa fenêtre ; album vide : « Sortir du coffre » grisé) et corbeille ; en
+ * français et en thème clair, en anglais et en thème sombre (couleurs Focale). Les miniatures
+ * chiffrées sont remplacées par des dégradés servis par l'aperçu de Coil. Régénérer avec
  * `./gradlew recordRoborazziStandardDebug` quand le changement est voulu.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -106,6 +115,13 @@ class VaultAlbumsScreenshotTest {
 
     @Test
     @Config(qualifiers = "fr-w400dp-h800dp-xxhdpi")
+    fun optionsAlbumDuCoffreClair() = capture(dark = false) { TileOptions(albums.first()) }
+
+    @Test
+    fun optionsAlbumVideDuCoffreSombre() = capture(dark = true) { TileOptions(albums[2]) }
+
+    @Test
+    @Config(qualifiers = "fr-w400dp-h800dp-xxhdpi")
     fun corbeilleDuCoffreClair() = capture(dark = false) { Trash() }
 
     @Test
@@ -131,6 +147,26 @@ class VaultAlbumsScreenshotTest {
         )
     }
 
+    /** Feuille des options de [album] (appui long sur sa tuile), sans sa fenêtre. */
+    @Composable
+    private fun TileOptions(album: VaultAlbum) {
+        Surface(
+            color = BottomSheetDefaults.ContainerColor,
+            shape = BottomSheetDefaults.ExpandedShape,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                BottomSheetDefaults.DragHandle()
+                OptionsSheetContent(
+                    header = { VaultAlbumOptionsHeader(album) },
+                    options = vaultAlbumOptions(album, onRename = {}, onRestore = {}, onDelete = {}),
+                    onPick = {},
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
+            }
+        }
+    }
+
     /** Haut de l'écran du coffre, sous la barre : albums puis le début de « Tous les éléments ». */
     @Composable
     private fun AlbumsAndItems() {
@@ -140,7 +176,9 @@ class VaultAlbumsScreenshotTest {
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                item(span = { GridItemSpan(maxLineSpan) }) { VaultAlbumsShelf(albums, onOpen = {}) }
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    VaultAlbumsShelf(albums, onOpen = {}, onRename = { _, _ -> }, onRestore = {}, onDelete = {})
+                }
                 item(span = { GridItemSpan(maxLineSpan) }) { VaultSectionHeader(stringResource(R.string.vault_all_items)) }
                 vaultItems(items, selection = emptySet(), onToggle = {}, onOpen = {})
             }
