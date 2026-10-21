@@ -109,7 +109,8 @@ class VaultAlbumImportTest {
             io = Dispatchers.IO,
         )
         val operations = MediaOperations(
-            context, context.contentResolver, consent, sync, database.trashDao(), database.favoriteDao(), Dispatchers.IO,
+            context, context.contentResolver, consent, sync, database.trashDao(), database.favoriteDao(), database.mediaDao(),
+            Dispatchers.IO,
         )
         repository = VaultRepository(
             resolver = context.contentResolver,

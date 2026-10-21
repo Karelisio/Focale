@@ -140,6 +140,7 @@ Index : `date_taken`, `bucket_id`, `media_type`.
 | `trash_item` | corbeille applicative (API 29 uniquement) |
 | `vault_item` | entrées du coffre (fichiers chiffrés), avec leur album du coffre (`album_id`, facultatif) |
 | `vault_album` | albums du coffre : nom, dossier d'origine d'un album-dossier, date du dernier import |
+| `media_date` | date d'origine d'un média restauré ou copié, quand MediaStore n'en a retrouvé aucune (voir § 6.1) |
 | `search_history` | recherches récentes |
 | `face_scan` / `face` / `person` | visages détectés, empreintes SFace et personnes (nom, vignette, masquée, épinglée) |
 | `person_refusal` | paires de personnes déclarées distinctes (« Pas la même ») |
@@ -173,6 +174,18 @@ exactement les mêmes éléments, dans le même ordre, même sur 50 000 médias.
    (`id` + `date_modified`).
 3. Écritures par lots de 500 dans des transactions ; Room invalide les
    `PagingSource` → l'UI se met à jour seule.
+4. Date de tri : `DATE_TAKEN`, sinon la date retenue dans `media_date`, sinon `DATE_MODIFIED`.
+
+Médias écrits par l'application (sortie du coffre, corbeille d'Android 10, copie, édition en
+copie : `MediaOperations.insertAndWrite`) : ils gardent la date de l'original. À la publication
+(`IS_PENDING` → 0), MediaStore relit le fichier, efface `DATE_TAKEN` (qu'une application ne peut
+pas fixer), ne le retrouve que dans les métadonnées (EXIF, date de la vidéo) et prend la date du
+fichier comme `DATE_MODIFIED`. Le fichier en attente reçoit donc d'abord la date d'origine comme
+date de modification, par son chemin (`DATA`, accessible à son auteur depuis Android 11) :
+`DATE_MODIFIED` la reprend, et un EXIF sans fuseau horaire est daté comme l'original
+(MediaStore en déduit le fuseau par la date du fichier). Si le chemin est inaccessible
+(Android 10) et que MediaStore n'a trouvé aucune date, l'index la retient dans `media_date`
+(vidée si la base MediaStore est recréée, purgée avec les médias disparus).
 
 ### 6.2 Miniatures
 `MediaThumbnail(uri, type, dateModified)` → `ThumbnailFetcher` Coil →

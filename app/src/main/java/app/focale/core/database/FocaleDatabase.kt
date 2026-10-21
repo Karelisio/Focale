@@ -27,8 +27,9 @@ import androidx.room.RoomDatabase
         MediaEmbeddingEntity::class,
         PersonRefusalEntity::class,
         VaultAlbumEntity::class,
+        MediaDateEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class FocaleDatabase : RoomDatabase() {

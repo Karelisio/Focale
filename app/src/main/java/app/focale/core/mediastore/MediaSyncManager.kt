@@ -117,6 +117,11 @@ class MediaSyncManager @Inject constructor(
             prefs[KEY_ACCESS] == access.name &&
             lastGeneration > 0
 
+        // Base MediaStore recréée : les dates retenues par l'application visaient d'autres médias.
+        val previousVersion = prefs[KEY_VERSION]
+        if (previousVersion != null && previousVersion != version) dao.clearOriginalDates()
+        val originalDates = dao.originalDates().associate { it.mediaId to it.dateTaken }
+
         val existing: Map<Long, MediaSyncKey> = dao.syncKeys().associateBy { it.id }
         val batch = ArrayList<MediaEntity>(BATCH_SIZE)
         var changed = 0
@@ -134,7 +139,7 @@ class MediaSyncManager @Inject constructor(
         // 1. Ajouts et modifications, écrits par lots pendant le parcours du curseur.
         val firstIndexing = existing.isEmpty()
         if (firstIndexing) _state.value = SyncState.Running(0)
-        source.scan(if (incremental) lastGeneration else null) { row ->
+        source.scan(if (incremental) lastGeneration else null, originalDates) { row ->
             seen++
             if (row.generation > maxGeneration) maxGeneration = row.generation
             val known = existing[row.id]
@@ -171,6 +176,7 @@ class MediaSyncManager @Inject constructor(
                 dao.deleteOrphanFaceScans()
                 dao.deleteOrphanFaces()
                 dao.deleteOrphanEmbeddings()
+                dao.deleteOrphanDates()
             }
         }
 

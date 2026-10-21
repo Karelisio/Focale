@@ -50,6 +50,17 @@ data class MediaEntity(
     @ColumnInfo(name = "date_expires") val dateExpires: Long,
 )
 
+/**
+ * Date d'origine d'un média que l'application a restauré ou copié, quand MediaStore n'en a
+ * trouvé aucune : ni date de prise de vue dans le fichier, ni date de modification fixée à la
+ * bonne valeur (Android 10). L'index la retient à la place de la date du jour.
+ */
+@Entity(tableName = "media_date")
+data class MediaDateEntity(
+    @PrimaryKey @ColumnInfo(name = "media_id") val mediaId: Long,
+    @ColumnInfo(name = "date_taken") val dateTaken: Long,
+)
+
 /** Projection légère utilisée pour la synchronisation incrémentale. */
 data class MediaSyncKey(
     val id: Long,

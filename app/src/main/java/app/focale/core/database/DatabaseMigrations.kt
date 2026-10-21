@@ -27,7 +27,14 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /** Version 5 : dates d'origine des médias restaurés ou copiés que MediaStore n'a pas retrouvées. */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            CHANGES_V5.forEach(db::execSQL)
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
     private val CREATE_V2 = listOf(
         "CREATE TABLE IF NOT EXISTS `media_text` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `text` TEXT NOT NULL, `text_key` TEXT NOT NULL, PRIMARY KEY(`media_id`))",
@@ -51,5 +58,9 @@ object DatabaseMigrations {
         // existants restent hors album, la table n'est pas recopiée.
         "ALTER TABLE `vault_item` ADD COLUMN `album_id` INTEGER REFERENCES `vault_album`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS `index_vault_item_album_id` ON `vault_item` (`album_id`)",
+    )
+
+    private val CHANGES_V5 = listOf(
+        "CREATE TABLE IF NOT EXISTS `media_date` (`media_id` INTEGER NOT NULL, `date_taken` INTEGER NOT NULL, PRIMARY KEY(`media_id`))",
     )
 }
