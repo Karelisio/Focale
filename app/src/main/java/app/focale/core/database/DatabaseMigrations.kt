@@ -20,7 +20,14 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /** Version 4 : albums du coffre, auxquels un élément du coffre peut appartenir. */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            CHANGES_V4.forEach(db::execSQL)
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
     private val CREATE_V2 = listOf(
         "CREATE TABLE IF NOT EXISTS `media_text` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `text` TEXT NOT NULL, `text_key` TEXT NOT NULL, PRIMARY KEY(`media_id`))",
@@ -36,5 +43,13 @@ object DatabaseMigrations {
         "ALTER TABLE `person` ADD COLUMN `pinned` INTEGER NOT NULL DEFAULT 0",
         "CREATE TABLE IF NOT EXISTS `person_refusal` (`person_low` INTEGER NOT NULL, `person_high` INTEGER NOT NULL, PRIMARY KEY(`person_low`, `person_high`), FOREIGN KEY(`person_low`) REFERENCES `person`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`person_high`) REFERENCES `person`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "CREATE INDEX IF NOT EXISTS `index_person_refusal_person_high` ON `person_refusal` (`person_high`)",
+    )
+
+    private val CHANGES_V4 = listOf(
+        "CREATE TABLE IF NOT EXISTS `vault_album` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `source_bucket_id` INTEGER, `source_path` TEXT, `created_at` INTEGER NOT NULL, `last_import_at` INTEGER)",
+        // Colonne ajoutée en place, avec la clé étrangère du schéma exporté : les éléments
+        // existants restent hors album, la table n'est pas recopiée.
+        "ALTER TABLE `vault_item` ADD COLUMN `album_id` INTEGER REFERENCES `vault_album`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL",
+        "CREATE INDEX IF NOT EXISTS `index_vault_item_album_id` ON `vault_item` (`album_id`)",
     )
 }

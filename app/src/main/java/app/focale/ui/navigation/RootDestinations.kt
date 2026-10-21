@@ -9,9 +9,11 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import app.focale.ui.components.LocalNavAnimatedVisibilityScope
 import app.focale.ui.editor.EditorScreen
 import app.focale.ui.slideshow.SlideshowScreen
+import app.focale.ui.vault.VaultAlbumScreen
 import app.focale.ui.vault.VaultPickerScreen
 import app.focale.ui.vault.VaultScreen
 import app.focale.ui.vault.VaultViewerScreen
@@ -35,7 +37,25 @@ fun NavGraphBuilder.additionalRootDestinations(rootNav: NavHostController) {
         VaultScreen(
             onBack = { rootNav.popBackStack() },
             onOpen = { rootNav.navigate(VaultViewerRoute(it.id)) { launchSingleTop = true } },
-            onAdd = { rootNav.navigate(VaultPickerRoute) { launchSingleTop = true } },
+            onAdd = { rootNav.navigate(VaultPickerRoute()) { launchSingleTop = true } },
+            onOpenAlbum = { rootNav.navigate(VaultAlbumRoute(it.id)) { launchSingleTop = true } },
+        )
+    }
+    fullScreen<VaultUnlockRoute> {
+        VaultScreen(
+            onBack = { rootNav.popBackStack() },
+            onOpen = {},
+            onAdd = {},
+            onOpenAlbum = {},
+            onUnlocked = { rootNav.popBackStack() },
+        )
+    }
+    fullScreen<VaultAlbumRoute> { entry ->
+        val albumId = entry.toRoute<VaultAlbumRoute>().albumId
+        VaultAlbumScreen(
+            onBack = { rootNav.popBackStack() },
+            onOpen = { rootNav.navigate(VaultViewerRoute(it.id, albumId)) { launchSingleTop = true } },
+            onAdd = { rootNav.navigate(VaultPickerRoute(albumId)) { launchSingleTop = true } },
         )
     }
     fullScreen<VaultViewerRoute> {

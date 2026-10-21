@@ -3,9 +3,11 @@ package app.focale.vault
 import android.content.Context
 import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaQueryBuilder
-import app.focale.core.database.VaultDao
+import app.focale.core.database.VaultAlbumEntity
 import app.focale.core.database.VaultItemEntity
 import com.google.crypto.tink.KeyTemplates
 import com.google.crypto.tink.KeysetHandle
@@ -15,11 +17,9 @@ import com.google.crypto.tink.streamingaead.StreamingAeadConfig
 import java.io.File
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,7 +36,7 @@ import org.robolectric.annotation.Config
 
 /**
  * Sauvegarde et restauration de bout en bout : coffre réel (fichiers chiffrés par une clé
- * d'appareil), base simulée, archive dans un fichier comme celui du sélecteur système.
+ * d'appareil), base Room en mémoire, archive dans un fichier comme celui du sélecteur système.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -48,6 +48,7 @@ class VaultBackupRepositoryTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val storage = VaultStorage(context)
     private val random = Random(2024)
+    private val devices = ArrayList<Device>()
     private lateinit var archiveFile: File
     private lateinit var archive: Uri
 
@@ -58,6 +59,11 @@ class VaultBackupRepositoryTest {
         // Document vide, comme celui que crée le sélecteur système avant de rendre la main.
         archiveFile = folder.newFile("focale-coffre-2026-10-19.fvault")
         archive = Uri.fromFile(archiveFile)
+    }
+
+    @After
+    fun tearDown() {
+        devices.forEach { it.database.close() }
     }
 
     @Test
@@ -84,9 +90,9 @@ class VaultBackupRepositoryTest {
             newPhone.backups.restore(archive, password(), onProgress = { restoreSteps += it }),
         )
         assertEquals(BackupProgress.Stage.FINISHING, restoreSteps.last().stage)
-        assertEquals(3, newPhone.dao.items.value.size)
-        for (original in phone.dao.items.value) {
-            val copy = newPhone.dao.items.value.single { it.displayName == original.displayName }
+        assertEquals(3, newPhone.items().size)
+        for (original in phone.items()) {
+            val copy = newPhone.items().single { it.displayName == original.displayName }
             assertEquals(original.copy(id = 0, fileName = "", thumbFileName = null), copy.copy(id = 0, fileName = "", thumbFileName = null))
             assertArrayEquals(phone.media.getValue(original.displayName), newPhone.read(copy.fileName))
             assertEquals(original.thumbFileName != null, copy.thumbFileName != null)
@@ -113,7 +119,7 @@ class VaultBackupRepositoryTest {
         val files = storage.directory.list()!!.toSet()
         val backedUpAt = phone.prefs.lastBackupAt.first()
         assertEquals(RestoreResult.Success(added = 0, duplicates = 3, unreadable = 0), phone.backups.restore(archive, password()))
-        assertEquals(3, phone.dao.items.value.size)
+        assertEquals(3, phone.items().size)
         assertEquals(files, storage.directory.list()!!.toSet())
         assertEquals(backedUpAt, phone.prefs.lastBackupAt.first())
 
@@ -132,7 +138,7 @@ class VaultBackupRepositoryTest {
         wipeVault()
         val newPhone = Device("nouveau")
         assertEquals(RestoreResult.WrongPassword, newPhone.backups.restore(archive, "pas le bon mot de passe".toCharArray()))
-        assertTrue(newPhone.dao.items.value.isEmpty())
+        assertTrue(newPhone.items().isEmpty())
         // Nouvel essai, avec le bon mot de passe.
         assertEquals(RestoreResult.Success(1, 0, 0), newPhone.backups.restore(archive, password()))
     }
@@ -157,7 +163,7 @@ class VaultBackupRepositoryTest {
         for (variant in damaged) {
             archiveFile.writeBytes(variant)
             assertEquals(RestoreResult.Failed(RestoreResult.Failed.Reason.CORRUPTED), newPhone.backups.restore(archive, password()))
-            assertTrue(newPhone.dao.items.value.isEmpty())
+            assertTrue(newPhone.items().isEmpty())
             assertTrue(storage.directory.list().isNullOrEmpty())
             assertTrue(stagedFiles().isEmpty())
         }
@@ -183,7 +189,7 @@ class VaultBackupRepositoryTest {
         val newPhone = Device("nouveau")
         checks = 0
         assertEquals(RestoreResult.Cancelled, newPhone.backups.restore(archive, password(), cancelled = { ++checks > 5 }))
-        assertTrue(newPhone.dao.items.value.isEmpty())
+        assertTrue(newPhone.items().isEmpty())
         assertTrue(storage.directory.list().isNullOrEmpty())
         assertTrue(stagedFiles().isEmpty())
     }
@@ -200,9 +206,70 @@ class VaultBackupRepositoryTest {
         wipeVault()
         val newPhone = Device("nouveau")
         assertEquals(RestoreResult.Success(added = 1, duplicates = 0, unreadable = 1), newPhone.backups.restore(archive, password()))
-        assertEquals(listOf("IMG_0002.jpg"), newPhone.dao.items.value.map { it.displayName })
+        assertEquals(listOf("IMG_0002.jpg"), newPhone.items().map { it.displayName })
         // Restauration incomplète : le rappel de sauvegarde reste affiché.
         assertNull(newPhone.prefs.lastBackupAt.first())
+    }
+
+    @Test
+    fun `les albums sont sauvegardés puis recréés, chaque élément dans le sien`() = runTest {
+        val phone = Device("ancien")
+        val whatsApp = phone.dao.insertAlbum(
+            VaultAlbumEntity(
+                name = "WhatsApp Images",
+                sourceBucketId = 77,
+                sourcePath = "Pictures/WhatsApp Images/",
+                createdAt = 1_750_000_000_000,
+                lastImportAt = 1_755_000_000_000,
+            ),
+        )
+        val trip = phone.dao.insertAlbum(VaultAlbumEntity(name = "Vacances", createdAt = 1_751_000_000_000))
+        phone.dao.insertAlbum(VaultAlbumEntity(name = "Vide", createdAt = 1_752_000_000_000))
+        phone.add("IMG-0001-WA.jpg", random.nextBytes(80_000), thumbnail = random.nextBytes(3_000), album = whatsApp)
+        phone.add("IMG-0002-WA.jpg", random.nextBytes(60_000), thumbnail = null, album = whatsApp)
+        phone.add("IMG_0003.jpg", random.nextBytes(50_000), thumbnail = null, album = trip)
+        phone.add("IMG_0004.jpg", random.nextBytes(40_000), thumbnail = null)
+        assertEquals(ExportResult.Success(saved = 4, unreadable = 0), phone.backups.export(archive, password()))
+
+        wipeVault()
+        val newPhone = Device("nouveau")
+        assertEquals(RestoreResult.Success(added = 4, duplicates = 0, unreadable = 0), newPhone.backups.restore(archive, password()))
+        val albums = newPhone.dao.albums().associateBy { it.name }
+        assertEquals(setOf("WhatsApp Images", "Vacances", "Vide"), albums.keys)
+        // Un album-dossier garde son origine et la date de son dernier import.
+        val restored = albums.getValue("WhatsApp Images")
+        assertEquals(77L, restored.sourceBucketId)
+        assertEquals("Pictures/WhatsApp Images/", restored.sourcePath)
+        assertEquals(1_755_000_000_000, restored.lastImportAt)
+        assertEquals(
+            mapOf(
+                "IMG-0001-WA.jpg" to restored.id,
+                "IMG-0002-WA.jpg" to restored.id,
+                "IMG_0003.jpg" to albums.getValue("Vacances").id,
+                "IMG_0004.jpg" to null,
+            ),
+            newPhone.items().associate { it.displayName to it.albumId },
+        )
+
+        // Restaurée une seconde fois : tout y est déjà, aucun album n'est dupliqué.
+        assertEquals(RestoreResult.Success(added = 0, duplicates = 4, unreadable = 0), newPhone.backups.restore(archive, password()))
+        assertEquals(3, newPhone.dao.albums().size)
+    }
+
+    @Test
+    fun `une sauvegarde antérieure aux albums se restaure, sans albums`() = runTest {
+        requireNotNull(javaClass.getResourceAsStream(LEGACY_ARCHIVE)).use { input ->
+            archiveFile.outputStream().use { input.copyTo(it) }
+        }
+        val phone = Device("nouveau")
+        assertEquals(RestoreResult.Success(added = 2, duplicates = 0, unreadable = 0), phone.backups.restore(archive, password()))
+        assertTrue(phone.dao.albums().isEmpty())
+        val items = phone.items()
+        assertEquals(listOf("VID_0002.mp4", "IMG_0001.jpg"), items.map { it.displayName })
+        assertTrue(items.all { it.albumId == null })
+        val photo = items.single { it.displayName == "IMG_0001.jpg" }
+        assertEquals("Photo du coffre, sauvegardée avant les albums", phone.read(photo.fileName).decodeToString())
+        assertEquals("Miniature de la photo", phone.read(requireNotNull(photo.thumbFileName)).decodeToString())
     }
 
     private fun password() = "cheval correct agrafe".toCharArray()
@@ -220,14 +287,26 @@ class VaultBackupRepositoryTest {
             KeysetHandle.generateNew(KeyTemplates.get("AES256_GCM_HKDF_1MB"))
                 .getPrimitive(RegistryConfiguration.get(), StreamingAead::class.java)
         }
-        val dao = FakeVaultDao()
+        val database: FocaleDatabase = Room.inMemoryDatabaseBuilder(context, FocaleDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+            .also { devices += this }
+        val dao = database.vaultDao()
         val prefs = VaultBackupPrefs(PreferenceDataStoreFactory.create { File(folder.root, "$name.preferences_pb") })
         val backups = VaultBackupRepository(context.contentResolver, dao, crypto, storage, prefs, Dispatchers.IO, iterations = 1_000)
         val media = HashMap<String, ByteArray>()
         val thumbnails = HashMap<String, ByteArray>()
         val totalBytes: Long get() = media.values.sumOf { it.size.toLong() }
 
-        suspend fun add(name: String, content: ByteArray, thumbnail: ByteArray?, video: Boolean = false): VaultItemEntity {
+        suspend fun items(): List<VaultItemEntity> = dao.observeAll().first()
+
+        suspend fun add(
+            name: String,
+            content: ByteArray,
+            thumbnail: ByteArray?,
+            video: Boolean = false,
+            album: Long? = null,
+        ): VaultItemEntity {
             val base = "${media.size}-${random.nextInt(1_000_000)}"
             crypto.encrypt(content.inputStream(), storage.file(base + VaultStorage.MEDIA_SUFFIX))
             thumbnail?.let { crypto.encrypt(it.inputStream(), storage.file(base + VaultStorage.THUMB_SUFFIX)) }
@@ -246,6 +325,7 @@ class VaultBackupRepositoryTest {
                 fileName = base + VaultStorage.MEDIA_SUFFIX,
                 thumbFileName = thumbnail?.let { base + VaultStorage.THUMB_SUFFIX },
                 addedAt = 1_750_000_000_000,
+                albumId = album,
             )
             return entity.copy(id = dao.insert(entity))
         }
@@ -253,26 +333,9 @@ class VaultBackupRepositoryTest {
         fun read(fileName: String): ByteArray = crypto.openDecrypting(storage.file(fileName)).use { it.readBytes() }
     }
 
-    private class FakeVaultDao : VaultDao {
-        val items = MutableStateFlow<List<VaultItemEntity>>(emptyList())
-        private var nextId = 1L
-
-        override fun observeAll(): Flow<List<VaultItemEntity>> = items
-
-        override suspend fun insert(item: VaultItemEntity): Long = insertAll(listOf(item)).single()
-
-        override suspend fun insertAll(items: List<VaultItemEntity>): List<Long> {
-            val added = items.map { it.copy(id = nextId++) }
-            this.items.update { it + added }
-            return added.map { it.id }
-        }
-
-        override suspend fun delete(ids: List<Long>) {
-            items.update { list -> list.filterNot { it.id in ids } }
-        }
-    }
-
     private companion object {
         const val MIB = 1 shl 20
+        /** Archive de référence au format d'avant les albums (voir VaultArchiveTest). */
+        const val LEGACY_ARCHIVE = "/vault/sauvegarde-sans-albums.fvault"
     }
 }

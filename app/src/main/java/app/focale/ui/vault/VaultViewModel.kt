@@ -5,9 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.focale.R
 import app.focale.core.util.UiText
-import app.focale.data.OperationResult
 import app.focale.vault.PinCheck
 import app.focale.vault.PinHasher
+import app.focale.vault.VaultAlbum
+import app.focale.vault.VaultDestination
 import app.focale.vault.VaultItem
 import app.focale.vault.VaultPinStore
 import app.focale.vault.VaultRepository
@@ -23,6 +24,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -79,20 +82,23 @@ class VaultViewModel @Inject constructor(
         .flatMapLatest { unlocked -> if (unlocked) repository.observeItems() else flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Albums du coffre, chargés eux aussi une fois déverrouillé. */
+    val albums: StateFlow<List<VaultAlbum>> = session.unlocked
+        .flatMapLatest { unlocked -> if (unlocked) repository.observeAlbums() else flowOf(emptyList()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val _pin = MutableStateFlow(PinState())
     val pin: StateFlow<PinState> = _pin.asStateFlow()
 
     private val _changingPin = MutableStateFlow(false)
     val changingPin: StateFlow<Boolean> = _changingPin.asStateFlow()
 
-    private val _selection = MutableStateFlow<Set<Long>>(emptySet())
-    val selection: StateFlow<Set<Long>> = _selection.asStateFlow()
-
-    private val _busy = MutableStateFlow(false)
-    val busy: StateFlow<Boolean> = _busy.asStateFlow()
+    private val content = VaultSelection(viewModelScope, repository) { items.value.orEmpty() }
+    val selection: StateFlow<Set<Long>> = content.selected
+    val busy: StateFlow<Boolean> = content.busy
 
     private val channel = Channel<VaultEvent>(Channel.BUFFERED)
-    val events: Flow<VaultEvent> = channel.receiveAsFlow()
+    val events: Flow<VaultEvent> = merge(channel.receiveAsFlow(), content.messages.map { VaultEvent.Message(it) })
 
     private val digits = StringBuilder()
     private var firstEntry: String? = null
@@ -104,7 +110,7 @@ class VaultViewModel @Inject constructor(
                     VaultMode.SETUP -> resetPin(PinStep.CREATE)
                     VaultMode.LOCKED -> {
                         _changingPin.value = false
-                        _selection.value = emptySet()
+                        content.clear()
                         resetPin(PinStep.UNLOCK)
                     }
                     else -> Unit
@@ -226,38 +232,18 @@ class VaultViewModel @Inject constructor(
 
     // ── Contenu ─────────────────────────────────────────────────────────────────────
 
-    fun toggle(id: Long) {
-        _selection.update { if (id in it) it - id else it + id }
-    }
+    fun toggle(id: Long) = content.toggle(id)
 
-    fun selectAll() {
-        _selection.value = items.value.orEmpty().map { it.id }.toSet()
-    }
+    fun selectAll() = content.selectAll()
 
-    fun clearSelection() {
-        _selection.value = emptySet()
-    }
+    fun clearSelection() = content.clear()
 
-    fun restoreSelection() = run(R.plurals.message_restored) { repository.restore(it) }
+    fun restoreSelection() = content.restore()
 
-    fun deleteSelection() = run(R.plurals.message_deleted) { repository.delete(it) }
+    fun deleteSelection() = content.delete()
 
-    private fun run(plural: Int, action: suspend (List<VaultItem>) -> OperationResult) {
-        val targets = items.value.orEmpty().filter { it.id in _selection.value }
-        if (targets.isEmpty()) return
-        viewModelScope.launch {
-            _busy.value = true
-            val message = when (val result = action(targets)) {
-                is OperationResult.Success -> UiText.Plural(plural, result.count)
-                is OperationResult.Partial -> UiText.Res(R.string.message_partial, listOf(result.succeeded, targets.size))
-                is OperationResult.Failure -> UiText.Res(R.string.message_operation_failed)
-                OperationResult.Cancelled -> null
-            }
-            _selection.value = emptySet()
-            _busy.value = false
-            message?.let { channel.send(VaultEvent.Message(it)) }
-        }
-    }
+    /** Range la sélection dans un album : de la métadonnée seulement, rien n'est rechiffré. */
+    fun moveSelection(destination: VaultDestination) = content.moveTo(destination, albums.value)
 
     override fun onCleared() {
         clearDigits()

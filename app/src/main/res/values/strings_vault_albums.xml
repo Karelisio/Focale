@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : albums -->
+    <string name="vault_albums_title">Albums</string>
+    <string name="vault_all_items">All items</string>
+    <plurals name="vault_album_new_photos">
+        <item quantity="one">%1$d new photo in “%2$s”</item>
+        <item quantity="other">%1$,d new photos in “%2$s”</item>
+    </plurals>
+    <plurals name="vault_album_new_videos">
+        <item quantity="one">%1$d new video in “%2$s”</item>
+        <item quantity="other">%1$,d new videos in “%2$s”</item>
+    </plurals>
+    <plurals name="vault_album_new_items">
+        <item quantity="one">%1$d new item in “%2$s”</item>
+        <item quantity="other">%1$,d new items in “%2$s”</item>
+    </plurals>
+    <string name="vault_album_empty_message">Add photos from the gallery: only those are encrypted, the rest of the vault isn’t touched.</string>
+    <string name="vault_album_delete_title">Delete “%1$s”?</string>
+    <string name="vault_album_delete_message">The album is deleted. Its items stay in the vault, under All items.</string>
+    <string name="vault_album_restore_action">Take out of the vault</string>
+    <string name="vault_album_restore_title">Take “%1$s” out of the vault?</string>
+    <string name="vault_album_restore_message">Its items are decrypted and put back in their original folders in the gallery, then the album is removed from the vault.</string>
+    <string name="vault_album_restore_confirm">Take out</string>
+    <string name="vault_move_to_album">Move to an album</string>
+    <plurals name="vault_move_to_album_title">
+        <item quantity="one">Move %d item to…</item>
+        <item quantity="other">Move %d items to…</item>
+    </plurals>
+    <string name="vault_album_none">No album</string>
+    <string name="vault_album_none_hint">Only under All items</string>
+    <plurals name="vault_moved_to_album">
+        <item quantity="one">%1$d item moved to “%2$s”</item>
+        <item quantity="other">%1$,d items moved to “%2$s”</item>
+    </plurals>
+    <plurals name="vault_removed_from_album">
+        <item quantity="one">%d item removed from its album</item>
+        <item quantity="other">%,d items removed from their album</item>
+    </plurals>
+
+    <!-- Coffre-fort : albums, depuis la galerie -->
+    <string name="vault_album_move_action">Move to vault</string>
+    <string name="vault_album_move_title">Move “%1$s” to the vault?</string>
+    <string name="vault_album_move_message">The album’s content (%1$s) is encrypted on this device, and each original is removed from the gallery once its encrypted copy has been checked. You can add new photos to it later without decrypting anything.</string>
+    <plurals name="vault_album_photos">
+        <item quantity="one">%d photo</item>
+        <item quantity="other">%,d photos</item>
+    </plurals>
+    <plurals name="vault_album_videos">
+        <item quantity="one">%d video</item>
+        <item quantity="other">%,d videos</item>
+    </plurals>
+    <string name="vault_album_photos_and_videos">%1$s and %2$s</string>
+    <plurals name="vault_album_moved">
+        <item quantity="one">“%2$s” moved to the vault: %1$d item</item>
+        <item quantity="other">“%2$s” moved to the vault: %1$,d items</item>
+    </plurals>
+    <string name="vault_album_choice">Vault album</string>
+    <string name="vault_album_locked">The vault is locked: the items will be added without an album.</string>
+    <string name="vault_album_unlock">Unlock to choose an album</string>
+</resources>

@@ -1,7 +1,9 @@
 package app.focale.ui.vault
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.toRoute
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import app.focale.core.model.GridItem
@@ -12,6 +14,8 @@ import app.focale.data.DateGrouping
 import app.focale.data.MediaRepository
 import app.focale.data.toGridItems
 import app.focale.ui.actions.MediaActions
+import app.focale.ui.navigation.VaultPickerRoute
+import app.focale.vault.VaultDestination
 import app.focale.vault.VaultSession
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -21,9 +25,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 
-/** Choix, dans toute la galerie, des médias à déplacer dans le coffre. */
+/** Choix, dans toute la galerie, des médias à déplacer dans le coffre ou dans l'un de ses albums. */
 @HiltViewModel
 class VaultPickerViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     mediaRepository: MediaRepository,
     settingsRepository: SettingsRepository,
     session: VaultSession,
@@ -33,6 +38,11 @@ class VaultPickerViewModel @Inject constructor(
     init {
         actions.bind(viewModelScope)
     }
+
+    /** Album du coffre qui reçoit la sélection : seuls ces médias sont chiffrés. */
+    private val destination = savedStateHandle.toRoute<VaultPickerRoute>().albumId
+        ?.let { VaultDestination.Album(it) }
+        ?: VaultDestination.None
 
     val unlocked: StateFlow<Boolean> = session.unlocked
 
@@ -53,6 +63,6 @@ class VaultPickerViewModel @Inject constructor(
 
     fun moveToVault() {
         val ids = _selection.value.toList()
-        if (ids.isNotEmpty()) actions.moveToVault(ids)
+        if (ids.isNotEmpty()) actions.moveToVault(ids, destination)
     }
 }

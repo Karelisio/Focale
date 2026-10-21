@@ -30,13 +30,21 @@ data class SlideshowRoute(val query: String, val startId: Long? = null)
 @Serializable
 data object VaultRoute
 
-/** Visionneuse du coffre, ouverte sur l'élément [itemId]. */
+/** Visionneuse du coffre, ouverte sur l'élément [itemId] : parcourt l'album [albumId], ou tout le coffre. */
 @Serializable
-data class VaultViewerRoute(val itemId: Long)
+data class VaultViewerRoute(val itemId: Long, val albumId: Long? = null)
 
-/** Choix des médias de la galerie à déplacer dans le coffre. */
+/** Choix des médias de la galerie à déplacer dans le coffre, dans l'album [albumId] le cas échéant. */
 @Serializable
-data object VaultPickerRoute
+data class VaultPickerRoute(val albumId: Long? = null)
+
+/** Album du coffre. */
+@Serializable
+data class VaultAlbumRoute(val albumId: Long)
+
+/** Déverrouillage du coffre seul, depuis la galerie : retour à l'écran d'origine une fois fait. */
+@Serializable
+data object VaultUnlockRoute
 
 // ── Destinations des onglets ─────────────────────────────────────────────────────
 

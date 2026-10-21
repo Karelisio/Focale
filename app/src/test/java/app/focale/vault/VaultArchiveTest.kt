@@ -63,6 +63,46 @@ class VaultArchiveTest {
     }
 
     @Test
+    fun `les albums font l'aller-retour, avec l'album de chaque élément`() {
+        val withAlbums = manifest.copy(
+            albums = listOf(
+                ArchiveAlbum(
+                    id = 4,
+                    name = "WhatsApp Images",
+                    createdAt = 1_750_000_000_000,
+                    sourceBucketId = -1_313_584_517,
+                    sourcePath = "Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Images/",
+                    lastImportAt = 1_755_000_000_000,
+                ),
+                ArchiveAlbum(id = 9, name = "Vacances", createdAt = 1_751_000_000_000),
+            ),
+            items = manifest.items.zip(listOf(4L, null, 9L)) { entry, album -> entry.copy(album = album) },
+        )
+        assertEquals(withAlbums, readAll(archive(withAlbums)).first)
+    }
+
+    @Test
+    fun `une sauvegarde antérieure aux albums se lit, sans albums`() {
+        // Archive écrite par la version d'avant les albums : son manifeste n'en dit rien.
+        val bytes = requireNotNull(javaClass.getResourceAsStream(LEGACY_ARCHIVE)).use { it.readBytes() }
+        val (read, blobs) = readAll(bytes)
+        assertEquals(1_760_000_000_000, read.createdAt)
+        assertEquals(listOf("IMG_0001.jpg", "VID_0002.mp4"), read.items.map { it.name })
+        assertTrue(read.albums.isEmpty())
+        assertTrue(read.items.all { it.album == null })
+        assertEquals("Photo du coffre, sauvegardée avant les albums", blobs[0].first.decodeToString())
+        assertEquals("Miniature de la photo", blobs[1].first.decodeToString())
+        assertEquals("Vidéo du coffre, sans miniature", blobs[2].first.decodeToString())
+        assertEquals(0, blobs[3].first.size)
+    }
+
+    @Test
+    fun `un album sans nom rend le manifeste invalide`() {
+        val bytes = archive(manifest.copy(albums = listOf(ArchiveAlbum(id = 1, name = " ", createdAt = 0))))
+        assertReason(Reason.CORRUPTED) { readAll(bytes) }
+    }
+
+    @Test
     fun `deux archives du même contenu ne se ressemblent pas`() {
         val first = archive()
         val second = archive()
@@ -209,9 +249,9 @@ class VaultArchiveTest {
         writeError?.let { throw it }
     }
 
-    private fun archive(): ByteArray {
+    private fun archive(description: ArchiveManifest = manifest): ByteArray {
         val output = ByteArrayOutputStream()
-        VaultArchive.write(output, password, manifest, iterations) { writer ->
+        VaultArchive.write(output, password, description, iterations) { writer ->
             for ((media, thumbnail) in contents) {
                 writer.blob { media.inputStream() }
                 writer.blob { thumbnail?.inputStream() }
@@ -295,6 +335,8 @@ class VaultArchiveTest {
 
     private companion object {
         const val SEGMENT = 1 shl 20
+        /** Archive de référence au format d'avant les albums, mot de passe « cheval correct agrafe ». */
+        const val LEGACY_ARCHIVE = "/vault/sauvegarde-sans-albums.fvault"
         val VERSION_AT = VaultArchive.MAGIC.size
         val ITERATIONS_AT = VERSION_AT + 2
         val SALT_AT = ITERATIONS_AT + 5

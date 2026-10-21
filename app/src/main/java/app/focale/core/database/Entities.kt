@@ -161,8 +161,36 @@ data class TrashItemEntity(
     @ColumnInfo(name = "trashed_at") val trashedAt: Long,
 )
 
+/**
+ * Album du coffre-fort : de la métadonnée seulement, ses éléments restant chiffrés un par un.
+ * Un album-dossier garde son dossier d'origine, pour en proposer les médias arrivés depuis.
+ */
+@Entity(tableName = "vault_album")
+data class VaultAlbumEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    /** `BUCKET_ID` MediaStore du dossier d'origine, null hors album-dossier. */
+    @ColumnInfo(name = "source_bucket_id") val sourceBucketId: Long? = null,
+    /** `RELATIVE_PATH` du dossier d'origine. */
+    @ColumnInfo(name = "source_path") val sourcePath: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    /** Dernier import depuis le dossier d'origine (ms), null si aucun. */
+    @ColumnInfo(name = "last_import_at") val lastImportAt: Long? = null,
+)
+
 /** Média déplacé dans le coffre-fort (fichier chiffré dans le stockage privé). */
-@Entity(tableName = "vault_item")
+@Entity(
+    tableName = "vault_item",
+    indices = [Index("album_id")],
+    foreignKeys = [
+        ForeignKey(
+            entity = VaultAlbumEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["album_id"],
+            onDelete = ForeignKey.SET_NULL,
+        ),
+    ],
+)
 data class VaultItemEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     @ColumnInfo(name = "display_name") val displayName: String,
@@ -177,6 +205,8 @@ data class VaultItemEntity(
     @ColumnInfo(name = "file_name") val fileName: String,
     @ColumnInfo(name = "thumb_file_name") val thumbFileName: String?,
     @ColumnInfo(name = "added_at") val addedAt: Long,
+    /** Album du coffre, null si l'élément n'est rangé dans aucun. */
+    @ColumnInfo(name = "album_id") val albumId: Long? = null,
 )
 
 @Entity(tableName = "search_history")

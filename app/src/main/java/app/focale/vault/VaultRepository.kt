@@ -6,14 +6,17 @@ import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
 import app.focale.core.database.MediaQueryBuilder
+import app.focale.core.database.VaultAlbumEntity
 import app.focale.core.database.VaultDao
 import app.focale.core.database.VaultItemEntity
 import app.focale.core.di.IoDispatcher
 import app.focale.core.mediastore.MediaSyncManager
 import app.focale.core.model.MediaItem
+import app.focale.core.model.MediaQuery
 import app.focale.data.MediaOperations
 import app.focale.data.MediaRepository
 import app.focale.data.OperationResult
+import app.focale.data.toModel
 import app.focale.widget.WidgetRefresher
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -35,6 +38,10 @@ import kotlinx.coroutines.withContext
  * intégralement, puis l'original est supprimé de MediaStore. Si un original n'a pas
  * pu être supprimé (refus de l'utilisateur, erreur), sa copie chiffrée est annulée :
  * un média n'est jamais à la fois dans la galerie et dans le coffre, ni perdu.
+ *
+ * Albums : de la métadonnée seulement. Remplir, compléter ou réorganiser un album ne chiffre
+ * que les médias qui entrent dans le coffre ; ceux qui y sont déjà ne sont ni relus ni
+ * réécrits. Rien de tout cela n'exige de déverrouiller le coffre (clé dans le Keystore).
  */
 @Singleton
 class VaultRepository @Inject constructor(
@@ -44,41 +51,112 @@ class VaultRepository @Inject constructor(
     private val storage: VaultStorage,
     private val operations: MediaOperations,
     private val syncManager: MediaSyncManager,
+    private val media: MediaRepository,
     private val widgets: WidgetRefresher,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
-    fun observeItems(): Flow<List<VaultItem>> = dao.observeAll().map { list -> list.map { it.toModel() } }
+    /** Tout le contenu du coffre, ou celui de l'album [albumId]. */
+    fun observeItems(albumId: Long? = null): Flow<List<VaultItem>> =
+        (if (albumId == null) dao.observeAll() else dao.observeInAlbum(albumId)).map { list -> list.map { it.toModel() } }
+
+    fun observeAlbums(): Flow<List<VaultAlbum>> = dao.observeAlbums().map { rows -> rows.map { it.toModel() } }
+
+    fun observeAlbum(id: Long): Flow<VaultAlbum?> = dao.observeAlbum(id).map { it?.toModel() }
+
+    /** Médias arrivés dans le dossier d'origine de l'album [id] depuis son dernier import. */
+    fun observeNewInSource(id: Long): Flow<List<MediaItem>> =
+        dao.observeNewInSource(id).map { rows -> rows.map { it.toModel() } }
+
+    suspend fun createAlbum(name: String): Long = withContext(io) {
+        dao.insertAlbum(VaultAlbumEntity(name = name.trim(), createdAt = System.currentTimeMillis()))
+    }
+
+    suspend fun renameAlbum(id: Long, name: String) = withContext(io) { dao.renameAlbum(id, name.trim()) }
+
+    /** Supprime l'album ; ses éléments restent dans le coffre, hors album. */
+    suspend fun deleteAlbum(id: Long) = withContext(io) { dao.deleteAlbum(id) }
+
+    /** Range [items] dans [destination] et renvoie l'album retenu : aucun fichier n'est touché. */
+    suspend fun moveToAlbum(items: List<VaultItem>, destination: VaultDestination): Long? = withContext(io) {
+        val albumId = when (destination) {
+            VaultDestination.None -> null
+            is VaultDestination.Album -> destination.id
+            is VaultDestination.NewAlbum -> createAlbum(destination.name)
+        }
+        items.map { it.id }.chunked(MediaRepository.MAX_SQL_ARGS).forEach { dao.setAlbum(it, albumId) }
+        albumId
+    }
 
     /**
-     * Déplace [items] dans le coffre. Non annulable : une fois la suppression des
-     * originaux demandée, son issue doit être constatée pour rester cohérent.
+     * Déplace [items] dans le coffre, dans l'album [destination]. Non annulable : une fois la
+     * suppression des originaux demandée, son issue doit être constatée pour rester cohérent.
+     * Un nouvel album qui ne reçoit rien est retiré.
      */
     suspend fun import(
         items: List<MediaItem>,
+        destination: VaultDestination = VaultDestination.None,
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): OperationResult = withContext(io + NonCancellable) {
         if (items.isEmpty()) return@withContext OperationResult.Success(0)
-        val imported = ArrayList<Pair<MediaItem, VaultItemEntity>>(items.size)
-        items.forEachIndexed { index, item ->
-            runCatching { encrypt(item) }
-                .onSuccess { imported += item to it }
-                .onFailure { Log.w(TAG, "Chiffrement impossible : ${item.displayName}", it) }
-            onProgress(index + 1, items.size)
+        when (destination) {
+            VaultDestination.None -> importInto(items, albumId = null, onProgress)
+            is VaultDestination.Album -> importInto(items, destination.id, onProgress)
+            is VaultDestination.NewAlbum -> {
+                val albumId = createAlbum(destination.name)
+                importInto(items, albumId, onProgress).also { if (it.moved == 0) dao.deleteAlbum(albumId) }
+            }
         }
-        if (imported.isEmpty()) return@withContext OperationResult.Failure()
+    }
 
-        val deletion = operations.deleteForever(imported.map { it.first })
-        val kept = imported.filter { (item, _) -> stillExists(item) }
-        kept.forEach { (_, entity) -> discard(entity) }
-        val moved = imported.size - kept.size
-        if (moved > 0) widgets.refresh()
+    /**
+     * Déplace tout le dossier [bucketId] dans son album du coffre : celui déjà lié à ce dossier,
+     * sinon un nouvel album nommé [name]. Les médias qui y arriveront ensuite seront proposés
+     * par [observeNewInSource].
+     */
+    suspend fun importFolder(
+        bucketId: Long,
+        name: String,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): OperationResult = withContext(io + NonCancellable) {
+        val startedAt = System.currentTimeMillis()
+        syncManager.sync()
+        val items = media.list(MediaQuery(bucketId = bucketId))
+        if (items.isEmpty()) return@withContext OperationResult.Success(0)
+        val existing = dao.albumOfSource(bucketId)
+        val albumId = existing?.id ?: dao.insertAlbum(
+            VaultAlbumEntity(
+                name = name.trim(),
+                sourceBucketId = bucketId,
+                sourcePath = items.first().relativePath,
+                createdAt = startedAt,
+            ),
+        )
+        val result = importInto(items, albumId, onProgress)
         when {
-            moved == items.size -> OperationResult.Success(moved)
-            moved > 0 -> OperationResult.Partial(moved, items.size - moved)
-            deletion == OperationResult.Cancelled -> OperationResult.Cancelled
-            else -> OperationResult.Failure()
+            result.moved > 0 -> dao.setLastImport(albumId, startedAt)
+            existing == null -> dao.deleteAlbum(albumId)
         }
+        result
+    }
+
+    /** Déplace dans l'album [albumId] les médias arrivés dans son dossier d'origine depuis le dernier import. */
+    suspend fun importNewFromSource(
+        albumId: Long,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): OperationResult = withContext(io + NonCancellable) {
+        val startedAt = System.currentTimeMillis()
+        syncManager.sync()
+        val items = dao.newInSource(albumId).map { it.toModel() }
+        if (items.isEmpty()) return@withContext OperationResult.Success(0)
+        importInto(items, albumId, onProgress).also { if (it.moved > 0) dao.setLastImport(albumId, startedAt) }
+    }
+
+    /** Sort tout l'album du coffre (restauration dans les dossiers d'origine) ; vidé, il est supprimé. */
+    suspend fun restoreAlbum(id: Long): OperationResult = withContext(io + NonCancellable) {
+        val result = restore(dao.inAlbum(id).map { it.toModel() })
+        if (dao.inAlbum(id).isEmpty()) dao.deleteAlbum(id)
+        result
     }
 
     /** Restaure des éléments dans leur dossier d'origine, puis efface leur copie chiffrée. */
@@ -118,7 +196,34 @@ class VaultRepository @Inject constructor(
         OperationResult.Success(items.size)
     }
 
-    private suspend fun encrypt(item: MediaItem): VaultItemEntity {
+    private suspend fun importInto(
+        items: List<MediaItem>,
+        albumId: Long?,
+        onProgress: (done: Int, total: Int) -> Unit,
+    ): OperationResult {
+        val imported = ArrayList<Pair<MediaItem, VaultItemEntity>>(items.size)
+        items.forEachIndexed { index, item ->
+            runCatching { encrypt(item, albumId) }
+                .onSuccess { imported += item to it }
+                .onFailure { Log.w(TAG, "Chiffrement impossible : ${item.displayName}", it) }
+            onProgress(index + 1, items.size)
+        }
+        if (imported.isEmpty()) return OperationResult.Failure()
+
+        val deletion = operations.deleteForever(imported.map { it.first })
+        val kept = imported.filter { (item, _) -> stillExists(item) }
+        kept.forEach { (_, entity) -> discard(entity) }
+        val moved = imported.size - kept.size
+        if (moved > 0) widgets.refresh()
+        return when {
+            moved == items.size -> OperationResult.Success(moved)
+            moved > 0 -> OperationResult.Partial(moved, items.size - moved)
+            deletion == OperationResult.Cancelled -> OperationResult.Cancelled
+            else -> OperationResult.Failure()
+        }
+    }
+
+    private suspend fun encrypt(item: MediaItem, albumId: Long?): VaultItemEntity {
         if (!storage.hasRoomFor(item.size)) throw IOException("Espace insuffisant")
         val base = UUID.randomUUID().toString()
         val file = storage.file(base + VaultStorage.MEDIA_SUFFIX)
@@ -144,8 +249,9 @@ class VaultRepository @Inject constructor(
                 fileName = file.name,
                 thumbFileName = thumb?.name,
                 addedAt = System.currentTimeMillis(),
+                albumId = albumId,
             )
-            return entity.copy(id = dao.insert(entity))
+            return entity.copy(id = dao.insertImported(entity))
         } catch (error: Throwable) {
             deleteFiles(file.name, thumbFile.name)
             throw error
@@ -179,6 +285,14 @@ class VaultRepository @Inject constructor(
     private fun deleteFiles(vararg names: String?) {
         names.filterNotNull().forEach { storage.file(it).delete() }
     }
+
+    /** Éléments effectivement déplacés. */
+    private val OperationResult.moved: Int
+        get() = when (this) {
+            is OperationResult.Success -> count
+            is OperationResult.Partial -> succeeded
+            else -> 0
+        }
 
     private companion object {
         const val TAG = "VaultRepository"
