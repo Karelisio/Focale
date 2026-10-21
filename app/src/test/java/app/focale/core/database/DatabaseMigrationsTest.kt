@@ -81,12 +81,13 @@ class DatabaseMigrationsTest {
     }
 
     @Test
-    fun `la migration 4 vers 5 ajoute les dates d'origine retenues par l'application`() {
+    fun `la migration 4 vers 5 ajoute les dates d'origine et le journal des imports du coffre`() {
         val file = databaseAt(version = 4) { db ->
             db.execSQL(vaultItem(id = 9))
         }
         openMigrated(file) { db ->
-            assertEquals(1L, db.longOf("SELECT COUNT(*) FROM vault_item WHERE id = 9"))
+            // Éléments existants : dans le coffre, sans original connu.
+            assertEquals(1L, db.longOf("SELECT COUNT(*) FROM vault_item WHERE id = 9 AND importing = 0 AND source_media_id IS NULL"))
             db.execSQL("INSERT INTO media_date (media_id, date_taken) VALUES (12, 1519979400000)")
             assertEquals(1_519_979_400_000L, db.longOf("SELECT date_taken FROM media_date WHERE media_id = 12"))
             assertEquals(LATEST, db.version)

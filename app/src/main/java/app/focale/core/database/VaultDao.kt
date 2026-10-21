@@ -16,20 +16,106 @@ data class VaultAlbumRow(
     @ColumnInfo(name = "cover_thumb") val coverThumb: String?,
 )
 
+/** Élément du coffre et le média de la galerie dont il est la copie. */
+data class VaultOriginalRow(
+    @ColumnInfo(name = "item_id") val itemId: Long,
+    @ColumnInfo(name = "media_id") val mediaId: Long,
+)
+
+/**
+ * Accès au coffre. Les copies d'un import en cours (`importing`) n'apparaissent dans aucune
+ * liste : elles n'entrent au coffre qu'une fois leur original supprimé de la galerie.
+ */
 @Dao
 interface VaultDao {
 
-    @Query("SELECT * FROM vault_item ORDER BY date_taken DESC, id DESC")
+    @Query("SELECT * FROM vault_item WHERE importing = 0 ORDER BY date_taken DESC, id DESC")
     fun observeAll(): Flow<List<VaultItemEntity>>
 
-    @Query("SELECT * FROM vault_item WHERE album_id = :albumId ORDER BY date_taken DESC, id DESC")
+    @Query("SELECT * FROM vault_item WHERE album_id = :albumId AND importing = 0 ORDER BY date_taken DESC, id DESC")
     fun observeInAlbum(albumId: Long): Flow<List<VaultItemEntity>>
 
-    @Query("SELECT * FROM vault_item WHERE album_id = :albumId ORDER BY date_taken DESC, id DESC")
+    @Query("SELECT * FROM vault_item WHERE album_id = :albumId AND importing = 0 ORDER BY date_taken DESC, id DESC")
     suspend fun inAlbum(albumId: Long): List<VaultItemEntity>
+
+    /** 500 identifiants au plus. */
+    @Query("SELECT * FROM vault_item WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<Long>): List<VaultItemEntity>
+
+    // ── Journal de l'import ──────────────────────────────────────────────────────
+
+    /** Copies déjà faites des médias [mediaIds] de la galerie (500 au plus), cachées ou non. */
+    @Query("SELECT * FROM vault_item WHERE source_media_id IN (:mediaIds)")
+    suspend fun copiesOf(mediaIds: List<Long>): List<VaultItemEntity>
+
+    /** Copies d'imports inachevés. */
+    @Query("SELECT * FROM vault_item WHERE importing = 1")
+    suspend fun importing(): List<VaultItemEntity>
+
+    /**
+     * Éléments du coffre dont l'original est resté dans la galerie (import interrompu) : ceux que
+     * l'index connaît encore.
+     */
+    @Query(
+        """
+        SELECT v.id AS item_id, m.id AS media_id FROM vault_item v JOIN media m ON m.id = v.source_media_id
+        WHERE v.importing = 0 AND m.is_trashed = 0
+        """,
+    )
+    fun observeLeftInGallery(): Flow<List<VaultOriginalRow>>
+
+    @Query(
+        """
+        SELECT v.id AS item_id, m.id AS media_id FROM vault_item v JOIN media m ON m.id = v.source_media_id
+        WHERE v.importing = 0 AND m.is_trashed = 0
+        """,
+    )
+    suspend fun leftInGallery(): List<VaultOriginalRow>
+
+    /**
+     * Médias de la galerie identiques en apparence (nom, dossier, taille, date) à un élément du
+     * coffre qui ne se sait la copie d'aucun : imports interrompus des versions précédentes.
+     */
+    @Query(
+        """
+        SELECT v.id AS item_id, m.id AS media_id FROM vault_item v JOIN media m
+          ON m.display_name = v.display_name AND m.relative_path = v.original_path
+          AND m.size = v.size AND m.date_taken = v.date_taken
+        WHERE v.source_media_id IS NULL AND v.importing = 0 AND m.is_trashed = 0
+        """,
+    )
+    suspend fun lookalikesInGallery(): List<VaultOriginalRow>
+
+    /**
+     * Copies dont l'original a quitté la galerie : elles entrent au coffre, dans l'album [albumId]
+     * si elles n'en ont pas et qu'il existe ; 500 au plus.
+     */
+    @Query(
+        """
+        UPDATE vault_item SET importing = 0, source_media_id = NULL,
+          album_id = COALESCE(album_id, (SELECT id FROM vault_album WHERE id = :albumId))
+        WHERE id IN (:ids)
+        """,
+    )
+    suspend fun commitImported(ids: List<Long>, albumId: Long?)
+
+    /** Copies gardées alors que leur original est resté dans la galerie : signalées dans le coffre. */
+    @Query("UPDATE vault_item SET importing = 0 WHERE id IN (:ids)")
+    suspend fun keepWithOriginal(ids: List<Long>)
+
+    @Query("UPDATE vault_item SET source_media_id = :mediaId WHERE id = :itemId")
+    suspend fun setSource(itemId: Long, mediaId: Long)
+
+    /** Fichiers chiffrés référencés : médias et miniatures. */
+    @Query("SELECT file_name FROM vault_item UNION SELECT thumb_file_name FROM vault_item WHERE thumb_file_name IS NOT NULL")
+    suspend fun fileNames(): List<String>
 
     @Insert
     suspend fun insert(item: VaultItemEntity): Long
+
+    /** Le nombre d'éléments visibles du coffre. */
+    @Query("SELECT COUNT(*) FROM vault_item WHERE importing = 0")
+    suspend fun count(): Int
 
     /** Insertion groupée, en une transaction (restauration d'une sauvegarde). */
     @Insert
@@ -125,15 +211,18 @@ private const val NEW_MEDIA_MARGIN_MS = 60_000L
 
 private const val ALBUM_ROWS = """
     SELECT a.*,
-           (SELECT COUNT(*) FROM vault_item i WHERE i.album_id = a.id) AS count,
-           (SELECT i.thumb_file_name FROM vault_item i WHERE i.album_id = a.id AND i.thumb_file_name IS NOT NULL
+           (SELECT COUNT(*) FROM vault_item i WHERE i.album_id = a.id AND i.importing = 0) AS count,
+           (SELECT i.thumb_file_name FROM vault_item i WHERE i.album_id = a.id AND i.importing = 0
+              AND i.thumb_file_name IS NOT NULL
             ORDER BY i.date_taken DESC, i.id DESC LIMIT 1) AS cover_thumb
     FROM vault_album a
 """
 
+/** Les médias dont le coffre a déjà une copie (import inachevé) ne sont pas nouveaux. */
 private const val NEW_IN_SOURCE = """
     SELECT m.* FROM media m JOIN vault_album a ON m.bucket_id = a.source_bucket_id
     WHERE a.id = :albumId AND m.is_trashed = 0
       AND m.date_added >= COALESCE(a.last_import_at, 0) - $NEW_MEDIA_MARGIN_MS
+      AND m.id NOT IN (SELECT source_media_id FROM vault_item WHERE source_media_id IS NOT NULL)
     ORDER BY m.date_taken DESC, m.id DESC
 """

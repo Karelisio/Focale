@@ -7,6 +7,7 @@ import app.focale.R
 import app.focale.core.settings.VaultAlbumSort
 import app.focale.core.settings.VaultSort
 import app.focale.core.util.UiText
+import app.focale.data.OperationResult
 import app.focale.vault.PinCheck
 import app.focale.vault.PinHasher
 import app.focale.vault.VaultAlbum
@@ -91,6 +92,13 @@ class VaultViewModel @Inject constructor(
         .flatMapLatest { unlocked -> if (unlocked) content.albums() else flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** Éléments dont l'original est resté dans la galerie (import interrompu). */
+    val leftInGallery: StateFlow<Int> = session.unlocked
+        .flatMapLatest { unlocked -> if (unlocked) repository.observeLeftInGallery() else flowOf(0) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    private val removingOriginals = MutableStateFlow(false)
+
     /** Tri des éléments et des albums, mémorisé. */
     val sort: StateFlow<VaultSort> = content.itemSort
         .stateIn(viewModelScope, SharingStarted.Eagerly, VaultSort())
@@ -105,7 +113,8 @@ class VaultViewModel @Inject constructor(
 
     private val selectionState = VaultSelection(viewModelScope, repository) { items.value.orEmpty() }
     val selection: StateFlow<Set<Long>> = selectionState.selected
-    val busy: StateFlow<Boolean> = selectionState.busy
+    val busy: StateFlow<Boolean> = combine(selectionState.busy, removingOriginals) { selecting, removing -> selecting || removing }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val channel = Channel<VaultEvent>(Channel.BUFFERED)
     val events: Flow<VaultEvent> = merge(channel.receiveAsFlow(), selectionState.messages.map { VaultEvent.Message(it) })
@@ -257,6 +266,22 @@ class VaultViewModel @Inject constructor(
 
     fun setSort(sort: VaultSort) {
         viewModelScope.launch { content.setItemSort(sort) }
+    }
+
+    /** Retire de la galerie les originaux restés après un import interrompu ; rien n'est chiffré. */
+    fun removeLeftOriginals() {
+        if (busy.value) return
+        viewModelScope.launch {
+            removingOriginals.value = true
+            val message = when (val result = repository.removeLeftOriginals()) {
+                is OperationResult.Success -> UiText.Plural(R.plurals.vault_left_removed, result.count)
+                is OperationResult.Partial -> UiText.Res(R.string.message_partial, listOf(result.succeeded, result.succeeded + result.failed))
+                is OperationResult.Failure -> UiText.Res(R.string.message_operation_failed)
+                OperationResult.Cancelled -> null
+            }
+            removingOriginals.value = false
+            message?.let { channel.send(VaultEvent.Message(it)) }
+        }
     }
 
     fun setAlbumSort(sort: VaultAlbumSort) {

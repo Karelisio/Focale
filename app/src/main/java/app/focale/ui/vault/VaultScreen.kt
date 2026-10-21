@@ -359,6 +359,7 @@ private fun VaultContentPane(
     val lastBackupAt by backupViewModel.lastBackupAt.collectAsStateWithLifecycle()
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val albumSort by viewModel.albumSort.collectAsStateWithLifecycle()
+    val leftInGallery by viewModel.leftInGallery.collectAsStateWithLifecycle()
     val selecting = selection.isNotEmpty()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var choosingAlbum by rememberSaveable { mutableStateOf(false) }
@@ -489,6 +490,11 @@ private fun VaultContentPane(
                         bottom = padding.calculateBottomPadding() + 104.dp,
                     ),
                 ) {
+                    if (leftInGallery > 0) {
+                        item(key = "left", span = { GridItemSpan(maxLineSpan) }, contentType = "left") {
+                            LeftInGalleryBanner(count = leftInGallery, enabled = !busy, onRemove = viewModel::removeLeftOriginals)
+                        }
+                    }
                     lastBackupAt?.let { at ->
                         item(key = "backup", span = { GridItemSpan(maxLineSpan) }, contentType = "backup") {
                             BackupStatus(lastBackupAt = at, onBackup = backupViewModel::requestBackup)

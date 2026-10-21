@@ -127,7 +127,7 @@ fun MediaActionsHost(
         }
     }
 
-    progress?.let { ProgressDialog(it.label.asString()) }
+    progress?.let { ProgressDialog(it.label.asString(), onHide = actions::hideProgress.takeIf { _ -> it.background }) }
 
     when (val current = dialog) {
         is ActionDialog.AddToAlbum -> AlbumPickerSheet(
@@ -322,7 +322,7 @@ private fun VaultSetupDialog(onSetUp: () -> Unit, onDismiss: () -> Unit) {
  * rapide ne fait pas clignoter de dialogue.
  */
 @Composable
-private fun ProgressDialog(label: String) {
+private fun ProgressDialog(label: String, onHide: (() -> Unit)? = null) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(PROGRESS_DELAY_MS)
@@ -334,13 +334,20 @@ private fun ProgressDialog(label: String) {
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
     ) {
         Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                modifier = Modifier.padding(24.dp),
-            ) {
-                LoadingIndicator(modifier = Modifier.size(48.dp))
-                Text(label, style = MaterialTheme.typography.bodyLarge)
+            Column(modifier = Modifier.padding(24.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    LoadingIndicator(modifier = Modifier.size(48.dp))
+                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                }
+                // Opération confiée à une tâche de fond : l'écran peut la laisser continuer seule.
+                if (onHide != null) {
+                    TextButton(onClick = onHide, modifier = Modifier.align(Alignment.End).padding(top = 12.dp)) {
+                        Text(stringResource(R.string.vault_import_background))
+                    }
+                }
             }
         }
     }

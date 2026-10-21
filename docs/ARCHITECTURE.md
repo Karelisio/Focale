@@ -268,6 +268,21 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   suppression de l'original (consentement MediaStore). Si un original n'a pas pu
   être supprimé (refus, échec), sa copie est annulée : un média n'est jamais en
   double ni perdu. L'opération n'est pas annulable une fois lancée.
+- Import en tâche de fond (`VaultImports`, `VaultImportWorker`) : toute mise au coffre (sélection,
+  album entier, nouvelles photos d'un dossier) est confiée à WorkManager, un import à la fois dans
+  l'ordre des demandes, en service au premier plan (`dataSync`) avec sa notification de
+  progression (sans nom d'album ni image). L'écran suit la progression et peut la laisser
+  « continuer en arrière-plan » ; la confirmation de suppression des originaux attend au besoin le
+  retour de Focale à l'écran. Une sélection est passée dans un fichier (`Data` limité à 10 Kio).
+- Journal : chaque copie garde l'identifiant de son original (`source_media_id`) et reste cachée
+  (`importing`) jusqu'à la suppression de celui-ci. Repris après la fin du processus, l'import
+  réutilise ses copies sans rien rechiffrer. Au lancement, `VaultRepairWorker` remet en ordre ce
+  qu'aucun import ne reprendra : copies dont l'original est parti → entrées au coffre ; original
+  resté dans la galerie → copie gardée et signalée (bannière « encore dans la galerie », retrait
+  d'un geste sans rien chiffrer) ; copies identiques en double (versions antérieures, import
+  relancé) → une seule gardée ; original identique (nom, dossier, taille, date, empreinte SHA-256)
+  d'un élément visible → signalé ; fichiers chiffrés orphelins de plus d'une heure → effacés. Sortir
+  du coffre un élément dont l'original est resté ne le recopie pas.
 - Clés : jeu de clés Tink chiffré par une clé maîtresse non exportable de l'Android
   Keystore ; le nom du fichier sert de donnée associée (pas de substitution).
 - Lecture : images déchiffrées en flux par un `Fetcher` Coil (clés de cache

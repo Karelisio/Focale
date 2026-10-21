@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : import en tâche de fond -->
+    <string name="vault_import_title">Moving to the vault</string>
+    <string name="vault_import_channel">Moving to the vault</string>
+    <string name="vault_import_preparing">Preparing…</string>
+    <string name="vault_import_waiting">Waiting for another import…</string>
+    <string name="vault_import_confirm">Confirm removing the originals from the gallery</string>
+    <string name="vault_import_background">Continue in background</string>
+
+    <!-- Coffre-fort : originaux restés dans la galerie après un import interrompu -->
+    <plurals name="vault_left_in_gallery">
+        <item quantity="one">%d vault item is still in the gallery: the move was interrupted.</item>
+        <item quantity="other">%,d vault items are still in the gallery: the move was interrupted.</item>
+    </plurals>
+    <string name="vault_left_in_gallery_action">Remove from gallery</string>
+    <plurals name="vault_left_removed">
+        <item quantity="one">%d original removed from the gallery</item>
+        <item quantity="other">%,d originals removed from the gallery</item>
+    </plurals>
+</resources>

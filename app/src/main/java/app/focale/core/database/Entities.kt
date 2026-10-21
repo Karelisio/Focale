@@ -189,10 +189,17 @@ data class VaultAlbumEntity(
     @ColumnInfo(name = "last_import_at") val lastImportAt: Long? = null,
 )
 
-/** Média déplacé dans le coffre-fort (fichier chiffré dans le stockage privé). */
+/**
+ * Média déplacé dans le coffre-fort (fichier chiffré dans le stockage privé).
+ *
+ * Journal de l'import : tant que l'original n'a pas quitté MediaStore, [sourceMediaId] le
+ * désigne. Une copie faite par un import en cours ([importing]) reste cachée ; elle entre dans le
+ * coffre une fois l'original supprimé, ou est effacée s'il reste dans la galerie (refus). Une
+ * copie visible dont l'original est encore là (import interrompu) est signalée dans le coffre.
+ */
 @Entity(
     tableName = "vault_item",
-    indices = [Index("album_id")],
+    indices = [Index("album_id"), Index("source_media_id")],
     foreignKeys = [
         ForeignKey(
             entity = VaultAlbumEntity::class,
@@ -218,6 +225,10 @@ data class VaultItemEntity(
     @ColumnInfo(name = "added_at") val addedAt: Long,
     /** Album du coffre, null si l'élément n'est rangé dans aucun. */
     @ColumnInfo(name = "album_id") val albumId: Long? = null,
+    /** Original (`_ID` MediaStore) peut-être encore dans la galerie, null une fois supprimé. */
+    @ColumnInfo(name = "source_media_id") val sourceMediaId: Long? = null,
+    /** Copie d'un import inachevé, cachée jusqu'à la suppression de son original. */
+    @ColumnInfo(name = "importing", defaultValue = "0") val importing: Boolean = false,
 )
 
 @Entity(tableName = "search_history")

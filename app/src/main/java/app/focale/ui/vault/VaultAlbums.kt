@@ -169,6 +169,39 @@ internal fun NewMediaBanner(media: NewMedia, enabled: Boolean, onAdd: () -> Unit
 }
 
 /**
+ * Bannière des éléments dont l'original est resté dans la galerie (déplacement interrompu) :
+ * les retirer de la galerie ne chiffre rien, leurs copies sont déjà dans le coffre.
+ */
+@Composable
+internal fun LeftInGalleryBanner(count: Int, enabled: Boolean, onRemove: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Outlined.PhotoLibrary, contentDescription = null)
+                Text(
+                    text = pluralStringResource(R.plurals.vault_left_in_gallery, count, count),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Button(
+                onClick = onRemove,
+                enabled = enabled,
+                shapes = ButtonDefaults.shapes(),
+                modifier = Modifier.align(Alignment.End).padding(top = 8.dp),
+            ) {
+                Text(stringResource(R.string.vault_left_in_gallery_action))
+            }
+        }
+    }
+}
+
+/**
  * Choix de l'album où ranger une sélection du coffre : un nouvel album, hors album si
  * [showNone], ou l'un des [albums]. Rien n'est déchiffré : seul le classement change.
  */
