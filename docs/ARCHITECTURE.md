@@ -419,6 +419,7 @@ NavHost racine
 │               (+ détail d'album, favoris, corbeille, nettoyage, carte,
 │                coffre, réglages, à propos…)
 ├── Viewer(query, mediaId)       plein écran, au-dessus des onglets
+├── ExternalMedia(uri)           média reçu d'une autre application
 ├── Editor(mediaId)
 ├── Slideshow(query, mediaId)
 ├── VaultAlbum(albumId)
@@ -427,6 +428,21 @@ NavHost racine
 Le `NavHost` racine est enveloppé dans un `SharedTransitionLayout` : la miniature
 de la grille et l'image de la visionneuse partagent la même clé
 (`media-<id>`), d'où une transition fluide grille → visionneuse et retour.
+
+Intentions : `MainActivity` (`singleTop`) traduit chaque intention en `OpenRequest`. Le widget
+(`app.focale.action.OPEN_MEDIA`) ouvre la visionneuse dans la timeline ; `ACTION_VIEW` et les
+`REVIEW` des appareils photo (images et vidéos, `content://`, `file://` du stockage partagé)
+mènent à `ExternalMediaRoute`. `ExternalMediaRepository` y cherche le média dans l'index
+(identifiant MediaStore, `MediaStore.getMediaUri` pour un document, colonne DATA pour un chemin ;
+un média tout juste arrivé est attendu le temps d'une synchronisation, 2 s au plus) et ouvre la
+visionneuse sur les médias de son dossier ; sinon, visionneuse simple de l'URI (zoom, lecture,
+partage, « Ouvrir avec »), lue grâce à la permission accordée par l'intention. Lancée pour cette
+ouverture, l'activité en fait sa première destination, sans timeline dessous, et se referme au
+retour pour rendre la main à l'application appelante ; reçue par `onNewIntent`, l'ouverture
+s'empile sur l'écran courant. `REVIEW_SECURE` n'est pas déclarée : l'activité unique, qui donne
+accès à toute la galerie, ne doit pas s'afficher sur l'écran verrouillé. Réglages → Fichiers
+résout `ACTION_VIEW` d'un JPEG (`MATCH_DEFAULT_ONLY`, `<queries>` du manifeste) pour dire quelle
+application ouvre les photos et proposer de choisir Focale.
 
 ### 7.2 Thème
 - `MaterialExpressiveTheme` + `MotionScheme.expressive()` (ressorts).

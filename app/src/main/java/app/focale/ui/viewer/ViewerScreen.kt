@@ -679,9 +679,7 @@ private fun startChooser(context: Context, action: String, item: MediaItem) {
         putExtra("mimeType", item.mimeType)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    runCatching {
-        context.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }
+    runCatching { context.startActivity(chooserWithoutFocale(context, intent)) }
 }
 
 /**

@@ -1,8 +1,12 @@
 package app.focale.ui.navigation
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.navigation.NavHostController
@@ -24,6 +28,34 @@ val LocalTabsNavController = staticCompositionLocalOf<NavHostController> {
 fun NavHostController.openViewer(query: MediaQuery, item: MediaItem) {
     ViewerHandoff.put(item)
     navigate(ViewerRoute(RouteCodec.encode(query), item.id)) { launchSingleTop = true }
+}
+
+/**
+ * Média de l'index reçu d'une autre application : visionneuse parmi les médias de son dossier
+ * (masqué de la timeline ou non), à la place de l'écran d'ouverture.
+ */
+fun NavHostController.openFromOtherApp(item: MediaItem, closeOnBack: Boolean) {
+    ViewerHandoff.put(item)
+    navigate(ViewerRoute(RouteCodec.encode(MediaQuery(bucketId = item.bucketId)), item.id, closeOnBack)) {
+        popUpTo<ExternalMediaRoute> { inclusive = true }
+    }
+}
+
+/**
+ * Retour d'un écran racine : dépile ; ou, l'activité ayant été lancée pour ouvrir le média d'une
+ * autre application ([closeOnBack]), la referme pour revenir à celle-ci (retour système compris).
+ */
+@Composable
+fun rememberRootBack(closeOnBack: Boolean): () -> Unit {
+    val rootNav = LocalRootNavController.current
+    // Activité à refermer, ou null pour dépiler.
+    val activity = LocalActivity.current?.takeIf { closeOnBack }
+    // Dans la tâche de l'appelant, le retour système referme déjà l'activité (avec l'animation
+    // prédictive) ; à la racine de sa tâche, il ne ferait que la passer en arrière-plan.
+    BackHandler(enabled = activity?.isTaskRoot == true) { activity?.finish() }
+    return remember(rootNav, activity) {
+        { if (activity != null) activity.finish() else rootNav.popBackStack() }
+    }
 }
 
 /** Lance le diaporama des médias de [query], à partir de [startId] si fourni. */

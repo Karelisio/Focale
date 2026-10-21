@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -18,12 +19,16 @@ import app.focale.ui.vault.VaultPickerScreen
 import app.focale.ui.vault.VaultScreen
 import app.focale.ui.vault.VaultViewerScreen
 import app.focale.ui.videoeditor.VideoEditorScreen
+import app.focale.ui.viewer.ExternalMediaScreen
 
 /**
- * Destinations racine plein écran (éditeur, coffre-fort, diaporama…), au-dessus des
- * onglets comme la visionneuse.
+ * Destinations racine plein écran (éditeur, coffre-fort, diaporama, média d'une autre
+ * application…), au-dessus des onglets comme la visionneuse.
  */
 fun NavGraphBuilder.additionalRootDestinations(rootNav: NavHostController) {
+    fullScreen<ExternalMediaRoute> { entry ->
+        ExternalMediaScreen(onBack = rememberRootBack(closeOnBack = remember(entry) { entry.toRoute<ExternalMediaRoute>().closeOnBack }))
+    }
     fullScreen<EditorRoute> {
         EditorScreen(onClose = { rootNav.popBackStack() })
     }

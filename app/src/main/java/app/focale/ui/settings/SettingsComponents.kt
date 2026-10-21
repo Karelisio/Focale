@@ -128,6 +128,28 @@ fun SettingsAction(
     }
 }
 
+/** Élément informatif, sans action (état déjà satisfaisant…). */
+@Composable
+fun SettingsInfo(
+    title: String,
+    shapes: ListItemShapes,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    icon: ImageVector? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    SegmentedListItem(
+        shapes = shapes,
+        colors = segmentColors(),
+        leadingContent = icon?.let { { Icon(it, contentDescription = null) } },
+        supportingContent = subtitle?.let { { Text(it) } },
+        trailingContent = trailing,
+        modifier = modifier,
+    ) {
+        Text(title)
+    }
+}
+
 /** Élément libre (groupe de boutons, curseur…) avec titre. */
 @Composable
 fun SettingsCustom(

@@ -22,6 +22,8 @@ import app.focale.core.permissions.MediaAccessManager
 import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.ThemeMode
 import app.focale.ui.navigation.FocaleApp
+import app.focale.ui.navigation.MainRoute
+import app.focale.ui.navigation.OpenRequest
 import app.focale.ui.theme.FocaleTheme
 import app.focale.update.UpdateRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -30,7 +32,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Activité unique. Hérite de [FragmentActivity] pour l'invite biométrique du coffre.
+ * Activité unique, qui ouvre aussi les photos et vidéos des autres applications ([OpenRequest]).
+ * Hérite de [FragmentActivity] pour l'invite biométrique du coffre.
  */
 @AndroidEntryPoint
 class MainActivity : FragmentActivity() {
@@ -40,8 +43,8 @@ class MainActivity : FragmentActivity() {
     @Inject lateinit var accessManager: MediaAccessManager
     @Inject lateinit var updateRepository: UpdateRepository
 
-    /** Média à ouvrir dans la visionneuse (appui sur le widget), consommé par l'interface. */
-    private val openMediaRequests = MutableStateFlow<Long?>(null)
+    /** Ouvertures reçues après le lancement (widget, autre application), consommées par l'interface. */
+    private val openRequests = MutableStateFlow<OpenRequest?>(null)
 
     /** Lance les dialogues système de consentement (suppression, modification…). */
     private val consentLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
@@ -52,8 +55,12 @@ class MainActivity : FragmentActivity() {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Lancée pour le média d'une autre application : il est la première destination, sans timeline
+        // dessous. L'intention de lancement est conservée : même graphe après une recréation.
+        val launch = OpenRequest.of(intent, launched = true, ownPackage = packageName)
+        val startRoute: Any = (launch as? OpenRequest.External)?.route ?: MainRoute
         // Après une recréation, la visionneuse déjà ouverte est restaurée par la navigation.
-        if (savedInstanceState == null) handleIntent(intent)
+        if (savedInstanceState == null && launch is OpenRequest.Media) openRequests.value = launch
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -89,8 +96,9 @@ class MainActivity : FragmentActivity() {
             }
             FocaleTheme(settings) {
                 FocaleApp(
-                    openMediaRequests = openMediaRequests,
-                    onOpenMediaHandled = { openMediaRequests.value = null },
+                    startRoute = startRoute,
+                    openRequests = openRequests,
+                    onOpenHandled = { openRequests.value = null },
                 )
             }
         }
@@ -106,9 +114,12 @@ class MainActivity : FragmentActivity() {
         accessManager.refresh()
     }
 
-    private fun handleIntent(intent: Intent?) {
-        if (intent?.action != ACTION_OPEN_MEDIA) return
-        intent.getLongExtra(EXTRA_MEDIA_ID, -1L).takeIf { it >= 0 }?.let { openMediaRequests.value = it }
+    /**
+     * Intention reçue par l'activité déjà ouverte (`singleTop`) : widget, lanceur, ou média d'une
+     * autre application ouvert par-dessus l'écran courant, que le retour retrouve.
+     */
+    private fun handleIntent(intent: Intent) {
+        OpenRequest.of(intent, launched = false, ownPackage = packageName)?.let { openRequests.value = it }
     }
 
     companion object {

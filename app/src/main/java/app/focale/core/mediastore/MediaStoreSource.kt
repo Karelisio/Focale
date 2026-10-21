@@ -54,6 +54,20 @@ class MediaStoreSource @Inject constructor(
         }
     }
 
+    /** Vrai si l'image ou la vidéo [id] est visible avec l'accès actuel (complet, ou sélection). */
+    fun isVisible(id: Long): Boolean =
+        query(arrayOf(FileColumns._ID), "$MEDIA_SELECTION AND ${FileColumns._ID} = ?", arrayOf(id.toString()))
+            ?.use { it.count > 0 } == true
+
+    /** Identifiant de l'image ou de la vidéo enregistrée à l'un des chemins [paths], si elle est visible. */
+    @Suppress("DEPRECATION") // DATA : seule correspondance possible avec un chemin `file://`.
+    fun idOfPath(paths: List<String>): Long? {
+        if (paths.isEmpty()) return null
+        val selection = "$MEDIA_SELECTION AND ${MediaStore.MediaColumns.DATA} IN (${paths.joinToString(",") { "?" }})"
+        return query(arrayOf(FileColumns._ID), selection, paths.toTypedArray())
+            ?.use { if (it.moveToFirst()) it.getLong(0) else null }
+    }
+
     /** Version de la base MediaStore : un changement impose une resynchronisation complète. */
     fun version(context: android.content.Context): String =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -152,6 +166,9 @@ class MediaStoreSource @Inject constructor(
 
     companion object {
         val FILES_URI: Uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+
+        private const val MEDIA_SELECTION =
+            "${FileColumns.MEDIA_TYPE} IN (${FileColumns.MEDIA_TYPE_IMAGE}, ${FileColumns.MEDIA_TYPE_VIDEO})"
 
         @PublishedApi
         internal val PROJECTION: Array<String> = buildList {
