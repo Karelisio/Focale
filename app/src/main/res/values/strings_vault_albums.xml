@@ -52,8 +52,8 @@
     </plurals>
     <string name="vault_album_photos_and_videos">%1$s and %2$s</string>
     <plurals name="vault_album_moved">
-        <item quantity="one">“%2$s” moved to the vault: %1$d item</item>
-        <item quantity="other">“%2$s” moved to the vault: %1$,d items</item>
+        <item quantity="one">Album moved to the vault: %1$d item</item>
+        <item quantity="other">Album moved to the vault: %1$,d items</item>
     </plurals>
     <string name="vault_album_choice">Vault album</string>
     <string name="vault_album_locked">The vault is locked: the items will be added without an album.</string>

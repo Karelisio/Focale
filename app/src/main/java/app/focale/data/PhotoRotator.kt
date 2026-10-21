@@ -47,7 +47,11 @@ class PhotoRotator @Inject constructor(
 
     fun options(item: MediaItem): Options = when {
         isLossless(item) -> Options(lossless = true, canReplace = true)
-        else -> Options(lossless = false, canReplace = editor.canReplace(item))
+        // Au-delà de la limite de rendu, l'image serait réduite : copie seule.
+        else -> Options(
+            lossless = false,
+            canReplace = editor.canReplace(item) && item.width.toLong() * item.height <= ImageEditor.MAX_OUTPUT_PIXELS,
+        )
     }
 
     /** Enregistre [quarterTurns] quarts de tour horaires ; sans perte, [mode] est ignoré (toujours sur place). */
@@ -68,13 +72,13 @@ class PhotoRotator @Inject constructor(
         val exif = resolver.openInputStream(item.uri)?.use { ExifInterface(it) } ?: error("Lecture impossible")
         val current = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
         val target = ExifOrientation.rotate(current, turns)
-        val slot = OrientationSlot.locate(exif, current) { offset -> read(item.uri, offset) }
+        val slot = OrientationSlot.locate(exif, current) { offset, length -> read(item.uri, offset, length) }
         if (slot != null) return operations.patch(item) { slot.write(it, target) }
 
         // Réécriture complète : sans accès à l'original, la localisation lue est masquée (mise
         // à zéro) et serait perdue.
         val source = details.originalUri(item.uri)
-        if (source == item.uri && exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE) != null) {
+        if (source == item.uri && (GPS_TAGS.any { exif.getAttribute(it) != null } || exif.getAttribute(ExifInterface.TAG_XMP) != null)) {
             return OperationResult.Failure(IllegalStateException("Localisation masquée sans ACCESS_MEDIA_LOCATION"))
         }
         val temp = File.createTempFile("rotation", null, context.cacheDir)
@@ -88,11 +92,11 @@ class PhotoRotator @Inject constructor(
         }
     }
 
-    /** Deux octets à [offset], ou null si le fichier est plus court. */
-    private fun read(uri: Uri, offset: Long): ByteArray? {
+    /** [length] octets à [offset], ou null si le fichier est plus court. */
+    private fun read(uri: Uri, offset: Long, length: Int): ByteArray? {
         val descriptor = resolver.openFileDescriptor(uri, "r") ?: return null
         return ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { stream ->
-            val buffer = ByteBuffer.allocate(2)
+            val buffer = ByteBuffer.allocate(length)
             while (buffer.hasRemaining()) {
                 if (stream.channel.read(buffer, offset + buffer.position()) < 0) return null
             }
@@ -102,6 +106,15 @@ class PhotoRotator @Inject constructor(
 
     companion object {
         private val LOSSLESS_TYPES = setOf("image/jpeg", "image/webp")
+
+        /** Balises de localisation masquées par MediaProvider sans ACCESS_MEDIA_LOCATION. */
+        private val GPS_TAGS = listOf(
+            ExifInterface.TAG_GPS_LATITUDE,
+            ExifInterface.TAG_GPS_LONGITUDE,
+            ExifInterface.TAG_GPS_ALTITUDE,
+            ExifInterface.TAG_GPS_TIMESTAMP,
+            ExifInterface.TAG_GPS_DATESTAMP,
+        )
 
         /** Écrit l'orientation d'un fichier local par ExifInterface : seul le segment EXIF est refait. */
         internal fun rewriteOrientation(file: File, orientation: Int) {
@@ -129,22 +142,26 @@ internal class OrientationSlot(val offset: Long, private val bigEndian: Boolean)
 
     companion object {
         /**
-         * Emplacement de l'orientation [current] (un seul SHORT, de 1 à 8) lue dans [exif]. Les
-         * deux octets que [read] trouve à cette position doivent la contenir : l'emplacement
-         * est vérifié et l'ordre des octets s'en déduit. Null si la balise manque ou se
-         * présente autrement.
+         * Emplacement de l'orientation [current] (un seul SHORT, de 1 à 8) lue dans [exif]. L'entrée
+         * IFD entière que [read] trouve devant cette position doit la décrire (balise 0x0112, type
+         * SHORT, un élément, valeur [current]) : l'emplacement est vérifié (ExifInterface se trompe
+         * de quelques octets sur certains WebP) et l'ordre des octets s'en déduit. Null si la
+         * balise manque ou se présente autrement : l'appelant réécrit alors le segment EXIF.
          */
-        fun locate(exif: ExifInterface, current: Int, read: (offset: Long) -> ByteArray?): OrientationSlot? {
+        fun locate(exif: ExifInterface, current: Int, read: (offset: Long, length: Int) -> ByteArray?): OrientationSlot? {
             if (current !in 1..8) return null
             val range = runCatching { exif.getAttributeRange(ExifInterface.TAG_ORIENTATION) }.getOrNull()
-            if (range == null || range[1] != 2L) return null
-            val found = read(range[0]) ?: return null
+            if (range == null || range[1] != 2L || range[0] < ENTRY_HEADER) return null
+            val entry = read(range[0] - ENTRY_HEADER, ENTRY_HEADER + 2) ?: return null
             val value = current.toByte()
             return when {
-                found.contentEquals(byteArrayOf(0, value)) -> OrientationSlot(range[0], bigEndian = true)
-                found.contentEquals(byteArrayOf(value, 0)) -> OrientationSlot(range[0], bigEndian = false)
+                entry.contentEquals(byteArrayOf(0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, value)) -> OrientationSlot(range[0], bigEndian = true)
+                entry.contentEquals(byteArrayOf(0x12, 0x01, 3, 0, 1, 0, 0, 0, value, 0)) -> OrientationSlot(range[0], bigEndian = false)
                 else -> null
             }
         }
+
+        /** Balise, type et nombre d'éléments d'une entrée IFD, devant sa valeur. */
+        private const val ENTRY_HEADER = 8
     }
 }

@@ -134,7 +134,7 @@ class ImageEditor @Inject constructor(
     companion object {
         const val PREVIEW_SIDE = 1600
         private const val QUALITY = 95
-        private const val MAX_OUTPUT_PIXELS = 24_000_000L
+        const val MAX_OUTPUT_PIXELS = 24_000_000L
 
         private val PRESERVED_TAGS = listOf(
             ExifInterface.TAG_DATETIME, ExifInterface.TAG_DATETIME_ORIGINAL, ExifInterface.TAG_DATETIME_DIGITIZED,

@@ -134,6 +134,22 @@ class MediaActions @Inject constructor(
 
     fun dismissDialog() {
         _dialog.value = null
+        relockIfTemporary()
+    }
+
+    /** Déverrouillé seulement pour choisir un album du coffre : reverrouillé une fois le choix fait. */
+    private var relockVault = false
+
+    /** « Déverrouiller pour choisir un album » : le coffre l'était-il déjà ? */
+    fun unlockForAlbumChoice() {
+        relockVault = relockVault || !vaultSession.unlocked.value
+    }
+
+    private fun relockIfTemporary() {
+        if (relockVault) {
+            relockVault = false
+            vaultSession.lock()
+        }
     }
 
     /** Le retrait des métadonnées peut prendre un moment (vidéos) : progression affichée. */
@@ -228,6 +244,7 @@ class MediaActions @Inject constructor(
     /** Chiffre les médias dans le coffre, dans l'album [destination], puis retire les originaux de la galerie. */
     fun moveToVault(ids: List<Long>, destination: VaultDestination = VaultDestination.None) = run(busy = true) {
         _dialog.value = null
+        relockIfTemporary()
         val items = media.getByIds(ids)
         encryptionProgress(0, items.size)
         try {
@@ -264,7 +281,8 @@ class MediaActions @Inject constructor(
                 }
             }
             if (result is OperationResult.Success && result.count > 0) {
-                val text = UiText.Plural(R.plurals.vault_album_moved, result.count, listOf(result.count, album.name))
+                // Hors du coffre (écran non protégé) : le nom de l'album n'apparaît pas.
+                val text = UiText.Plural(R.plurals.vault_album_moved, result.count, listOf(result.count))
                 channel.send(ActionEvent.AlbumMoved(text))
             } else {
                 report(result, R.plurals.message_moved_to_vault)

@@ -97,9 +97,11 @@ class VaultArchiveTest {
     }
 
     @Test
-    fun `un album sans nom rend le manifeste invalide`() {
+    fun `un album sans nom est renommé, la sauvegarde reste restaurable`() {
+        // Dossier racine du stockage : nom vide. Refuser l'archive la rendrait irrestaurable.
         val bytes = archive(manifest.copy(albums = listOf(ArchiveAlbum(id = 1, name = " ", createdAt = 0))))
-        assertReason(Reason.CORRUPTED) { readAll(bytes) }
+        val (read, _) = readAll(bytes)
+        assertEquals(listOf(VaultAlbumNames.FALLBACK), read.albums.map { it.name })
     }
 
     @Test

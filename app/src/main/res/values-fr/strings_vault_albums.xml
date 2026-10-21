@@ -60,9 +60,9 @@
     </plurals>
     <string name="vault_album_photos_and_videos">%1$s et %2$s</string>
     <plurals name="vault_album_moved">
-        <item quantity="one">«\u00A0%2$s\u00A0» déplacé dans le coffre-fort\u00A0: %1$d élément</item>
-        <item quantity="many">«\u00A0%2$s\u00A0» déplacé dans le coffre-fort\u00A0: %1$,d éléments</item>
-        <item quantity="other">«\u00A0%2$s\u00A0» déplacé dans le coffre-fort\u00A0: %1$,d éléments</item>
+        <item quantity="one">Album déplacé dans le coffre-fort\u00A0: %1$d élément</item>
+        <item quantity="many">Album déplacé dans le coffre-fort\u00A0: %1$,d éléments</item>
+        <item quantity="other">Album déplacé dans le coffre-fort\u00A0: %1$,d éléments</item>
     </plurals>
     <string name="vault_album_choice">Album du coffre</string>
     <string name="vault_album_locked">Le coffre est verrouillé\u00A0: les éléments y seront ajoutés sans album.</string>

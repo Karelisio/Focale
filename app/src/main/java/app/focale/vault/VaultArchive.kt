@@ -158,7 +158,9 @@ object VaultArchive {
             throw VaultArchiveException(Reason.CORRUPTED, error)
         }
         if (!manifest.isWellFormed()) throw VaultArchiveException(Reason.CORRUPTED)
-        return VaultArchiveReader(data, manifest)
+        // Album sans nom (dossier racine…) : renommé plutôt que de refuser toute la sauvegarde.
+        val albums = manifest.albums.map { it.copy(name = VaultAlbumNames.of(it.name)) }
+        return VaultArchiveReader(data, manifest.copy(albums = albums))
     }
 
     /**
@@ -226,7 +228,7 @@ object VaultArchive {
     private fun ArchiveManifest.isWellFormed(): Boolean = items.all { entry ->
         entry.name.isNotBlank() && entry.mimeType.isNotBlank() &&
             entry.size >= 0 && entry.durationMs >= 0 && entry.width >= 0 && entry.height >= 0
-    } && albums.all { it.name.isNotBlank() } && albums.distinctBy { it.id }.size == albums.size
+    } && albums.distinctBy { it.id }.size == albums.size
 }
 
 /** Description de l'archive, en tête du flux chiffré. */
@@ -451,4 +453,11 @@ private class SourceInput(input: InputStream) : FilterInputStream(input) {
     } catch (error: IOException) {
         throw SourceException(error)
     }
+}
+
+/** Nom d'un album du coffre : jamais vide (dossier racine, nom fait d'espaces…). */
+object VaultAlbumNames {
+    const val FALLBACK = "Album"
+
+    fun of(name: String): String = name.trim().ifEmpty { FALLBACK }
 }

@@ -69,10 +69,10 @@ class VaultRepository @Inject constructor(
         dao.observeNewInSource(id).map { rows -> rows.map { it.toModel() } }
 
     suspend fun createAlbum(name: String): Long = withContext(io) {
-        dao.insertAlbum(VaultAlbumEntity(name = name.trim(), createdAt = System.currentTimeMillis()))
+        dao.insertAlbum(VaultAlbumEntity(name = VaultAlbumNames.of(name), createdAt = System.currentTimeMillis()))
     }
 
-    suspend fun renameAlbum(id: Long, name: String) = withContext(io) { dao.renameAlbum(id, name.trim()) }
+    suspend fun renameAlbum(id: Long, name: String) = withContext(io) { dao.renameAlbum(id, VaultAlbumNames.of(name)) }
 
     /** Supprime l'album ; ses éléments restent dans le coffre, hors album. */
     suspend fun deleteAlbum(id: Long) = withContext(io) { dao.deleteAlbum(id) }
@@ -126,7 +126,7 @@ class VaultRepository @Inject constructor(
         val existing = dao.albumOfSource(bucketId)
         val albumId = existing?.id ?: dao.insertAlbum(
             VaultAlbumEntity(
-                name = name.trim(),
+                name = VaultAlbumNames.of(name),
                 sourceBucketId = bucketId,
                 sourcePath = items.first().relativePath,
                 createdAt = startedAt,
@@ -134,7 +134,7 @@ class VaultRepository @Inject constructor(
         )
         val result = importInto(items, albumId, onProgress)
         when {
-            result.moved > 0 -> dao.setLastImport(albumId, startedAt)
+            result.moved > 0 -> dao.setLastImport(albumId, lastImportAfter(items, startedAt))
             existing == null -> dao.deleteAlbum(albumId)
         }
         result
@@ -149,7 +149,18 @@ class VaultRepository @Inject constructor(
         syncManager.sync()
         val items = dao.newInSource(albumId).map { it.toModel() }
         if (items.isEmpty()) return@withContext OperationResult.Success(0)
-        importInto(items, albumId, onProgress).also { if (it.moved > 0) dao.setLastImport(albumId, startedAt) }
+        importInto(items, albumId, onProgress).also { if (it.moved > 0) dao.setLastImport(albumId, lastImportAfter(items, startedAt)) }
+    }
+
+    /**
+     * Date du dernier import d'un dossier : [startedAt], ou l'arrivée du plus ancien original
+     * resté dans MediaStore (refus, échec de chiffrement) pour que la bannière le repropose.
+     */
+    private suspend fun lastImportAfter(items: List<MediaItem>, startedAt: Long): Long {
+        val remaining = items.filter(::stillExists).map { it.id }
+        if (remaining.isEmpty()) return startedAt
+        val oldest = remaining.chunked(MediaRepository.MAX_SQL_ARGS).mapNotNull { dao.oldestDateAdded(it) }.minOrNull()
+        return minOf(startedAt, oldest ?: startedAt)
     }
 
     /** Sort tout l'album du coffre (restauration dans les dossiers d'origine) ; vidé, il est supprimé. */

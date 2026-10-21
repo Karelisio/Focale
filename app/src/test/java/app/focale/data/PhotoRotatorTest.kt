@@ -47,11 +47,11 @@ class PhotoRotatorTest {
         }
     }
 
-    private fun File.readAt(offset: Long): ByteArray? = RandomAccessFile(this, "r").use { file ->
-        if (offset + 2 > file.length()) {
+    private fun File.readAt(offset: Long, length: Int = 2): ByteArray? = RandomAccessFile(this, "r").use { file ->
+        if (offset < 0 || offset + length > file.length()) {
             null
         } else {
-            ByteArray(2).also {
+            ByteArray(length).also {
                 file.seek(offset)
                 file.readFully(it)
             }
@@ -64,7 +64,7 @@ class PhotoRotatorTest {
     private fun patch(file: File, quarterTurns: Int): Boolean {
         val exif = file.inputStream().use { ExifInterface(it) }
         val current = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
-        val slot = OrientationSlot.locate(exif, current) { file.readAt(it) } ?: return false
+        val slot = OrientationSlot.locate(exif, current) { offset, length -> file.readAt(offset, length) } ?: return false
         RandomAccessFile(file, "rw").use { slot.write(it.channel, ExifOrientation.rotate(current, quarterTurns)) }
         return true
     }
@@ -139,7 +139,7 @@ class PhotoRotatorTest {
         val scan = file.readBytes().let { it.copyOfRange(startOfScan(it), it.size) }
         val exif = file.inputStream().use { ExifInterface(it) }
         val current = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
-        assertNull(OrientationSlot.locate(exif, current) { file.readAt(it) })
+        assertNull(OrientationSlot.locate(exif, current) { offset, length -> file.readAt(offset, length) })
 
         PhotoRotator.rewriteOrientation(file, ExifOrientation.rotate(current, 1))
 
@@ -152,8 +152,8 @@ class PhotoRotatorTest {
     fun `des octets qui ne correspondent pas à l'orientation lue sont refusés`() {
         val file = withExif(image("photo.jpg", Bitmap.CompressFormat.JPEG), ExifInterface.ORIENTATION_ROTATE_180)
         val exif = file.inputStream().use { ExifInterface(it) }
-        assertNull(OrientationSlot.locate(exif, ExifInterface.ORIENTATION_ROTATE_90) { file.readAt(it) })
-        assertNull(OrientationSlot.locate(exif, ExifInterface.ORIENTATION_ROTATE_180) { null })
+        assertNull(OrientationSlot.locate(exif, ExifInterface.ORIENTATION_ROTATE_90) { offset, length -> file.readAt(offset, length) })
+        assertNull(OrientationSlot.locate(exif, ExifInterface.ORIENTATION_ROTATE_180) { _, _ -> null })
     }
 
     /** Position du marqueur SOS : tout ce qui suit (données compressées, fin du fichier) doit rester intact. */

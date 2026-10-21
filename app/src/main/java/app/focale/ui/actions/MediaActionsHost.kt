@@ -163,7 +163,10 @@ fun MediaActionsHost(
                 albums = albums,
                 onConfirm = { actions.moveToVault(current.ids, it) },
                 // Le dialogue reste ouvert : au retour, coffre déverrouillé, il propose ses albums.
-                onUnlock = { rootNav.navigate(VaultUnlockRoute) { launchSingleTop = true } },
+                onUnlock = {
+                    actions.unlockForAlbumChoice()
+                    rootNav.navigate(VaultUnlockRoute) { launchSingleTop = true }
+                },
                 onDismiss = actions::dismissDialog,
             )
         } else {

@@ -344,7 +344,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                         item?.let { startChooser(context, Intent.ACTION_VIEW, it) }
                     }
                     val rotatable = item != null && !item.isVideo && !item.isGif && !motionState.isPlaying &&
-                        !rotation.awaitsNewVersion
+                        !rotation.awaitsNewVersion && motionPhoto?.mediaId != item.id
                     ViewerExtraMenuItems(viewModel, item, dismiss, onRotate = item?.takeIf { rotatable }?.let { { rotation.rotateClockwise(it) } })
                 },
             )
@@ -445,7 +445,7 @@ private fun ViewerPager(
                     isCurrent = isCurrent,
                     rotation = rotation.takeIf { isCurrent },
                     // GIF animés exclus, comme de l'éditeur ; rien à tourner pendant un enregistrement.
-                    rotatable = rotationEnabled && !item.isGif && !rotation.awaitsNewVersion,
+                    rotatable = rotationEnabled && !item.isGif && !rotation.awaitsNewVersion && motionPhoto?.mediaId != item.id,
                     onTap = onToggleChrome,
                     onZoomChanged = { if (isCurrent) onZoomChanged(it) },
                 )

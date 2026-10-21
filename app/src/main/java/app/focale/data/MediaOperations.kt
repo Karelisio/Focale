@@ -207,9 +207,26 @@ class MediaOperations @Inject constructor(
         return update(listOf(item)) { ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, name) } }
     }
 
-    /** Remplace le contenu d'un média existant (édition « remplacer l'original »). */
+    /**
+     * Remplace le contenu d'un média existant (édition « remplacer l'original »). L'original est
+     * d'abord copié à part : une écriture qui échoue en cours de route le remet en place au lieu
+     * de laisser un fichier tronqué.
+     */
     suspend fun overwrite(item: MediaItem, write: (java.io.OutputStream) -> Unit): OperationResult = writeWithConsent(item) {
-        resolver.openOutputStream(item.uri, "wt")?.use(write) ?: error("Écriture impossible")
+        val backup = java.io.File.createTempFile("original", null)
+        try {
+            resolver.openInputStream(item.uri)?.use { input -> backup.outputStream().use { input.copyTo(it) } }
+                ?: error("Lecture impossible")
+            try {
+                resolver.openOutputStream(item.uri, "wt")?.use(write) ?: error("Écriture impossible")
+            } catch (error: Exception) {
+                runCatching { resolver.openOutputStream(item.uri, "wt")?.use { out -> backup.inputStream().use { it.copyTo(out) } } }
+                    .onFailure { Log.e(TAG, "Original non rétabli après un échec d'écriture", it) }
+                throw error
+            }
+        } finally {
+            backup.delete()
+        }
     }
 
     /**
@@ -368,9 +385,9 @@ class MediaOperations @Inject constructor(
         resolver.update(uri, values, null, null) > 0
     }
 
-    /** Android 10 : obtient l'accès en écriture à un média d'une autre application. */
+    /** Android 10 : obtient l'accès en écriture à un média d'une autre application (« rw » ne tronque jamais). */
     private suspend fun ensureLegacyWriteAccess(uri: Uri): Boolean = try {
-        resolver.openFileDescriptor(uri, "w")?.close()
+        resolver.openFileDescriptor(uri, "rw")?.close()
         true
     } catch (security: RecoverableSecurityException) {
         consent.request(security.userAction.actionIntent.intentSender)

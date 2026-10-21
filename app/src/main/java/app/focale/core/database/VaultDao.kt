@@ -94,6 +94,9 @@ interface VaultDao {
     @Query(NEW_IN_SOURCE)
     suspend fun newInSource(albumId: Long): List<MediaEntity>
 
+    @Query("SELECT MIN(date_added) FROM media WHERE id IN (:ids)")
+    suspend fun oldestDateAdded(ids: List<Long>): Long?
+
     /**
      * Ajoute en une transaction les éléments d'une sauvegarde restaurée : chaque groupe rejoint
      * son album, celui de même nom et de même dossier d'origine s'il existe, un nouvel album
