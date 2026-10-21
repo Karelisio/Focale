@@ -25,3 +25,6 @@ captures/
 *.keystore
 !debug.keystore
 keystore.properties
+
+# Python (scripts de tools/)
+__pycache__/
