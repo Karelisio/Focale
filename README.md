@@ -202,7 +202,9 @@ ML Kit (modèles embarqués) · ONNX Runtime · osmdroid · Tink · Glance.
   `tools/clip/export_clip.py` ; tokeniseur et vocabulaire BPE de **CLIP** (OpenAI,
   licence MIT, <https://github.com/openai/CLIP>).
 - Exécution des modèles : **ONNX Runtime**, licence MIT (`app/src/main/assets/licenses/onnxruntime_MIT.txt`) ;
-  sa télémétrie Android est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
+  sa télémétrie Android est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`,
+  contrôlé par la CI dans chaque APK release), et coupée dans les tests sur la JVM
+  (`ORT_DISABLE_TELEMETRY`).
 
 Les scripts de `tools/` régénèrent les ressources dérivées (icône, lieux, fond de
 carte, modèles de la recherche en langage naturel) à partir des données sources, ou

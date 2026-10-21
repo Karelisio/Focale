@@ -166,6 +166,10 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.isReturnDefaultValues = true
+        // ONNX Runtime pour la JVM envoie sa télémétrie (vers Microsoft) dès la création de son
+        // environnement, avant que setTelemetry(false) puisse la couper : seule cette variable
+        // l'en empêche.
+        unitTests.all { it.environment("ORT_DISABLE_TELEMETRY", "1") }
     }
 
     lint {

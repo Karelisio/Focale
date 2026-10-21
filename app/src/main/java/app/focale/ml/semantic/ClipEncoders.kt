@@ -25,7 +25,11 @@ object ClipModels {
     /** Dimension des empreintes (espace commun aux images et aux textes). */
     const val DIMENSION = 512
 
-    /** Environnement ONNX Runtime du processus, télémétrie coupée avant toute session. */
+    /**
+     * Environnement ONNX Runtime du processus. Sa télémétrie ne part pas : sur Android, son client
+     * d'envoi n'est jamais créé (fournisseur retiré du manifeste) ; elle est en plus coupée avant
+     * toute session.
+     */
     val environment: OrtEnvironment by lazy {
         OrtEnvironment.getEnvironment().apply { setTelemetry(false) }
     }

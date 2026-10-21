@@ -298,7 +298,10 @@ plus récent que le curseur, va au passage suivant (voir [PERFORMANCE.md](PERFOR
 
 Release : le mode strict de R8 (AGP 9) retire le constructeur des « registrars » ML Kit,
 instanciés par réflexion depuis le manifeste ; `proguard-rules.pro` le garde, et la CI
-vérifie les APK release avec `tools/release/check_constructors.py`. Le job `smoke` exécute
+vérifie les APK release avec `tools/release/check_constructors.py`, puis avec
+`tools/release/check_privacy.py` : aucun fournisseur d'ONNX Runtime ni backend de télémétrie de
+ML Kit dans le manifeste (leur retrait se fait par leur nom, qu'une mise à jour peut changer),
+ni permission `INTERNET` dans la variante strict. Le job `smoke` exécute
 ensuite l'APK release universel sur un émulateur (API 34, `google_apis`) : deux images de
 test (texte, visage), puis attente que la base contienne étiquettes, texte « facture » et
 visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend.
@@ -469,7 +472,8 @@ dans une bibliothèque simulée de 150 personnes, 0,9 % à 0,50). Les rattacheme
 modifiés ; une personne sans nom n'est proposée qu'à partir de trois photos. Vignettes
 rondes : `FaceThumbnailFetcher` Coil (découpe dans la miniature MediaStore, sinon décodage
 réduit de la région utile de l'original). Recherche : `SearchTerm.personIds`. La télémétrie
-d'ONNX Runtime est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`).
+d'ONNX Runtime est neutralisée (fournisseur retiré du manifeste, `setTelemetry(false)`) ; dans
+les tests sur la JVM, où elle part dès la création de l'environnement, par `ORT_DISABLE_TELEMETRY`.
 
 #### Liste des personnes
 - **Tri** (réglage `peopleSort`) : plus de photos, nom (`Collator` primaire : ni casse ni

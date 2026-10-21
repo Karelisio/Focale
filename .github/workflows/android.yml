@@ -82,6 +82,7 @@ jobs:
         run: |
           for apk in app/build/outputs/apk/*/release/*-universal-release.apk; do
             python3 tools/release/check_constructors.py "$apk"
+            python3 tools/release/check_privacy.py "$apk"
           done
 
       - name: APK debug

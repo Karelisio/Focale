@@ -17,7 +17,8 @@ class SFaceModel(model: ByteArray, threads: Int = DEFAULT_THREADS) : AutoCloseab
     private val session: OrtSession
 
     init {
-        // Aucune télémétrie : la version Android d'ONNX Runtime en embarque une.
+        // Aucune télémétrie : la version Android d'ONNX Runtime en embarque une, dont le client
+        // d'envoi n'est pas créé (fournisseur retiré du manifeste) ; coupée en plus ici.
         runCatching { environment.setTelemetry(false) }
         session = OrtSession.SessionOptions().use { options ->
             options.setIntraOpNumThreads(threads)
