@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Recherche : filtres combinés en pastilles (personne, lieu, période, type) -->
+    <string name="search_filter_person">Person</string>
+    <string name="search_filter_place">Place</string>
+    <string name="search_filter_period">Date</string>
+    <string name="search_filter_type">Type</string>
+    <string name="search_filter_add_person">Add a person filter</string>
+    <string name="search_filter_add_place">Add a place filter</string>
+    <string name="search_filter_add_period">Add a date filter</string>
+    <string name="search_filter_add_type">Add a media type filter</string>
+    <string name="search_filter_person_description">Person filter: %1$s</string>
+    <string name="search_filter_place_description">Place filter: %1$s</string>
+    <string name="search_filter_period_description">Date filter: %1$s</string>
+    <string name="search_filter_type_description">Type filter: %1$s</string>
+    <string name="search_filter_remove">Remove filter</string>
+    <string name="search_filter_add">Add as a filter</string>
+    <string name="search_filter_clear_all">Clear all</string>
+    <string name="search_filter_every_year">%1$s, every year</string>
+    <plurals name="search_filter_results">
+        <item quantity="one">%1$d result</item>
+        <item quantity="other">%1$,d results</item>
+    </plurals>
+    <string name="search_filter_searching">Searching…</string>
+    <string name="search_filter_empty_title">No results</string>
+    <string name="search_filter_empty_message">Nothing matches all of these filters. Remove one to widen the search.</string>
+    <plurals name="search_filter_without">
+        <item quantity="one">Without “%1$s”: %2$d result</item>
+        <item quantity="other">Without “%1$s”: %2$,d results</item>
+    </plurals>
+    <string name="search_filter_pick_person">Add a person</string>
+    <string name="search_filter_pick_place">Choose a place</string>
+    <string name="search_filter_pick_period">Choose a date</string>
+    <string name="search_filter_years">Years</string>
+    <string name="search_filter_recent_months">Recent months</string>
+    <string name="search_filter_pick_dates">Pick dates…</string>
+    <string name="search_filter_dates_title">Dates to search</string>
+    <string name="search_filter_dates_confirm">Apply</string>
+    <string name="search_filter_hint">Combine filters (people, place, date, type) with or without text: tap a suggestion to turn it into a filter.</string>
+</resources>

@@ -36,8 +36,10 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   sport.
 - **Recherche intelligente** sur l'appareil : étiquettes ML Kit en arrière-plan
   (« plage », « chien »…, en français ou en anglais), texte des photos et des captures
-  d'écran (« facture », « wifi »…), dates, lieux (géocodage hors ligne). Nettoyage
-  (onglet Plus) : doublons, photos floues, captures d'écran et grosses vidéos.
+  d'écran (« facture », « wifi »…), dates, lieux (géocodage hors ligne). Filtres combinés
+  en pastilles, avec ou sans texte : personnes (photos ensemble), lieu, période (années,
+  mois, plage de dates), type ; résultats dans l'onglet, mis à jour à chaque pastille.
+  Nettoyage (onglet Plus) : doublons, photos floues, captures d'écran et grosses vidéos.
 - **Recherche en langage naturel** : « chien sur la plage », « voiture rouge dans la
   neige »… Un modèle CLIP compact (TinyCLIP, 23 Mo, ONNX Runtime) calcule l'empreinte de
   chaque photo en arrière-plan ; la requête, traduite en anglais hors ligne, est comparée

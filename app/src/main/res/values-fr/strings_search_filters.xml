@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Recherche : filtres combinés en pastilles (personne, lieu, période, type) -->
+    <string name="search_filter_person">Personne</string>
+    <string name="search_filter_place">Lieu</string>
+    <string name="search_filter_period">Période</string>
+    <string name="search_filter_type">Type</string>
+    <string name="search_filter_add_person">Ajouter un filtre de personne</string>
+    <string name="search_filter_add_place">Ajouter un filtre de lieu</string>
+    <string name="search_filter_add_period">Ajouter un filtre de période</string>
+    <string name="search_filter_add_type">Ajouter un filtre de type de média</string>
+    <string name="search_filter_person_description">Filtre de personne : %1$s</string>
+    <string name="search_filter_place_description">Filtre de lieu : %1$s</string>
+    <string name="search_filter_period_description">Filtre de période : %1$s</string>
+    <string name="search_filter_type_description">Filtre de type : %1$s</string>
+    <string name="search_filter_remove">Retirer le filtre</string>
+    <string name="search_filter_add">Ajouter comme filtre</string>
+    <string name="search_filter_clear_all">Tout effacer</string>
+    <string name="search_filter_every_year">%1$s, toutes les années</string>
+    <plurals name="search_filter_results">
+        <item quantity="one">%1$d résultat</item>
+        <item quantity="many">%1$,d résultats</item>
+        <item quantity="other">%1$,d résultats</item>
+    </plurals>
+    <string name="search_filter_searching">Recherche en cours…</string>
+    <string name="search_filter_empty_title">Aucun résultat</string>
+    <string name="search_filter_empty_message">Aucun élément ne réunit tous ces filtres. Retirez-en un pour élargir la recherche.</string>
+    <plurals name="search_filter_without">
+        <item quantity="one">Sans « %1$s » : %2$d résultat</item>
+        <item quantity="many">Sans « %1$s » : %2$,d résultats</item>
+        <item quantity="other">Sans « %1$s » : %2$,d résultats</item>
+    </plurals>
+    <string name="search_filter_pick_person">Ajouter une personne</string>
+    <string name="search_filter_pick_place">Choisir un lieu</string>
+    <string name="search_filter_pick_period">Choisir une période</string>
+    <string name="search_filter_years">Années</string>
+    <string name="search_filter_recent_months">Mois récents</string>
+    <string name="search_filter_pick_dates">Choisir des dates…</string>
+    <string name="search_filter_dates_title">Dates recherchées</string>
+    <string name="search_filter_dates_confirm">Appliquer</string>
+    <string name="search_filter_hint">Combinez des filtres (personnes, lieu, période, type), avec ou sans texte : touchez une suggestion pour en faire une pastille.</string>
+</resources>

@@ -226,6 +226,22 @@ s'ajoutent aux correspondances exactes de chaque terme (`SearchTerm.similarIds`)
 désignant un lieu de la bibliothèque reste une contrainte. La préparation commence
 pendant la frappe (anti-rebond, annulation de la saisie précédente).
 
+Pastilles de filtre : dans l'onglet Recherche, le texte se combine par ET à des pastilles
+(`SearchFilters`, `data/`) : personnes (un `SearchTerm(personIds = [id])` chacune, soit les
+photos ensemble), lieu exact (`exactPlace`, et son pays), période (`dateFrom/dateTo` croisés avec
+ceux du texte, ou `month`) et type (`filter` ; deux types ou deux mois inconciliables donnent une
+requête vide). Elles se tirent de la saisie (`SearchChipDetector`, mêmes règles que
+`SearchQueryParser` ; un appui retire leurs mots du texte) ou se choisissent : personnes, lieux,
+années et mois où la recherche a des médias, sélecteur de dates M3. Les résultats s'affichent
+dans l'onglet : `SearchSession` garde la recherche dans l'état sauvegardé (rotation, processus
+tué) et produit la `MediaQuery` de la grille, transmise telle quelle à la visionneuse ; une
+pastille s'applique aussitôt, un texte validé garde la requête précédente le temps de la
+recherche par le sens. Sans résultat, le nombre obtenu sans chaque pastille est proposé.
+Historique : une entrée par recherche, remplacée à mesure qu'elle s'affine ; le texte seul
+comme avant, sinon la recherche en JSON dans la même colonne (pas de migration), affichée
+lisiblement (« plage · Alice · 2023 ») et relancée telle quelle (une personne fusionnée depuis
+est retrouvée par son nom).
+
 Doublons : regroupement par dHash, distance de Hamming ≤ seuil, candidats obtenus
 par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).
 

@@ -20,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -65,6 +66,11 @@ fun MediaGridScaffold(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onAlbumMovedToVault: () -> Unit = {},
     emptyContent: @Composable () -> Unit = {},
+    /**
+     * Défilement imbriqué d'une barre supérieure qui ne se replie pas comme une barre
+     * d'application (barre de recherche) ; par défaut, celui transmis à [topBar].
+     */
+    nestedScrollConnection: NestedScrollConnection? = null,
 ) {
     val context = LocalContext.current
     val rootNav = LocalRootNavController.current
@@ -94,7 +100,7 @@ fun MediaGridScaffold(
     )
 
     Scaffold(
-        modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = modifier.nestedScroll(nestedScrollConnection ?: scrollBehavior.nestedScrollConnection),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (selecting) {

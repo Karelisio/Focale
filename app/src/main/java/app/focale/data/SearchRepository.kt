@@ -107,12 +107,19 @@ class SearchRepository @Inject constructor(
             stats.map { PlaceSuggestion(it.place, it.country, it.count, covers[it.coverId]) }
         }.flowOn(io)
 
+    /** Recherches récentes : texte seul, ou clé d'une recherche avec pastilles ([SearchFilters.historyKey]). */
     fun observeRecent(limit: Int = 8): Flow<List<String>> =
         historyDao.observeRecent(limit).map { rows -> rows.map { it.query } }
 
-    suspend fun remember(text: String) = withContext(io) {
+    /**
+     * Mémorise [text] en tête de l'historique. [replacing] : entrée de la même recherche, retirée
+     * pour qu'une recherche affinée pastille après pastille n'y laisse qu'une entrée.
+     */
+    suspend fun remember(text: String, replacing: String? = null) = withContext(io) {
         val clean = text.trim()
-        if (clean.isNotEmpty()) historyDao.upsert(SearchHistoryEntity(clean, System.currentTimeMillis()))
+        if (clean.isEmpty()) return@withContext
+        if (replacing != null && replacing != clean) historyDao.delete(replacing)
+        historyDao.upsert(SearchHistoryEntity(clean, System.currentTimeMillis()))
     }
 
     suspend fun forget(text: String) = withContext(io) { historyDao.delete(text) }
