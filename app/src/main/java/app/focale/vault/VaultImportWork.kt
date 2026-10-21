@@ -220,6 +220,7 @@ class VaultImportWorker @AssistedInject constructor(
     private val media: MediaRepository,
     private val albums: AlbumRepository,
     private val notifications: VaultNotifications,
+    private val workManager: WorkManager,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun getForegroundInfo(): ForegroundInfo = notifications.importForeground(VaultImportState.Running(0, 0))
@@ -252,6 +253,8 @@ class VaultImportWorker @AssistedInject constructor(
         request.createdAlbumId?.let { if (result.moved == 0) vault.deleteAlbumIfEmpty(it) }
         if (request is VaultImportRequest.Selection) inputData.getString(VaultImports.KEY_IDS_FILE)?.let { File(it).delete() }
         if (!appVisible()) notifications.importFinished(result)
+        // Les nouveaux médias des dossiers liés ont pu changer : leurs notifications suivent.
+        VaultNewMediaWatch.checkNow(workManager)
         Result.success(VaultImports.outputOf(result))
     }
 

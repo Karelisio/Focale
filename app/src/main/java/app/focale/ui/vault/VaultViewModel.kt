@@ -3,7 +3,9 @@ package app.focale.ui.vault
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import app.focale.R
+import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.VaultAlbumSort
 import app.focale.core.settings.VaultSort
 import app.focale.core.util.UiText
@@ -14,6 +16,7 @@ import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultContent
 import app.focale.vault.VaultDestination
 import app.focale.vault.VaultItem
+import app.focale.vault.VaultNewMediaWatch
 import app.focale.vault.VaultPinStore
 import app.focale.vault.VaultRepository
 import app.focale.vault.VaultSession
@@ -64,6 +67,8 @@ class VaultViewModel @Inject constructor(
     private val content: VaultContent,
     private val pinStore: VaultPinStore,
     private val session: VaultSession,
+    private val settings: SettingsRepository,
+    private val workManager: WorkManager,
 ) : ViewModel() {
 
     /** Un coffre déverrouillé a forcément un code : l'ordre évite d'afficher la création. */
@@ -98,6 +103,10 @@ class VaultViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val removingOriginals = MutableStateFlow(false)
+
+    /** Notification des nouvelles photos des dossiers liés à un album du coffre. */
+    val newMediaAlerts: StateFlow<Boolean> = settings.settings.map { it.vaultNewMediaAlerts }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, settings.current.value.vaultNewMediaAlerts)
 
     /** Tri des éléments et des albums, mémorisé. */
     val sort: StateFlow<VaultSort> = content.itemSort
@@ -266,6 +275,13 @@ class VaultViewModel @Inject constructor(
 
     fun setSort(sort: VaultSort) {
         viewModelScope.launch { content.setItemSort(sort) }
+    }
+
+    fun setNewMediaAlerts(enabled: Boolean) {
+        viewModelScope.launch {
+            settings.setVaultNewMediaAlerts(enabled)
+            VaultNewMediaWatch.checkNow(workManager)
+        }
     }
 
     /** Retire de la galerie les originaux restés après un import interrompu ; rien n'est chiffré. */

@@ -57,6 +57,7 @@ class SettingsRepository @Inject constructor(
         it[Keys.VAULT_SORT] = sort.order.name
         it[Keys.VAULT_SORT_ASCENDING] = sort.ascending
     }
+    suspend fun setVaultNewMediaAlerts(enabled: Boolean) = edit { it[Keys.VAULT_NEW_MEDIA_ALERTS] = enabled }
     suspend fun setVaultAlbumSort(sort: VaultAlbumSort) = edit {
         it[Keys.VAULT_ALBUM_SORT] = sort.order.name
         it[Keys.VAULT_ALBUM_SORT_ASCENDING] = sort.ascending
@@ -100,6 +101,7 @@ class SettingsRepository @Inject constructor(
                 order = prefs[Keys.VAULT_ALBUM_SORT].toEnum(defaults.vaultAlbumSort.order),
                 ascending = prefs[Keys.VAULT_ALBUM_SORT_ASCENDING] ?: defaults.vaultAlbumSort.ascending,
             ),
+            vaultNewMediaAlerts = prefs[Keys.VAULT_NEW_MEDIA_ALERTS] ?: defaults.vaultNewMediaAlerts,
         )
     }
 
@@ -129,5 +131,6 @@ class SettingsRepository @Inject constructor(
         val VAULT_SORT_ASCENDING = booleanPreferencesKey("vault_sort_ascending")
         val VAULT_ALBUM_SORT = stringPreferencesKey("vault_album_sort")
         val VAULT_ALBUM_SORT_ASCENDING = booleanPreferencesKey("vault_album_sort_ascending")
+        val VAULT_NEW_MEDIA_ALERTS = booleanPreferencesKey("vault_new_media_alerts")
     }
 }

@@ -150,6 +150,10 @@ interface VaultDao {
     @Query("SELECT * FROM vault_album WHERE id = :id")
     suspend fun album(id: Long): VaultAlbumEntity?
 
+    /** Albums liés à un dossier de la galerie. */
+    @Query("SELECT * FROM vault_album WHERE source_bucket_id IS NOT NULL ORDER BY created_at, id")
+    suspend fun folderAlbums(): List<VaultAlbumEntity>
+
     /** Album lié au dossier [bucketId], le plus ancien s'il y en a plusieurs. */
     @Query("SELECT * FROM vault_album WHERE source_bucket_id = :bucketId ORDER BY created_at, id LIMIT 1")
     suspend fun albumOfSource(bucketId: Long): VaultAlbumEntity?

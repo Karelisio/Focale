@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.RestorePage
 import androidx.compose.material.icons.outlined.SelectAll
@@ -108,6 +109,7 @@ import androidx.lifecycle.withResumed
 import app.focale.R
 import app.focale.core.util.Formatters
 import app.focale.ui.components.EmptyState
+import app.focale.ui.components.rememberNotificationPermission
 import app.focale.ui.components.SelectionIndicator
 import app.focale.ui.components.SelectionTopBar
 import app.focale.vault.VaultAlbum
@@ -360,6 +362,8 @@ private fun VaultContentPane(
     val sort by viewModel.sort.collectAsStateWithLifecycle()
     val albumSort by viewModel.albumSort.collectAsStateWithLifecycle()
     val leftInGallery by viewModel.leftInGallery.collectAsStateWithLifecycle()
+    val newMediaAlerts by viewModel.newMediaAlerts.collectAsStateWithLifecycle()
+    val requestNotifications = rememberNotificationPermission()
     val selecting = selection.isNotEmpty()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var choosingAlbum by rememberSaveable { mutableStateOf(false) }
@@ -432,9 +436,14 @@ private fun VaultContentPane(
                             canBackup = !items.isNullOrEmpty(),
                             biometricAvailable = biometricAvailable,
                             biometricEnabled = biometricEnabled,
+                            newMediaAlerts = newMediaAlerts,
                             onBackup = backupViewModel::requestBackup,
                             onRestoreBackup = onRestoreBackup,
                             onToggleBiometric = onToggleBiometric,
+                            onToggleNewMediaAlerts = { enabled ->
+                                viewModel.setNewMediaAlerts(enabled)
+                                if (enabled) requestNotifications()
+                            },
                             onChangePin = viewModel::startChangePin,
                         )
                     },
@@ -610,9 +619,11 @@ private fun VaultMenu(
     canBackup: Boolean,
     biometricAvailable: Boolean,
     biometricEnabled: Boolean,
+    newMediaAlerts: Boolean,
     onBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
+    onToggleNewMediaAlerts: (Boolean) -> Unit,
     onChangePin: () -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -665,6 +676,19 @@ private fun VaultMenu(
                 onClick = {
                     open = false
                     onToggleBiometric(!biometricEnabled)
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.vault_notify_setting)) },
+                leadingIcon = { Icon(Icons.Outlined.NotificationsActive, contentDescription = null) },
+                trailingIcon = if (newMediaAlerts) {
+                    { Icon(Icons.Rounded.Check, contentDescription = null) }
+                } else {
+                    null
+                },
+                onClick = {
+                    open = false
+                    onToggleNewMediaAlerts(!newMediaAlerts)
                 },
             )
         }

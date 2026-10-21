@@ -57,6 +57,8 @@ data class AppSettings(
     val peopleSort: PeopleSort = PeopleSort.PHOTOS,
     val vaultSort: VaultSort = VaultSort(),
     val vaultAlbumSort: VaultAlbumSort = VaultAlbumSort(),
+    /** Notification des nouvelles photos des dossiers liés à un album du coffre. */
+    val vaultNewMediaAlerts: Boolean = true,
 ) {
     companion object {
         const val MIN_COLUMNS = 2

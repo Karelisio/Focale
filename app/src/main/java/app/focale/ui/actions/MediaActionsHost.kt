@@ -72,6 +72,7 @@ import app.focale.core.image.thumbnail
 import app.focale.core.model.Album
 import app.focale.core.model.FolderTarget
 import app.focale.core.model.MediaItem
+import app.focale.ui.components.rememberNotificationPermission
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.VaultRoute
 import app.focale.ui.navigation.VaultUnlockRoute
@@ -101,6 +102,8 @@ fun MediaActionsHost(
     val currentOnDone by rememberUpdatedState(onActionDone)
     val currentOnAlbumMoved by rememberUpdatedState(onAlbumMoved)
     val undoLabel = stringResource(R.string.action_undo)
+    // Un dossier lié au coffre signalera ses nouvelles photos par une notification.
+    val requestNotifications = rememberNotificationPermission()
 
     LaunchedEffect(actions) {
         actions.events.collect { event ->
@@ -177,7 +180,10 @@ fun MediaActionsHost(
                 name = current.album.name,
                 photos = current.photos,
                 videos = current.videos,
-                onConfirm = { actions.moveAlbumToVault(current.album, current.photos + current.videos) },
+                onConfirm = {
+                    if (current.album is AlbumSource.Folder) requestNotifications()
+                    actions.moveAlbumToVault(current.album, current.photos + current.videos)
+                },
                 onDismiss = actions::dismissDialog,
             )
         } else {

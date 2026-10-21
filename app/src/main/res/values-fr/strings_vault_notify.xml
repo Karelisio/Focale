@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : notification des nouvelles photos d'un dossier lié -->
+    <plurals name="vault_notify_new_photos">
+        <item quantity="one">%1$d nouvelle photo dans « %2$s » à mettre au coffre</item>
+        <item quantity="many">%1$,d nouvelles photos dans « %2$s » à mettre au coffre</item>
+        <item quantity="other">%1$,d nouvelles photos dans « %2$s » à mettre au coffre</item>
+    </plurals>
+    <plurals name="vault_notify_new_videos">
+        <item quantity="one">%1$d nouvelle vidéo dans « %2$s » à mettre au coffre</item>
+        <item quantity="many">%1$,d nouvelles vidéos dans « %2$s » à mettre au coffre</item>
+        <item quantity="other">%1$,d nouvelles vidéos dans « %2$s » à mettre au coffre</item>
+    </plurals>
+    <plurals name="vault_notify_new_items">
+        <item quantity="one">%1$d nouvel élément dans « %2$s » à mettre au coffre</item>
+        <item quantity="many">%1$,d nouveaux éléments dans « %2$s » à mettre au coffre</item>
+        <item quantity="other">%1$,d nouveaux éléments dans « %2$s » à mettre au coffre</item>
+    </plurals>
+    <string name="vault_notify_add">Mettre au coffre</string>
+    <string name="vault_notify_public">Nouvelles photos à mettre au coffre</string>
+    <string name="vault_notify_channel">Nouvelles photos pour le coffre</string>
+    <string name="vault_notify_channel_description">Photos arrivées dans un dossier lié à un album du coffre</string>
+    <string name="vault_notify_setting">Signaler les nouvelles photos des dossiers liés</string>
+</resources>

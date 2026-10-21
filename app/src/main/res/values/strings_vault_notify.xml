@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : notification des nouvelles photos d'un dossier lié -->
+    <plurals name="vault_notify_new_photos">
+        <item quantity="one">%1$d new photo in “%2$s” to move to the vault</item>
+        <item quantity="other">%1$,d new photos in “%2$s” to move to the vault</item>
+    </plurals>
+    <plurals name="vault_notify_new_videos">
+        <item quantity="one">%1$d new video in “%2$s” to move to the vault</item>
+        <item quantity="other">%1$,d new videos in “%2$s” to move to the vault</item>
+    </plurals>
+    <plurals name="vault_notify_new_items">
+        <item quantity="one">%1$d new item in “%2$s” to move to the vault</item>
+        <item quantity="other">%1$,d new items in “%2$s” to move to the vault</item>
+    </plurals>
+    <string name="vault_notify_add">Move to vault</string>
+    <string name="vault_notify_public">New photos to move to the vault</string>
+    <string name="vault_notify_channel">New photos for the vault</string>
+    <string name="vault_notify_channel_description">Photos arriving in a folder linked to a vault album</string>
+    <string name="vault_notify_setting">Notify new photos of linked folders</string>
+</resources>

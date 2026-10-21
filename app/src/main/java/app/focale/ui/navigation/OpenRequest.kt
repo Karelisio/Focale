@@ -18,6 +18,9 @@ sealed interface OpenRequest {
     /** Média de l'index (appui sur le widget), ouvert dans la timeline. */
     data class Media(val mediaId: Long) : OpenRequest
 
+    /** Coffre-fort (notification des nouvelles photos d'un dossier lié), ouvert sur son code. */
+    data object Vault : OpenRequest
+
     /**
      * Photo ou vidéo d'une autre application, de type [mimeType] s'il est donné ; [closeOnBack] :
      * l'activité a été lancée pour elle, le retour ramène alors à l'application appelante.
@@ -44,6 +47,7 @@ sealed interface OpenRequest {
             return when (intent.action) {
                 Intent.ACTION_MAIN -> Home.takeIf { intent.hasCategory(Intent.CATEGORY_LAUNCHER) }
                 MainActivity.ACTION_OPEN_MEDIA -> intent.getLongExtra(MainActivity.EXTRA_MEDIA_ID, -1L).takeIf { it >= 0 }?.let(::Media)
+                MainActivity.ACTION_OPEN_VAULT -> Vault
                 in VIEW_ACTIONS -> external(intent, launched, ownPackage)
                 else -> null
             }

@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.ForegroundInfo
+import app.focale.MainActivity
 import app.focale.R
 import app.focale.data.OperationResult
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -68,6 +69,61 @@ class VaultNotifications @Inject constructor(
         )
     }
 
+    /**
+     * Nouveaux médias dans le dossier [folder] lié à l'album du coffre [albumId] : un toucher ouvre
+     * le coffre, « Mettre au coffre » les y ajoute d'un geste. Le nom du dossier n'apparaît pas
+     * sur l'écran verrouillé ; [alert] : le nombre a augmenté, la notification sonne.
+     */
+    fun newMedia(albumId: Long, folder: String, photos: Int, videos: Int, alert: Boolean) {
+        val count = photos + videos
+        val text = when {
+            videos == 0 -> context.resources.getQuantityString(R.plurals.vault_notify_new_photos, count, count, folder)
+            photos == 0 -> context.resources.getQuantityString(R.plurals.vault_notify_new_videos, count, count, folder)
+            else -> context.resources.getQuantityString(R.plurals.vault_notify_new_items, count, count, folder)
+        }
+        val add = PendingIntent.getActivity(
+            context,
+            albumId.toInt(),
+            Intent(context, MainActivity::class.java)
+                .setAction(MainActivity.ACTION_VAULT_ADD_NEW)
+                .putExtra(MainActivity.EXTRA_VAULT_ALBUM_ID, albumId)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val open = PendingIntent.getActivity(
+            context,
+            OPEN_VAULT_REQUEST,
+            Intent(context, MainActivity::class.java)
+                .setAction(MainActivity.ACTION_OPEN_VAULT)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        notify(
+            newMediaId(albumId),
+            builder(CHANNEL_NEW_MEDIA)
+                .setContentTitle(context.getString(R.string.vault_title))
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(!alert)
+                .setGroup(CHANNEL_NEW_MEDIA)
+                .setPublicVersion(
+                    NotificationCompat.Builder(context, CHANNEL_NEW_MEDIA)
+                        .setSmallIcon(R.drawable.ic_notification)
+                        .setContentTitle(context.getString(R.string.vault_title))
+                        .setContentText(context.getString(R.string.vault_notify_public))
+                        .build(),
+                )
+                .addAction(0, context.getString(R.string.vault_notify_add), add)
+                .build(),
+        )
+    }
+
+    fun cancelNewMedia(albumId: Long) = cancel(newMediaId(albumId))
+
+    private fun newMediaId(albumId: Long): Int = NEW_MEDIA_ID + albumId.toInt()
+
     /** Vrai si les notifications peuvent s'afficher (permission d'Android 13+ et réglages). */
     fun allowed(): Boolean = manager.areNotificationsEnabled() &&
         ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -104,18 +160,32 @@ class VaultNotifications @Inject constructor(
 
     private fun ensureChannels() {
         val system = context.getSystemService(NotificationManager::class.java) ?: return
-        if (system.getNotificationChannel(CHANNEL_IMPORT) != null) return
-        system.createNotificationChannel(
-            NotificationChannel(CHANNEL_IMPORT, context.getString(R.string.vault_import_channel), NotificationManager.IMPORTANCE_LOW).apply {
-                setShowBadge(false)
-                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
-            },
+        if (system.getNotificationChannel(CHANNEL_NEW_MEDIA) != null) return
+        system.createNotificationChannels(
+            listOf(
+                NotificationChannel(CHANNEL_IMPORT, context.getString(R.string.vault_import_channel), NotificationManager.IMPORTANCE_LOW).apply {
+                    setShowBadge(false)
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                },
+                NotificationChannel(
+                    CHANNEL_NEW_MEDIA,
+                    context.getString(R.string.vault_notify_channel),
+                    NotificationManager.IMPORTANCE_DEFAULT,
+                ).apply {
+                    description = context.getString(R.string.vault_notify_channel_description)
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                },
+            ),
         )
     }
 
     companion object {
         const val CHANNEL_IMPORT = "vault_import"
+        const val CHANNEL_NEW_MEDIA = "vault_new_media"
         const val IMPORT_ID = 3_001
         const val RESULT_ID = 3_002
+        private const val OPEN_VAULT_REQUEST = 3_003
+        /** Notifications des nouveaux médias : une par album lié, à partir de cet identifiant. */
+        private const val NEW_MEDIA_ID = 10_000
     }
 }

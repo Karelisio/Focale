@@ -316,6 +316,15 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   MediaStore, la marge ne repropose que ceux dont la suppression a échoué. `last_import_at` est
   l'instant pris juste avant l'instantané du dossier (après une synchronisation), retenu dès
   qu'un média est entré.
+- Notification des nouveaux médias (`VaultNewMediaWatch`, `VaultNewMediaAlerts`) : une tâche
+  WorkManager déclenchée par les changements de MediaStore (images et vidéos, regroupés : 30 s,
+  2 min au plus), puis réarmée, compte les nouveaux médias de chaque album-dossier (même requête
+  que la bannière) et tient à jour une notification par album, « N nouvelles photos dans
+  « Dossier » à mettre au coffre », qui ne sonne que si le nombre augmente. Son action « Mettre au
+  coffre » ouvre Focale (confirmation du système) et lance l'import sans déverrouiller le coffre ;
+  un toucher ouvre le coffre. Écran verrouillé : ni dossier ni nombre. Réglage dans le menu du
+  coffre ; permission de notification demandée en déplaçant un dossier dans le coffre. Sans
+  album-dossier, rien n'est surveillé.
 - Depuis la galerie, « Déplacer vers le coffre » choisit l'album (aucun, existant, nouveau). Les
   noms des albums du coffre n'apparaissent que coffre déverrouillé, dans un dialogue protégé
   des captures (`SecureFlagPolicy.SecureOn`) ; verrouillé, la sélection entre hors album, ou le
