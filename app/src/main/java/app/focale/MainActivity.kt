@@ -131,8 +131,8 @@ class MainActivity : FragmentActivity() {
         // Une seule fois, même si l'activité est recréée avec cette intention.
         intent.action = null
         vaultNotifications.cancelNewMedia(albumId)
-        val work = vaultImports.enqueue(VaultImportRequest.NewFromSource(albumId))
         lifecycleScope.launch {
+            val work = vaultImports.enqueue(VaultImportRequest.NewFromSource(albumId))
             vaultImports.observe(work).collect { state ->
                 if (state !is VaultImportState.Finished) return@collect
                 val message = when (val result = state.result) {

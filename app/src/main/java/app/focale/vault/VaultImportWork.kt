@@ -15,6 +15,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.await
 import androidx.work.workDataOf
 import app.focale.core.model.MediaQuery
 import app.focale.data.AlbumRepository
@@ -41,27 +42,36 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Import demandé vers le coffre, exécuté par [VaultImportWorker]. */
+/**
+ * Import demandé vers le coffre, exécuté par [VaultImportWorker]. [Selection.createdAlbumId] et
+ * [UserAlbum.createdAlbumId] : album du coffre créé pour cet import, supprimé s'il ne reçoit rien.
+ */
 @Immutable
 sealed interface VaultImportRequest {
-    /** Album du coffre créé pour cet import, supprimé s'il ne reçoit rien. */
-    val createdAlbumId: Long? get() = null
-
     /** Médias choisis dans la galerie, rangés dans [albumId] (aucun si null). */
-    data class Selection(val ids: List<Long>, val albumId: Long?, override val createdAlbumId: Long? = null) : VaultImportRequest
+    data class Selection(val ids: List<Long>, val albumId: Long?, val createdAlbumId: Long? = null) : VaultImportRequest
 
     /** Tout le dossier [bucketId], dans l'album du coffre qui lui est lié. */
     data class Folder(val bucketId: Long, val name: String) : VaultImportRequest
 
     /** Tout l'album [albumId] de l'application, dans [vaultAlbumId] ; vidé, il est supprimé. */
-    data class UserAlbum(val albumId: Long, val vaultAlbumId: Long, override val createdAlbumId: Long?) : VaultImportRequest
+    data class UserAlbum(val albumId: Long, val vaultAlbumId: Long, val createdAlbumId: Long?) : VaultImportRequest
 
     /** Médias arrivés dans le dossier d'origine de l'album du coffre [vaultAlbumId]. */
     data class NewFromSource(val vaultAlbumId: Long) : VaultImportRequest
-
-    /** Un album entier quitte la galerie (message propre, écran de l'album refermé). */
-    val wholeAlbum: Boolean get() = this is Folder || this is UserAlbum
 }
+
+/** Album du coffre créé pour l'import, à supprimer s'il ne reçoit rien. */
+val VaultImportRequest.albumCreatedForImport: Long?
+    get() = when (this) {
+        is VaultImportRequest.Selection -> createdAlbumId
+        is VaultImportRequest.UserAlbum -> createdAlbumId
+        else -> null
+    }
+
+/** Un album entier quitte la galerie (message propre, écran de l'album refermé). */
+val VaultImportRequest.wholeAlbum: Boolean
+    get() = this is VaultImportRequest.Folder || this is VaultImportRequest.UserAlbum
 
 /** Où en est un import vers le coffre. */
 @Immutable
@@ -88,19 +98,20 @@ class VaultImports @Inject constructor(
     @ApplicationContext private val context: Context,
     private val workManager: WorkManager,
 ) {
-    fun enqueue(request: VaultImportRequest): UUID {
+    /** Planifie l'import ; au retour, WorkManager l'a enregistré et [observe] le trouve. */
+    suspend fun enqueue(request: VaultImportRequest): UUID {
         val work = OneTimeWorkRequestBuilder<VaultImportWorker>()
-            .setInputData(encode(request, idsDirectory(context)))
+            .setInputData(withContext(Dispatchers.IO) { encode(request, idsDirectory(context)) })
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .addTag(TAG)
             .build()
-        workManager.enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, work)
+        workManager.enqueueUniqueWork(UNIQUE_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, work).await()
         return work.id
     }
 
     /** Suit l'import [id] jusqu'à son issue, incluse. */
     fun observe(id: UUID): Flow<VaultImportState> = workManager.getWorkInfoByIdFlow(id)
-        .map { info -> info?.toState() ?: VaultImportState.Finished(OperationResult.Failure()) }
+        .map { info -> info?.toState() ?: VaultImportState.Queued }
         .transformWhile { state ->
             emit(state)
             state !is VaultImportState.Finished
@@ -250,7 +261,7 @@ class VaultImportWorker @AssistedInject constructor(
         } finally {
             publisher.cancel()
         }
-        request.createdAlbumId?.let { if (result.moved == 0) vault.deleteAlbumIfEmpty(it) }
+        request.albumCreatedForImport?.let { if (result.moved == 0) vault.deleteAlbumIfEmpty(it) }
         if (request is VaultImportRequest.Selection) inputData.getString(VaultImports.KEY_IDS_FILE)?.let { File(it).delete() }
         if (!appVisible()) notifications.importFinished(result)
         // Les nouveaux médias des dossiers liés ont pu changer : leurs notifications suivent.

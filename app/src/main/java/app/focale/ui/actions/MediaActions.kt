@@ -20,6 +20,7 @@ import app.focale.vault.VaultDestination
 import app.focale.vault.VaultImportRequest
 import app.focale.vault.VaultImportState
 import app.focale.vault.VaultImports
+import app.focale.vault.wholeAlbum
 import app.focale.vault.VaultPinStore
 import app.focale.vault.VaultRepository
 import app.focale.vault.VaultSession
