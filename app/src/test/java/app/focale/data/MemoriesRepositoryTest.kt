@@ -13,6 +13,8 @@ import app.focale.core.database.PersonEntity
 import app.focale.core.database.PersonPresence
 import app.focale.core.model.MediaQuery
 import app.focale.core.settings.SettingsRepository
+import app.focale.ml.PlaceName
+import app.focale.ml.PlaceNames
 import app.focale.people.PeopleEditions
 import app.focale.people.PeopleRepository
 import java.io.File
@@ -61,7 +63,8 @@ class MemoriesRepositoryTest {
             .build()
         settings = SettingsRepository(PreferenceDataStoreFactory.create { File(folder.root, "settings.preferences_pb") }, scope)
         val people = PeopleRepository(database.faceDao(), PeopleEditions(), Dispatchers.Unconfined)
-        repository = MemoriesRepository(database.mediaDao(), database.memoryDao(), people, settings, Dispatchers.Unconfined)
+        val names = PlaceNames(ApplicationProvider.getApplicationContext(), Dispatchers.Unconfined)
+        repository = MemoriesRepository(database.mediaDao(), database.memoryDao(), people, settings, names, Dispatchers.Unconfined)
     }
 
     @After
@@ -144,11 +147,13 @@ class MemoriesRepositoryTest {
 
         assertEquals(4, memories.size)
         val (lisbonTrip, romeTrip, general, withAlice) = memories
-        assertEquals(MemoryKind.Trip(1, "Lisbon", "PT", LocalDate.of(2025, 6, 9), LocalDate.of(2025, 6, 18)), lisbonTrip.kind)
+        // Ville titrée dans les deux langues, d'après la base embarquée.
+        val lisbonne = PlaceName("Lisbon", french = "Lisbonne")
+        assertEquals(MemoryKind.Trip(1, lisbonne, "PT", LocalDate.of(2025, 6, 9), LocalDate.of(2025, 6, 18)), lisbonTrip.kind)
         // Le départ de la maison, le matin, n'en fait pas partie.
         assertEquals(millis(LocalDate.of(2025, 6, 9).atTime(10, 0)), lisbonTrip.query.dateFrom)
         assertEquals(lisbon.size, lisbonTrip.count)
-        assertEquals(MemoryKind.Trip(2, "Rome", "IT", LocalDate.of(2024, 6, 14), LocalDate.of(2024, 6, 17)), romeTrip.kind)
+        assertEquals(MemoryKind.Trip(2, PlaceName("Rome"), "IT", LocalDate.of(2024, 6, 14), LocalDate.of(2024, 6, 17)), romeTrip.kind)
         assertEquals(rome.size, romeTrip.count)
         assertEquals(MemoryKind.YearsAgo(2), general.kind)
         assertEquals(window.size, general.count)

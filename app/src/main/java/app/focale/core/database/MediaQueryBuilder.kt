@@ -9,6 +9,7 @@ import app.focale.core.model.SearchTerm
 import app.focale.core.model.SortField
 import app.focale.core.model.TextCriteria
 import app.focale.ml.LabelDictionary
+import app.focale.ml.PlaceTranslations
 
 /**
  * Traduit une [MediaQuery] en SQL pour Room.
@@ -206,8 +207,10 @@ object MediaQueryBuilder {
         }
         term.place?.takeIf { it.isNotBlank() }?.let { place ->
             if (term.exactPlace) {
-                alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE place_key = ?)"
+                // Clé du nom GeoNames, seule ou suivie de ses traductions (« lisbon | lisbonne »).
+                alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE place_key = ? OR place_key GLOB ?)"
                 args += place
+                args += place + PlaceTranslations.SEPARATOR + "*"
             } else {
                 // Préfixe d'un mot du lieu : « malo » trouve « saint malo », « nice » ne trouve pas « venice ».
                 alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE (' ' || place_key) LIKE ? ESCAPE '\\')"

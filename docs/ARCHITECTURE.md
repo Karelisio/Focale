@@ -36,7 +36,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | ML sur l'appareil | ML Kit Image Labeling, Text Recognition v2 (alphabet latin) et Face Detection, modèles **embarqués**, pas de téléchargement ; SFace (OpenCV Zoo) et TinyCLIP quantifié (recherche en langage naturel), exécutés par ONNX Runtime |
 | Arrière-plan | WorkManager |
 | Carte | osmdroid + fond vectoriel hors ligne (Natural Earth, domaine public) |
-| Géocodage inverse | Hors ligne : base GeoNames (CC BY 4.0) embarquée, index spatial en grille |
+| Géocodage inverse | Hors ligne : base GeoNames (CC BY 4.0) embarquée, index spatial en grille, noms français et anglais (alternateNames) |
 | Chiffrement | Tink `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo), keyset protégé par Android Keystore |
 | Authentification | androidx.biometric (biométrie forte ou identifiants de l'appareil) + code PIN (PBKDF2) |
 | Widget | Glance (`GlanceTheme` = couleurs dynamiques du système) |
@@ -131,7 +131,7 @@ Index : `date_taken`, `bucket_id`, `media_type`.
 
 | Table | Contenu |
 |---|---|
-| `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `country` |
+| `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `place_key` (ses noms normalisés, traductions comprises), `country` |
 | `media_label` | (media, étiquette ML Kit canonique, confiance) |
 | `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée |
 | `media_embedding` | empreinte TinyCLIP de chaque photo (512 flottants, norme 1) |
@@ -216,7 +216,17 @@ travail :
 2. ML Kit Image Labeling (confiance ≥ 0,6) → étiquettes canoniques anglaises ;
 3. dHash 64 bits (doublons) ;
 4. variance du Laplacien (flou) ;
-5. GPS EXIF (avec `ACCESS_MEDIA_LOCATION`) → ville/pays via géocodeur hors ligne ;
+5. GPS EXIF (avec `ACCESS_MEDIA_LOCATION`) → ville/pays via géocodeur hors ligne ; la base
+   (`assets/geo/cities.bin`, format FCG2) précède ses 171 000 lieux de leurs noms français et
+   anglais quand ils diffèrent du nom GeoNames (2 749 en français, 378 en anglais : « Lisbon »
+   → « Lisbonne », « Köln » → « Cologne » ; 1 885 autres noms anglais, cherchés mais non
+   affichés : « Makkah » → « Mecca »), lus seuls par `PlaceNames`. `media_analysis.place`
+   garde le nom GeoNames ; l'affichage (infos, carte, recherche, titres des voyages, widget)
+   choisit la forme de la langue de l'application (`PlaceName.display`) ; `place_key` réunit les
+   formes normalisées (« lisbon | lisbonne »). Une base FCG1 (sans noms traduits) se lit encore ;
+   à chaque passage, l'analyse met à jour les clés des lieux déjà analysés qui diffèrent
+   (`AnalysisDao.refreshPlaceKeys`, par lieu distinct, sans nouvelle version de l'analyse) : ni
+   géocodage ni étiquetage à refaire ;
 6. puis étapes complémentaires (`AnalysisStep`), dont le texte : ML Kit Text Recognition
    sur la photo réduite à 1600 px (orientation appliquée), captures d'écran d'abord, les
    plus hautes lues par bandes à leur largeur d'écran ; aussi lancée à la demande par
@@ -224,7 +234,8 @@ travail :
 
 Recherche : la requête est normalisée (minuscules, sans accents), confrontée au
 dictionnaire FR/EN des 447 étiquettes (avec synonymes et hyperonymes :
-« chien » couvre aussi les races détectées), aux lieux, aux dates
+« chien » couvre aussi les races détectées), aux lieux (début d'un mot de l'un de leurs noms :
+« Lisbonne » comme « Lisbon » ; une carte de lieu cherche le nom GeoNames exact), aux dates
 (« 2023 », « juillet 2022 », « 14/07/2021 »), aux noms de fichiers et au texte reconnu
 dans les photos (« wifi » trouve aussi « Wi-Fi »).
 
@@ -391,7 +402,7 @@ compactes, sur la clause WHERE de `MediaQueryBuilder` (corbeille et dossiers mas
   de 150 km (un aller-retour dans la journée est une sortie) ; il apparaît quand son premier
   jour tombe dans la fenêtre. Requête : du premier au dernier média lointain, sans les photos
   de la maison du départ et du retour. Titre : la ville qui rassemble au moins la moitié des
-  médias lointains, sinon le pays.
+  médias lointains (nom traduit), sinon le pays.
 - **Sans doublon** : une fenêtre passée à 80 % dans le voyage n'a pas de souvenir général ;
   deux cartes d'une même fenêtre ne partagent pas leur couverture.
 

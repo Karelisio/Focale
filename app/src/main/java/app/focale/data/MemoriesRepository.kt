@@ -10,6 +10,8 @@ import app.focale.core.di.IoDispatcher
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
 import app.focale.core.settings.SettingsRepository
+import app.focale.ml.PlaceName
+import app.focale.ml.PlaceNames
 import app.focale.people.FaceThumbnail
 import app.focale.people.PeopleRepository
 import java.time.Instant
@@ -53,10 +55,10 @@ sealed interface MemoryKind {
         val face: FaceThumbnail?,
     ) : MemoryKind
 
-    /** Séjour loin de chez soi commencé dans la fenêtre, titré par sa ville ([place]) ou son pays. */
+    /** Séjour loin de chez soi commencé dans la fenêtre, titré par sa ville ([place], noms traduits) ou son pays. */
     data class Trip(
         override val yearsAgo: Int,
-        val place: String?,
+        val place: PlaceName?,
         /** Code ISO 3166-1 alpha-2. */
         val country: String?,
         val firstDay: LocalDate,
@@ -115,6 +117,7 @@ class MemoriesRepository @Inject constructor(
     private val memoryDao: MemoryDao,
     private val people: PeopleRepository,
     private val settings: SettingsRepository,
+    private val placeNames: PlaceNames,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
@@ -154,7 +157,8 @@ class MemoriesRepository @Inject constructor(
     private suspend fun tripMemory(trip: Trip, yearsAgo: Int, hidden: List<Long>, covers: MutableSet<Long>): Memory? {
         val query = MediaQuery(dateFrom = trip.start, dateTo = trip.end + 1, excludedBuckets = hidden)
         val location = TripDetector.locate(memoryDao.tripPlaces(MemoryQueries.tripPlaces(query)), trip.home)
-        val kind = MemoryKind.Trip(yearsAgo, location.place, location.country, trip.firstDay, trip.lastDay)
+        val place = location.place?.let { placeNames.of(it, location.country) }
+        val kind = MemoryKind.Trip(yearsAgo, place, location.country, trip.firstDay, trip.lastDay)
         return memory(kind, query, dao.count(MediaQueryBuilder.count(query)), covers)
     }
 

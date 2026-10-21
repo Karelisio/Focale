@@ -368,7 +368,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
             item = infoItem,
             details = details?.takeIf { it.item.id == infoItem.id },
             placeName = place?.let { (name, country) ->
-                if (country.isBlank()) name else "$name, ${CountryResolver.displayName(country, locale)}"
+                val local = name.display(locale)
+                if (country.isBlank()) local else "$local, ${CountryResolver.displayName(country, locale)}"
             },
             labels = labels.map { LabelDictionary.displayName(it, locale) },
             people = people,

@@ -170,7 +170,9 @@ ML Kit (modèles embarqués) · ONNX Runtime · osmdroid · Tink · Glance.
 - Police **Google Sans Flex** : SIL Open Font License 1.1
   (`app/src/main/assets/licenses/google_sans_flex_OFL.txt`).
 - Noms de lieux du géocodage hors ligne : **GeoNames**, CC BY 4.0
-  (<https://www.geonames.org>), compilés par `tools/geonames/build_cities.py`.
+  (<https://www.geonames.org>), compilés par `tools/geonames/build_cities.py` ; noms français et
+  anglais : noms alternatifs de GeoNames (**alternateNames**, CC BY 4.0), lus dans la base
+  compilée par Open-Meteo (<https://github.com/open-meteo/geocoding-api>).
 - Fond de carte hors ligne : **Natural Earth**, domaine public
   (<https://www.naturalearthdata.com>), compilé par `tools/basemap/build_basemap.py`.
 - Tuiles en ligne (optionnelles) : © contributeurs **OpenStreetMap**, données sous
