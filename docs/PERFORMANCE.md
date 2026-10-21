@@ -14,8 +14,9 @@ le principe « Fluide avec 50 000+ médias » de [ARCHITECTURE.md](ARCHITECTURE.
 ```
 
 Les tests de charge (`app/src/test/java/app/focale/perf/`) font partie de la suite ordinaire,
-CI comprise : environ 50 s sur la machine de mesure (§ 3), dont 20 s pour la file de l'analyse
-et 19 s pour le défilement. Aucune propriété Gradle n'est donc nécessaire.
+CI comprise : environ 45 s sur la machine de mesure (§ 3), dont 15 à 20 s pour les files de
+l'analyse et 18 à 20 s pour le défilement, sur un peu plus de 100 s pour toute la suite
+unitaire. Aucune propriété Gradle n'est donc nécessaire.
 
 | Classe | Ce qu'elle mesure |
 |---|---|
@@ -34,7 +35,7 @@ en plus que le coût d'un lot de l'analyse ne croît pas avec l'avancement.
 
 Base de données : Room comme en production (`AppModule.database` : fichier sur disque, journal
 WAL, migrations, exécuteurs de Room), sous Robolectric (`@Config(sdk = [34])`) dont le SQLite natif
-est la version **3.32.2** (celle d'Android 11 et 12 ; Android 10 a la 3.22, Android 14 la 3.39).
+est la version **3.32.2** (celle d'Android 12 et 13 ; Android 10 a la 3.22, Android 14 la 3.39).
 
 ---
 
@@ -51,7 +52,7 @@ dans MediaStore, avec des trous, les photos des anciens téléphones arrivées d
 | Dossiers | 298 : appareil photo (36 604 médias), captures, WhatsApp, téléchargements, 293 albums (loi de Zipf) |
 | Vidéos / captures d'écran / GIF | 5,0 % / 8,1 % / 0,45 % |
 | Sans `DATE_TAKEN` (date de tri : modification) | 23 % (captures, WhatsApp, téléchargements) |
-| Géolocalisés | 30,7 % (30 villes, chez soi d'abord) |
+| Géolocalisés | 30,7 % : 30 villes, chez soi d'abord, lieux et clés tels que les écrit l'analyse (géocodeur et noms traduits de la base embarquée) |
 | Étiquettes | 3,15 par média (dictionnaire ML Kit, loi de Zipf) |
 | Texte reconnu | 8 512 photos sur 47 377 (captures, panneaux, factures et tickets) |
 | Visages | 19 011 sur 11 489 photos, 40 personnes (15 nommées), 15 % sans personne |
@@ -68,7 +69,9 @@ le sens est mesurée en mémoire (§ 4.4).
 - Robolectric 4.17 (SDK 34), Room 2.8.5, Paging 3.5.3, ONNX Runtime 1.31.0 pour la JVM.
 - **Machine partagée** avec d'autres compilations : les durées varient d'un passage à l'autre
   (jusqu'à × 2). Chaque valeur ci-dessous est la médiane des répétitions d'un passage, puis la
-  médiane de plusieurs passages : 2 « avant » (anciens index et anciennes files), 3 « après ».
+  médiane de plusieurs passages : 2 « avant » (anciens index et anciennes files), 5 « après »,
+  dont 2 sur le code fusionné avec les lieux traduits, le redressement et la sauvegarde
+  automatique du coffre (3 pour les compteurs d'avancement, modifiés en dernier).
 - Les temps sont ceux d'une JVM de bureau, pas d'un téléphone : voir les limites (§ 8).
 
 ---
@@ -79,9 +82,9 @@ le sens est mesurée en mémoire (§ 4.4).
 
 | Opération | Avant | Après |
 |---|---|---|
-| Complète, 50 000 médias (premier lancement) | 1,5 s (0,8 à 2,3) | 1,0 s (0,8 à 1,4) |
-| Incrémentale : 300 modifiés, 150 ajoutés, 50 supprimés | 300 ms | 285 ms |
-| Sans changement (retour au premier plan) | 81 ms | 53 ms |
+| Complète, 50 000 médias (premier lancement) | 1,5 s (0,8 à 2,3) | 0,9 s (0,8 à 1,2) |
+| Incrémentale : 300 modifiés, 150 ajoutés, 50 supprimés | 300 ms | 295 ms (270 à 660) |
+| Sans changement (retour au premier plan) | 81 ms | 66 ms |
 
 La synchronisation n'avait pas de point chaud : l'incrémentale lit les seules lignes modifiées
 (`GENERATION_MODIFIED`), puis les 50 000 identifiants pour les suppressions, et purge les
@@ -94,21 +97,21 @@ pas mesuré.
 | Opération | Avant | Après |
 |---|---|---|
 | Page suivante (120 médias), médiane des 413 pages de la timeline | 95 ms | **2,9 ms** |
-| 20 dernières pages (décalage proche de 50 000) | 91 ms | **4,6 ms** |
-| Chargement initial (360 médias + nombre total) | 121 ms | 63 ms |
-| Saut de la barre de défilement (nouvelle `PagingSource`, 360 médias + nombre total) | 172 ms | 69 ms |
-| … dont le `COUNT(*)` de `LimitOffsetPagingSource` | 71 ms | 53 ms |
-| Saut tout au bout / filtre Photos | 188 / 180 ms | 58 / 60 ms |
-| Liste des dossiers (onglet Albums, couvertures comprises) | 2 854 ms | **82 ms** |
-| Dossier de 36 604 médias, saut au bout / petit dossier | 133 / 18 ms | 52 / 0,8 ms |
-| Compteur de la timeline / du filtre Vidéos | 2,2 / 9,4 ms | 2,6 / 0,7 ms |
-| Histogramme mensuel (bulle de date) | 124 ms | 94 ms |
-| Position d'un média (ouverture de la visionneuse) | 11 ms | 3,3 ms |
-| Position dans la grille avec en-têtes de jour (retour de la visionneuse) | 180 ms | 142 ms |
-| En-têtes de jour (`insertSeparators`) sur 50 000 médias | 25 à 40 ms | (inchangé) |
+| 20 dernières pages (décalage proche de 50 000) | 91 ms | **3,3 ms** |
+| Chargement initial (360 médias + nombre total) | 121 ms | 73 ms |
+| Saut de la barre de défilement (nouvelle `PagingSource`, 360 médias + nombre total) | 172 ms | 59 ms |
+| … dont le `COUNT(*)` de `LimitOffsetPagingSource` | 71 ms | 57 ms |
+| Saut tout au bout / filtre Photos | 188 / 180 ms | 56 / 60 ms |
+| Liste des dossiers (onglet Albums, couvertures comprises) | 2 854 ms | **92 ms** |
+| Dossier de 36 604 médias, saut au bout / petit dossier | 133 / 18 ms | 47 / 0,8 ms |
+| Compteur de la timeline / du filtre Vidéos | 2,2 / 9,4 ms | 2,1 / 0,6 ms |
+| Histogramme mensuel (bulle de date) | 124 ms | 103 ms |
+| Position d'un média (ouverture de la visionneuse) | 11 ms | 3,6 ms |
+| Position dans la grille avec en-têtes de jour (retour de la visionneuse) | 180 ms | 144 ms |
+| En-têtes de jour (`insertSeparators`) sur 50 000 médias | 25 à 50 ms | (inchangé) |
 | Conversion de 50 000 `MediaEntity` en `MediaItem` | ≈ 50 ms | (inchangé) |
-| Recherche « chien » (races comprises, 5 004 résultats) : nombre / première page | 75 / 170 ms | 105 / 170 ms |
-| Recherche « facture » (nom de fichier ou texte reconnu) : nombre / première page | 68 / 162 ms | 109 / 144 ms |
+| Recherche « chien » (races comprises, 5 004 résultats) : nombre / première page | 75 / 170 ms | 105 / 182 ms |
+| Recherche « facture » (nom de fichier ou texte reconnu) : nombre / première page | 68 / 162 ms | 109 / 141 ms |
 | Onglet Recherche : étiquettes les plus présentes / lieux | 376 / 96 ms | 354 / 39 ms |
 
 En-têtes et conversion des pages s'exécutent sur le fil principal (transformations de
@@ -120,23 +123,28 @@ Analyse principale, 2 078 lots de 24 (`AnalysisWorker.BATCH_SIZE`) sur toute la 
 
 | Opération | Avant | Après |
 |---|---|---|
-| Sélection d'un lot, au début / à la fin de l'analyse | 23 / 17 ms (tri de toute la bibliothèque à chaque lot) | **0,9 / 0,6 ms** |
-| Sélection des 2 078 lots | ≈ 42 s (estimé, 2 078 × 20 ms) | **1,6 s** (mesuré) |
-| Enregistrement d'un lot (analyse et étiquettes) | (inchangé) | 2,2 ms (4,7 s pour les 2 078) |
-| Premier lot d'un passage (sans curseur), à 0 / 49 / 94 % | 23 / 19 / 17 ms | 2,6 / 29 / 86 ms |
-| Compteur observé (`observePendingCount`), à 0 / 49 / 94 % | 9 / 19 / 25 ms | 22 / 25 / 14 ms |
+| Sélection d'un lot, au début / à la fin de l'analyse | 23 / 17 ms (tri de toute la bibliothèque à chaque lot) | **0,8 / 0,6 ms** |
+| Sélection des 2 078 lots | ≈ 42 s (estimé, 2 078 × 20 ms) | **1,5 s** (mesuré) |
+| Enregistrement d'un lot (analyse et étiquettes) | (inchangé) | 2,1 ms (4,8 s pour les 2 078) |
+| Premier lot d'un passage (sans curseur), à 0 / 49 / 94 % | 23 / 19 / 17 ms | 2,6 / 31 / 87 ms |
+| Compteur observé (`observePendingCount`), à 0 / 49 / 94 % | 9 / 19 / 25 ms | 13 / 17 / 15 ms |
 
 Étapes complémentaires, lots de 16 (`STEP_BATCH_SIZE`) :
 
 | Étape | Lot suivant (curseur), de 50 à 95 % | Premier lot d'un passage, de 0 à 95 % | Sélection de tous les lots | Avancement observé |
 |---|---|---|---|---|
-| Texte (2 961 lots) | 0,9 à 1,4 ms | 56 à 210 ms | 3,3 s | 12 à 42 ms |
-| Visages (2 695 lots) | 0,6 à 0,8 ms | 0,9 à 140 ms | 2,0 s | 11 à 50 ms |
-| Empreintes (2 961 lots) | 0,4 à 0,8 ms | 0,8 à 172 ms | 2,1 s | 18 à 75 ms |
+| Texte (2 961 lots) | 0,9 à 1,3 ms | 56 à 139 ms | 3,3 s | 17 à 54 ms |
+| Visages (2 695 lots) | 0,7 à 0,8 ms | 1 à 140 ms | 2,0 s | 12 à 61 ms |
+| Empreintes (2 961 lots) | 0,7 ms | 0,8 à 171 ms | 2,1 s | 13 à 75 ms |
+
+Début de chaque passage : `AnalysisDao.refreshPlaceKeys` recalcule les clés de recherche des
+lieux (noms traduits) ; rien n'est réécrit d'ordinaire (12 ms pour les 15 300 médias
+géolocalisés), et chaque lieu dont la clé change l'est une fois après une nouvelle base de lieux
+(49 ms ici pour 16 lieux : une requête par lieu, sur les médias de son pays).
 
 Sans curseur, chaque lot de ces étapes relisait depuis le début les photos déjà traitées : avec
 les anciens index, un tri de toutes les photos par lot (≈ 18 ms, soit près d'une minute par
-étape) ; avec les nouveaux, un coût proportionnel à l'avancement (jusqu'à 134 ms par lot à
+étape) ; avec les nouveaux, un coût proportionnel à l'avancement (140 à 170 ms par lot à
 95 %, plusieurs minutes par étape). Le premier lot d'un passage garde ce coût, une fois toutes
 les six minutes au plus.
 
@@ -144,16 +152,17 @@ les six minutes au plus.
 
 | Calcul | Durée | Fréquence |
 |---|---|---|
-| dHash et netteté (luminance 384 × 288, laplacien, empreinte 9 × 8) | 0,9 ms | par média, hors réduction du bitmap (Android) |
+| dHash et netteté (luminance 384 × 288, laplacien, empreinte 9 × 8) | 1,1 ms | par média, hors réduction du bitmap (Android) |
 | Géocodage : lieu le plus proche | 11 µs | par média géolocalisé (10 000 en 112 ms) |
 | Chargement de la base des lieux (171 000 lieux) | 69 ms | par passage d'analyse |
+| Chargement des 4 471 noms traduits des lieux (`PlaceNames`) | 5 ms | une fois par processus |
 | Alignement d'un visage (112 × 112) et netteté | 0,5 ms | par visage |
-| Empreinte SFace (int8, 2 fils) | 55 ms | par visage |
-| Chargement de SFace / de TinyCLIP image | 343 / 49 ms | par passage |
-| Prétraitement CLIP (512 × 384 → 224 × 224) | 4,5 ms | par photo |
-| Empreinte TinyCLIP (8 bits, 2 fils) | 24 ms | par photo |
+| Empreinte SFace (int8, 2 fils) | 57 ms | par visage |
+| Chargement de SFace / de TinyCLIP image | 315 / 46 ms (bibliothèque native d'ONNX Runtime comprise au premier) | par passage |
+| Prétraitement CLIP (512 × 384 → 224 × 224) | 4,4 ms | par photo |
+| Empreinte TinyCLIP (8 bits, 2 fils) | 26 ms | par photo |
 | Empreinte d'une phrase de recherche | 4 ms | par recherche |
-| Comparaison à 47 500 empreintes (un fil) | 26 ms | par recherche (quatre tranches en parallèle dans l'application) |
+| Comparaison à 47 500 empreintes (un fil) | 27 ms | par recherche (quatre tranches en parallèle dans l'application) |
 | Regroupement d'un lot de 26 visages (40 personnes, 2 000 visages en attente) | 3,6 ms | par lot de l'étape « visages » |
 
 ### 4.5 Estimation de la durée totale de l'analyse (50 000 médias)
@@ -173,9 +182,10 @@ reprennent les mesures du § 4.4, à multiplier par 1 à 3 environ sur un télé
 
 WorkManager découpe ce travail en passages de six minutes au plus, sous ses contraintes
 (batterie non faible, en charge si l'option est active) : une bibliothèque de 50 000 médias
-demande donc plusieurs nuits en charge. Les corrections du § 5 retirent de ce total près de
-quatre minutes de requêtes (sur la JVM de bureau) qui croissaient avec le carré de la taille de
-la bibliothèque ; le reste du coût propre à Focale (base, calculs Kotlin) est désormais
+demande donc plusieurs nuits en charge. Les corrections du § 5 retirent de ce total plus de
+trois minutes de requêtes (sur la JVM de bureau : 42 s pour l'analyse principale, près d'une
+minute par étape, contre 9 s en tout désormais), un coût qui croissait avec le carré de la
+taille de la bibliothèque ; le reste du coût propre à Focale (base, calculs Kotlin) est
 négligeable devant ML Kit et ONNX Runtime.
 
 ---
@@ -225,7 +235,8 @@ Tests : `AnalysisQueueTest` (ordre, égalités de dates, reprise), `AnalysisQueu
 
 La timeline et les dossiers observaient aussi favoris, albums, étiquettes et analyse : pendant
 les heures de la première analyse, chaque lot (toutes les quelques secondes) rechargeait leurs
-pages, leur nombre total et leur histogramme (≈ 0,2 s de requêtes par lot sur la JVM de bureau).
+pages, leur nombre total et leur histogramme (≈ 0,3 s de requêtes par lot sur la JVM de bureau
+avec les anciens index, encore 0,16 s avec les nouveaux).
 Correction : une requête qui ne lit que `media` (`MediaQueryBuilder.readsOnlyMedia`) est observée
 sur cette seule table (`MediaDao.pagingSourceOfMedia`, `observeCountOfMedia`…).
 Test : `MediaObservationTest`.
@@ -256,15 +267,15 @@ protège le SQL de Focale, pas le choix de chaque version.
 
 ## 7. Coûts restants et pistes
 
-- **Nombre total de `LimitOffsetPagingSource`** (53 ms, à chaque ouverture de source : saut,
+- **Nombre total de `LimitOffsetPagingSource`** (57 ms, à chaque ouverture de source : saut,
   invalidation) : Room compte `SELECT COUNT(*) FROM (requête triée)`, sous-requête lue ligne
   entière ; le compteur de la timeline, par l'index seul, prend 2 ms. Une `PagingSource` maison
   qui compterait par `MediaQueryBuilder.count` ramènerait un saut à une dizaine de millisecondes.
 - **Compteurs d'avancement** : chacun relit toute la bibliothèque à chaque lot de son étape, tant
   que l'avancement est affiché (onglet Recherche, réglages). Échantillonner les invalidations
   (un compte toutes les quelques secondes au plus) supprimerait ce coût.
-- **Position dans la grille** (142 ms, au retour de la visionneuse si le média n'est pas visible)
-  et **histogramme** (94 ms, seulement quand `media` change) : `strftime(…, 'localtime')` sur
+- **Position dans la grille** (144 ms, au retour de la visionneuse si le média n'est pas visible)
+  et **histogramme** (103 ms, seulement quand `media` change) : `strftime(…, 'localtime')` sur
   chaque ligne.
 - **Étiquettes de l'onglet Recherche** (354 ms, relancées à chaque lot de l'analyse quand l'onglet
   est affiché) : la couverture de chaque étiquette trie toutes ses photos ; un index
@@ -332,6 +343,8 @@ Rien n'est encore branché à la CI. Proposition, sur le modèle du job `smoke` 
    (`device.findObject(…).fling(Direction.DOWN)` × 10, puis la barre de défilement), et
    `StartupTimingMetric` pour le démarrage à froid, comparés en `CompilationMode.None()` et
    `CompilationMode.Partial(BaselineProfileMode.Require)` :
+
+   Par exemple (types de build `benchmarkRelease` créés par le plugin) :
 
    ```
    ./gradlew :macrobenchmark:connectedStandardBenchmarkReleaseAndroidTest \

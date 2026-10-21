@@ -2,6 +2,7 @@ package app.focale.perf
 
 import app.focale.ml.ImageMetrics
 import app.focale.ml.PlaceIndex
+import app.focale.ml.PlaceTranslations
 import app.focale.ml.semantic.ClipImageEncoder
 import app.focale.ml.semantic.ClipModels
 import app.focale.ml.semantic.ClipPreprocessor
@@ -84,6 +85,13 @@ class AnalysisComputeLoadTest {
         }
         assertTrue(found > 5_000)
         report.check("10 000 recherches du lieu le plus proche", lookups, budgetMs = 600.0, detail = "$found lieux trouvés")
+        // Noms français et anglais (PlaceNames), lus une fois par processus, sans les lieux.
+        var names = 0
+        val translations = report.samples(repeat = 3, warmup = 0) {
+            names = File(assets, "geo/cities.bin").inputStream().use(PlaceTranslations::read).size
+        }
+        assertTrue(names > 0)
+        report.check("chargement des noms traduits des lieux (une fois par processus)", translations, budgetMs = 250.0, detail = "$names noms")
     }
 
     @Test

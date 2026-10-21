@@ -95,6 +95,17 @@ class AnalysisQueueLoadTest {
         report.note("sélection des $batches lots, total", selection.sum())
         report.check("enregistrement d'un lot (analyse et étiquettes)", saving.toDoubleArray(), budgetMs = SAVE_BUDGET_MS)
         report.note("enregistrement des $batches lots, total", saving.sum())
+
+        // Début de chaque passage : clés de recherche des lieux recalculées (noms traduits) ; rien à
+        // réécrire d'ordinaire, chaque lieu une fois après une nouvelle base de lieux.
+        val translations = SyntheticLibrary.placeTranslations
+        val refresh = report.samples(repeat = 3) { assertEquals(0, dao.refreshPlaceKeys(translations::searchKey)) }
+        report.check("clés des lieux déjà à jour (début de chaque passage)", refresh, budgetMs = REFRESH_BUDGET_MS)
+        database.openHelper.writableDatabase.execSQL("UPDATE media_analysis SET place_key = lower(place) WHERE place IS NOT NULL")
+        var rewritten = 0
+        val rewrite = report.once { rewritten = dao.refreshPlaceKeys(translations::searchKey) }
+        assertTrue(rewritten > 0)
+        report.check("clés des lieux réécrites (nouvelle base de lieux)", rewrite, budgetMs = REWRITE_BUDGET_MS, detail = "$rewritten lieux")
     }
 
     @Test
@@ -168,5 +179,7 @@ class AnalysisQueueLoadTest {
         const val RESTART_BUDGET_MS = 1_000.0
         const val COUNTER_BUDGET_MS = 1_000.0
         const val SAVE_BUDGET_MS = 15.0
+        const val REFRESH_BUDGET_MS = 500.0
+        const val REWRITE_BUDGET_MS = 2_000.0
     }
 }

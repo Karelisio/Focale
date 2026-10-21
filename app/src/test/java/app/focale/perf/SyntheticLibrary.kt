@@ -12,9 +12,14 @@ import app.focale.core.database.PersonEntity
 import app.focale.core.mediastore.MediaStoreSource
 import app.focale.ml.ImageAnalyzer
 import app.focale.ml.LabelDictionary
+import app.focale.ml.OfflineGeocoder
+import app.focale.ml.Place
+import app.focale.ml.PlaceIndex
+import app.focale.ml.PlaceTranslations
 import app.focale.ml.text.RecognizedText
 import app.focale.ml.text.TextRecognitionStep
 import app.focale.people.FaceAnalysisStep
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.time.Instant
@@ -272,6 +277,7 @@ class SyntheticLibrary(val size: Int = DEFAULT_SIZE, seed: Long = SEED) {
         val photo = entity.mediaType == MediaQueryBuilder.MEDIA_TYPE_IMAGE
         val located = (kind == Kind.CAMERA_PHOTO || kind == Kind.CAMERA_VIDEO) && random.nextDouble() < 0.42
         val city = if (located) CITIES[pickCity(random)] else null
+        val place = city?.let { CITY_PLACES.getValue(it) }
         return MediaAnalysisEntity(
             mediaId = entity.id,
             analyzedModified = entity.dateModified,
@@ -280,9 +286,10 @@ class SyntheticLibrary(val size: Int = DEFAULT_SIZE, seed: Long = SEED) {
             blurScore = if (photo) (if (random.nextDouble() < 0.05) random.nextDouble(5.0, 100.0) else random.nextDouble(100.0, 4000.0)).toFloat() else null,
             latitude = city?.let { it.latitude + random.nextDouble(-0.05, 0.05) },
             longitude = city?.let { it.longitude + random.nextDouble(-0.05, 0.05) },
-            place = city?.name,
-            placeKey = city?.name?.let(LabelDictionary::normalize),
-            country = city?.country,
+            // Lieu tel que l'analyse l'enregistre : nom GeoNames, clé de ses noms traduits.
+            place = place?.name,
+            placeKey = place?.let { placeTranslations.searchKey(it.name, it.countryCode) },
+            country = place?.countryCode,
         )
     }
 
@@ -368,6 +375,7 @@ class SyntheticLibrary(val size: Int = DEFAULT_SIZE, seed: Long = SEED) {
         return buffer.array()
     }
 
+    /** Ville où l'on photographie ; son lieu enregistré est celui que trouve le géocodeur. */
     private class City(val name: String, val country: String, val latitude: Double, val longitude: Double)
 
     companion object {
@@ -391,6 +399,20 @@ class SyntheticLibrary(val size: Int = DEFAULT_SIZE, seed: Long = SEED) {
 
         /** Bibliothèque par défaut, construite une fois par processus de test. */
         val Default: SyntheticLibrary by lazy { SyntheticLibrary() }
+
+        /** Base des lieux embarquée (`assets/geo/cities.bin`), lue comme par l'application. */
+        private val placesFile: File by lazy {
+            listOf("src/main/assets", "app/src/main/assets").map { File(it, OfflineGeocoder.ASSET) }.first { it.exists() }
+        }
+
+        /** Noms français et anglais des lieux de la base (clés de recherche `place_key`). */
+        val placeTranslations: PlaceTranslations by lazy { placesFile.inputStream().use(PlaceTranslations::read) }
+
+        /** Lieu enregistré pour chaque ville : la localité la plus proche, comme le géocodeur. */
+        private val CITY_PLACES: Map<City, Place> by lazy {
+            val index = placesFile.inputStream().use(PlaceIndex::read)
+            CITIES.associateWith { city -> index.nearest(city.latitude, city.longitude) ?: Place(city.name, city.country, 0.0) }
+        }
 
         /** `BUCKET_ID` d'un dossier, calculé comme MediaStore (empreinte du chemin en minuscules). */
         fun bucketId(relativePath: String): Long = ("/storage/emulated/0/" + relativePath.trimEnd('/')).lowercase().hashCode().toLong()
