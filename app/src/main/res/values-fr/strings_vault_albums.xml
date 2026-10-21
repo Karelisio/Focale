@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : albums -->
+    <string name="vault_albums_title">Albums</string>
+    <string name="vault_all_items">Tous les éléments</string>
+    <plurals name="vault_album_new_photos">
+        <item quantity="one">%1$d nouvelle photo dans «\u00A0%2$s\u00A0»</item>
+        <item quantity="many">%1$,d nouvelles photos dans «\u00A0%2$s\u00A0»</item>
+        <item quantity="other">%1$,d nouvelles photos dans «\u00A0%2$s\u00A0»</item>
+    </plurals>
+    <plurals name="vault_album_new_videos">
+        <item quantity="one">%1$d nouvelle vidéo dans «\u00A0%2$s\u00A0»</item>
+        <item quantity="many">%1$,d nouvelles vidéos dans «\u00A0%2$s\u00A0»</item>
+        <item quantity="other">%1$,d nouvelles vidéos dans «\u00A0%2$s\u00A0»</item>
+    </plurals>
+    <plurals name="vault_album_new_items">
+        <item quantity="one">%1$d nouvel élément dans «\u00A0%2$s\u00A0»</item>
+        <item quantity="many">%1$,d nouveaux éléments dans «\u00A0%2$s\u00A0»</item>
+        <item quantity="other">%1$,d nouveaux éléments dans «\u00A0%2$s\u00A0»</item>
+    </plurals>
+    <string name="vault_album_empty_message">Ajoutez-y des photos de la galerie\u00A0: elles seules sont chiffrées, le reste du coffre n\'est pas touché.</string>
+    <string name="vault_album_delete_title">Supprimer «\u00A0%1$s\u00A0»\u00A0?</string>
+    <string name="vault_album_delete_message">L\'album est supprimé. Ses éléments restent dans le coffre, dans «\u00A0Tous les éléments\u00A0».</string>
+    <string name="vault_album_restore_action">Sortir du coffre</string>
+    <string name="vault_album_restore_title">Sortir «\u00A0%1$s\u00A0» du coffre\u00A0?</string>
+    <string name="vault_album_restore_message">Ses éléments sont déchiffrés et remis dans leurs dossiers d\'origine, dans la galerie, puis l\'album est retiré du coffre.</string>
+    <string name="vault_album_restore_confirm">Sortir</string>
+    <string name="vault_move_to_album">Déplacer vers un album</string>
+    <plurals name="vault_move_to_album_title">
+        <item quantity="one">Déplacer %d élément vers…</item>
+        <item quantity="many">Déplacer %d éléments vers…</item>
+        <item quantity="other">Déplacer %d éléments vers…</item>
+    </plurals>
+    <string name="vault_album_none">Aucun album</string>
+    <string name="vault_album_none_hint">Seulement dans «\u00A0Tous les éléments\u00A0»</string>
+    <plurals name="vault_moved_to_album">
+        <item quantity="one">%1$d élément déplacé dans «\u00A0%2$s\u00A0»</item>
+        <item quantity="many">%1$,d éléments déplacés dans «\u00A0%2$s\u00A0»</item>
+        <item quantity="other">%1$,d éléments déplacés dans «\u00A0%2$s\u00A0»</item>
+    </plurals>
+    <plurals name="vault_removed_from_album">
+        <item quantity="one">%d élément retiré de son album</item>
+        <item quantity="many">%,d éléments retirés de leur album</item>
+        <item quantity="other">%,d éléments retirés de leur album</item>
+    </plurals>
+
+    <!-- Coffre-fort : albums, depuis la galerie -->
+    <string name="vault_album_move_action">Déplacer dans le coffre-fort</string>
+    <string name="vault_album_move_title">Déplacer «\u00A0%1$s\u00A0» dans le coffre-fort\u00A0?</string>
+    <string name="vault_album_move_message">Le contenu de l\'album (%1$s) est chiffré sur cet appareil, et chaque original est supprimé de la galerie une fois sa copie chiffrée vérifiée. Vous pourrez y ajouter de nouvelles photos plus tard, sans rien déchiffrer.</string>
+    <plurals name="vault_album_photos">
+        <item quantity="one">%d photo</item>
+        <item quantity="many">%,d photos</item>
+        <item quantity="other">%,d photos</item>
+    </plurals>
+    <plurals name="vault_album_videos">
+        <item quantity="one">%d vidéo</item>
+        <item quantity="many">%,d vidéos</item>
+        <item quantity="other">%,d vidéos</item>
+    </plurals>
+    <string name="vault_album_photos_and_videos">%1$s et %2$s</string>
+    <plurals name="vault_album_moved">
+        <item quantity="one">«\u00A0%2$s\u00A0» déplacé dans le coffre-fort\u00A0: %1$d élément</item>
+        <item quantity="many">«\u00A0%2$s\u00A0» déplacé dans le coffre-fort\u00A0: %1$,d éléments</item>
+        <item quantity="other">«\u00A0%2$s\u00A0» déplacé dans le coffre-fort\u00A0: %1$,d éléments</item>
+    </plurals>
+    <string name="vault_album_choice">Album du coffre</string>
+    <string name="vault_album_locked">Le coffre est verrouillé\u00A0: les éléments y seront ajoutés sans album.</string>
+    <string name="vault_album_unlock">Déverrouiller pour choisir un album</string>
+</resources>

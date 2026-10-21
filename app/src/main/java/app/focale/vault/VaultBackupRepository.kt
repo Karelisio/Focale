@@ -6,6 +6,7 @@ import android.provider.DocumentsContract
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import app.focale.core.database.MediaQueryBuilder
+import app.focale.core.database.VaultAlbumEntity
 import app.focale.core.database.VaultDao
 import app.focale.core.database.VaultItemEntity
 import app.focale.core.di.IoDispatcher
@@ -83,7 +84,8 @@ sealed interface RestoreResult {
  * La restauration est tout ou rien : chaque élément est rechiffré avec la clé de l'appareil
  * dans un dossier d'attente, et n'entre dans le coffre qu'une fois l'archive authentifiée
  * jusqu'à sa fin. Mot de passe faux, archive tronquée ou modifiée, annulation ou erreur :
- * rien n'est importé. Les doublons (même contenu, à l'octet près) sont ignorés.
+ * rien n'est importé. Les doublons (même contenu, à l'octet près) sont ignorés. Les albums
+ * sont recréés avec leurs éléments, ou rejoints s'il en existe un de même nom et même origine.
  */
 @Singleton
 class VaultBackupRepository internal constructor(
@@ -134,11 +136,12 @@ class VaultBackupRepository internal constructor(
     ): ExportResult = withContext(io) {
         val result = try {
             val items = dao.observeAll().first()
+            val albums = dao.albums()
             onProgress(BackupProgress(BackupProgress.Stage.PREPARING, total = items.size))
             val progress = Progress(items.size, items.sumOf { it.size }, cancelled, coroutineContext.job, onProgress)
             var unreadable = 0
             openOutput(target).use { output ->
-                VaultArchive.write(output, password, manifestOf(items), iterations, progress::onBytes) { writer ->
+                VaultArchive.write(output, password, manifestOf(items, albums), iterations, progress::onBytes) { writer ->
                     progress.start()
                     for (item in items) {
                         progress.countingMedia = true
@@ -243,12 +246,12 @@ class VaultBackupRepository internal constructor(
         val known = KnownContent(existing, progress)
         if (!storage.hasRoomFor(known.newBytes(manifest.items))) throw NoSpaceLeft()
 
-        val staged = ArrayList<VaultItemEntity>(manifest.items.size)
+        val staged = ArrayList<Staged.Added>(manifest.items.size)
         var duplicates = 0
         var unreadable = 0
         for (entry in manifest.items) {
             when (val result = stage(entry, reader, known, progress)) {
-                is Staged.Added -> staged += result.entity
+                is Staged.Added -> staged += result
                 Staged.Duplicate -> duplicates++
                 Staged.Unreadable -> unreadable++
             }
@@ -257,7 +260,7 @@ class VaultBackupRepository internal constructor(
         // Fin authentifiée : sans elle, une archive tronquée passerait pour complète.
         reader.finish()
         progress.finishing()
-        commit(staged)
+        commit(staged, manifest)
         // Coffre vide restauré en entier (nouveau téléphone) : son contenu est sauvegardé,
         // à la date de l'archive ; le rappel « aucune sauvegarde » serait trompeur.
         if (existing.isEmpty() && staged.isNotEmpty() && unreadable == 0) {
@@ -272,7 +275,8 @@ class VaultBackupRepository internal constructor(
     }
 
     private sealed interface Staged {
-        data class Added(val entity: VaultItemEntity) : Staged
+        /** [album] : album de l'élément dans l'archive ([ArchiveAlbum.id]). */
+        data class Added(val entity: VaultItemEntity, val album: Long?) : Staged
         data object Duplicate : Staged
         data object Unreadable : Staged
     }
@@ -317,29 +321,53 @@ class VaultBackupRepository internal constructor(
                 thumbFileName = thumbFile.name.takeIf { hasThumbnail },
                 addedAt = entry.addedAt,
             ),
+            album = entry.album,
         )
     }
 
     /**
      * Ajoute au coffre les éléments vérifiés : fichiers déplacés depuis le dossier d'attente
-     * (même volume, simple renommage), puis entrées insérées en une seule transaction.
+     * (même volume, simple renommage), puis entrées et albums insérés en une seule transaction.
      */
-    private suspend fun commit(staged: List<VaultItemEntity>) = withContext(NonCancellable) {
+    private suspend fun commit(staged: List<Staged.Added>, manifest: ArchiveManifest) = withContext(NonCancellable) {
         val moved = ArrayList<File>()
         try {
-            for (entity in staged) {
-                for (name in listOfNotNull(entity.fileName, entity.thumbFileName)) {
+            for (added in staged) {
+                for (name in listOfNotNull(added.entity.fileName, added.entity.thumbFileName)) {
                     val target = storage.file(name)
                     if (!storage.stagingFile(name).renameTo(target)) throw IOException("Déplacement impossible : $name")
                     moved += target
                 }
             }
-            if (staged.isNotEmpty()) dao.insertAll(staged)
+            val groups = groupsOf(staged, manifest)
+            if (groups.isNotEmpty()) dao.insertRestored(groups)
         } catch (error: Throwable) {
             moved.forEach(File::delete)
             throw error
         }
     }
+
+    /**
+     * Éléments ajoutés, par album. Un album de l'archive n'est recréé que s'il reçoit un élément,
+     * ou s'il était vide dans le coffre sauvegardé ; un élément dont l'album manque reste hors album.
+     */
+    private fun groupsOf(staged: List<Staged.Added>, manifest: ArchiveManifest): Map<VaultAlbumEntity?, List<VaultItemEntity>> {
+        val albums = manifest.albums.associate { it.id to it.toEntity() }
+        val used = manifest.items.mapNotNullTo(HashSet()) { it.album }
+        val groups = LinkedHashMap<VaultAlbumEntity?, MutableList<VaultItemEntity>>()
+        manifest.albums.filter { it.id !in used }.forEach { groups[albums.getValue(it.id)] = ArrayList() }
+        for (added in staged) groups.getOrPut(added.album?.let(albums::get)) { ArrayList() } += added.entity
+        return groups
+    }
+
+    private fun ArchiveAlbum.toEntity() = VaultAlbumEntity(
+        id = id,
+        name = name,
+        sourceBucketId = sourceBucketId,
+        sourcePath = sourcePath,
+        createdAt = createdAt,
+        lastImportAt = lastImportAt,
+    )
 
     /**
      * Contenus déjà présents, par empreinte SHA-256 du média en clair. Un élément du coffre
@@ -402,8 +430,18 @@ class VaultBackupRepository internal constructor(
         false
     }
 
-    private fun manifestOf(items: List<VaultItemEntity>) = ArchiveManifest(
+    private fun manifestOf(items: List<VaultItemEntity>, albums: List<VaultAlbumEntity>) = ArchiveManifest(
         createdAt = System.currentTimeMillis(),
+        albums = albums.map { album ->
+            ArchiveAlbum(
+                id = album.id,
+                name = album.name,
+                createdAt = album.createdAt,
+                sourceBucketId = album.sourceBucketId,
+                sourcePath = album.sourcePath,
+                lastImportAt = album.lastImportAt,
+            )
+        },
         items = items.map { item ->
             ArchiveEntry(
                 name = item.displayName,
@@ -417,6 +455,7 @@ class VaultBackupRepository internal constructor(
                 height = item.height,
                 durationMs = item.duration,
                 hasThumbnail = item.thumbFileName != null,
+                album = item.albumId,
             )
         },
     )

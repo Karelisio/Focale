@@ -30,11 +30,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.DeleteForever
@@ -79,6 +81,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -107,25 +110,29 @@ import app.focale.core.util.Formatters
 import app.focale.ui.components.EmptyState
 import app.focale.ui.components.SelectionIndicator
 import app.focale.ui.components.SelectionTopBar
+import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultArchive
-import app.focale.vault.VaultImage
 import app.focale.vault.VaultItem
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import java.time.LocalDate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Coffre-fort : création du code, déverrouillage (code ou biométrie), puis grille du
- * contenu chiffré avec restauration, suppression, sauvegarde et restauration d'une
- * sauvegarde. Captures d'écran interdites.
+ * Coffre-fort : création du code, déverrouillage (code ou biométrie), puis albums et grille
+ * du contenu chiffré avec restauration, suppression, rangement en albums, sauvegarde et
+ * restauration d'une sauvegarde. Captures d'écran interdites.
+ *
+ * @param onUnlocked déverrouillage seul, demandé depuis la galerie : appelé une fois le coffre
+ *   ouvert, sans en montrer le contenu.
  */
 @Composable
 fun VaultScreen(
     onBack: () -> Unit,
     onOpen: (VaultItem) -> Unit,
     onAdd: () -> Unit,
+    onOpenAlbum: (VaultAlbum) -> Unit,
+    onUnlocked: (() -> Unit)? = null,
     viewModel: VaultViewModel = hiltViewModel(),
     backupViewModel: VaultBackupViewModel = hiltViewModel(),
 ) {
@@ -215,8 +222,12 @@ fun VaultScreen(
         )
     }
 
+    val currentOnUnlocked by rememberUpdatedState(onUnlocked)
+    LaunchedEffect(mode) { if (mode == VaultMode.UNLOCKED) currentOnUnlocked?.invoke() }
+
     val pane = when {
         mode == VaultMode.LOADING -> VaultPane.LOADING
+        mode == VaultMode.UNLOCKED && onUnlocked != null -> VaultPane.LOADING
         mode == VaultMode.UNLOCKED && !changingPin -> VaultPane.CONTENT
         else -> VaultPane.PIN
     }
@@ -240,6 +251,7 @@ fun VaultScreen(
                 onBack = onBack,
                 onOpen = onOpen,
                 onAdd = onAdd,
+                onOpenAlbum = onOpenAlbum,
                 onToggleBiometric = { enabled ->
                     if (enabled) enableBiometrics?.invoke() else viewModel.setBiometricEnabled(false)
                 },
@@ -334,38 +346,45 @@ private fun VaultContentPane(
     onBack: () -> Unit,
     onOpen: (VaultItem) -> Unit,
     onAdd: () -> Unit,
+    onOpenAlbum: (VaultAlbum) -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
     onPickBackupTarget: () -> Unit,
     onRestoreBackup: () -> Unit,
 ) {
-    val haptics = LocalHapticFeedback.current
     val items by viewModel.items.collectAsStateWithLifecycle()
+    val albums by viewModel.albums.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val biometricEnabled by viewModel.biometricEnabled.collectAsStateWithLifecycle()
     val lastBackupAt by backupViewModel.lastBackupAt.collectAsStateWithLifecycle()
     val selecting = selection.isNotEmpty()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var choosingAlbum by rememberSaveable { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyGridState()
     val fabExpanded by remember { derivedStateOf { gridState.firstVisibleItemIndex == 0 } }
     BackHandler(enabled = selecting, onBack = viewModel::clearSelection)
 
     if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            icon = { Icon(Icons.Outlined.DeleteForever, contentDescription = null) },
-            title = { Text(pluralStringResource(R.plurals.trash_delete_confirm, selection.size, selection.size)) },
-            text = { Text(stringResource(R.string.vault_delete_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    viewModel.deleteSelection()
-                }) { Text(stringResource(R.string.action_delete)) }
+        VaultDeleteDialog(
+            count = selection.size,
+            onConfirm = {
+                confirmDelete = false
+                viewModel.deleteSelection()
             },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.action_cancel)) }
+            onDismiss = { confirmDelete = false },
+        )
+    }
+    if (choosingAlbum && selecting) {
+        VaultAlbumPickerSheet(
+            count = selection.size,
+            albums = albums,
+            showNone = true,
+            onPick = {
+                choosingAlbum = false
+                viewModel.moveSelection(it)
             },
+            onDismiss = { choosingAlbum = false },
         )
     }
     VaultBackupDialogs(viewModel = backupViewModel, onPickTarget = onPickBackupTarget)
@@ -425,7 +444,7 @@ private fun VaultContentPane(
             val list = items
             when {
                 list == null -> Unit
-                list.isEmpty() -> EmptyState(
+                list.isEmpty() && albums.isEmpty() -> EmptyState(
                     icon = Icons.Outlined.Lock,
                     title = stringResource(R.string.vault_empty_title),
                     message = stringResource(R.string.vault_empty_message),
@@ -467,52 +486,103 @@ private fun VaultContentPane(
                             LinearWavyProgressIndicator(Modifier.fillMaxWidth().padding(16.dp))
                         }
                     }
-                    items(list, key = { it.id }) { item ->
-                        val selected = item.id in selection
-                        VaultCell(
-                            item = item,
-                            selected = selected,
-                            selectionMode = selecting,
-                            onClick = {
-                                if (selecting) {
-                                    haptics.performHapticFeedback(
-                                        if (selected) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn,
-                                    )
-                                    viewModel.toggle(item.id)
-                                } else {
-                                    onOpen(item)
-                                }
-                            },
-                            onLongClick = {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.toggle(item.id)
-                            },
-                        )
+                    if (albums.isNotEmpty()) {
+                        item(key = "albums", span = { GridItemSpan(maxLineSpan) }, contentType = "albums") {
+                            VaultAlbumsShelf(albums, onOpen = onOpenAlbum)
+                        }
+                        item(key = "all", span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
+                            VaultSectionHeader(stringResource(R.string.vault_all_items))
+                        }
                     }
+                    vaultItems(list, selection, onToggle = viewModel::toggle, onOpen = onOpen)
                 }
             }
 
             if (selecting) {
-                HorizontalFloatingToolbar(
-                    expanded = true,
-                    colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(bottom = 16.dp),
-                ) {
-                    TextButton(onClick = viewModel::restoreSelection, enabled = !busy) {
-                        Icon(Icons.Outlined.RestorePage, contentDescription = null)
-                        Text(stringResource(R.string.action_restore), modifier = Modifier.padding(start = 8.dp))
-                    }
-                    TextButton(onClick = { confirmDelete = true }, enabled = !busy) {
-                        Icon(Icons.Outlined.DeleteForever, contentDescription = null)
-                        Text(stringResource(R.string.action_delete), modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
+                VaultSelectionToolbar(
+                    busy = busy,
+                    onRestore = viewModel::restoreSelection,
+                    onMoveToAlbum = { choosingAlbum = true },
+                    onDelete = { confirmDelete = true },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
             }
         }
     }
+}
+
+/** Cases des éléments [items] : un appui ouvre ou, en mode sélection, coche ; l'appui long sélectionne. */
+internal fun LazyGridScope.vaultItems(
+    items: List<VaultItem>,
+    selection: Set<Long>,
+    onToggle: (Long) -> Unit,
+    onOpen: (VaultItem) -> Unit,
+) {
+    val selecting = selection.isNotEmpty()
+    items(items, key = { it.id }) { item ->
+        val haptics = LocalHapticFeedback.current
+        val selected = item.id in selection
+        VaultCell(
+            item = item,
+            selected = selected,
+            selectionMode = selecting,
+            onClick = {
+                if (selecting) {
+                    haptics.performHapticFeedback(if (selected) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
+                    onToggle(item.id)
+                } else {
+                    onOpen(item)
+                }
+            },
+            onLongClick = {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                onToggle(item.id)
+            },
+        )
+    }
+}
+
+/** Barre flottante du mode sélection : restaurer, ranger dans un album, supprimer. */
+@Composable
+internal fun VaultSelectionToolbar(
+    busy: Boolean,
+    onRestore: () -> Unit,
+    onMoveToAlbum: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    HorizontalFloatingToolbar(
+        expanded = true,
+        colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),
+        modifier = modifier
+            .navigationBarsPadding()
+            .padding(bottom = 16.dp),
+    ) {
+        TextButton(onClick = onRestore, enabled = !busy) {
+            Icon(Icons.Outlined.RestorePage, contentDescription = null)
+            Text(stringResource(R.string.action_restore), modifier = Modifier.padding(start = 8.dp))
+        }
+        IconButton(onClick = onMoveToAlbum, enabled = !busy, shapes = IconButtonDefaults.shapes()) {
+            Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = stringResource(R.string.vault_move_to_album))
+        }
+        TextButton(onClick = onDelete, enabled = !busy) {
+            Icon(Icons.Outlined.DeleteForever, contentDescription = null)
+            Text(stringResource(R.string.action_delete), modifier = Modifier.padding(start = 8.dp))
+        }
+    }
+}
+
+/** Confirmation de la suppression définitive de [count] éléments du coffre. */
+@Composable
+internal fun VaultDeleteDialog(count: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.DeleteForever, contentDescription = null) },
+        title = { Text(pluralStringResource(R.plurals.trash_delete_confirm, count, count)) },
+        text = { Text(stringResource(R.string.vault_delete_message)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.action_delete)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
 }
 
 /** Sauvegarde et réglages propres au coffre, accessibles seulement une fois déverrouillé. */
@@ -618,15 +688,8 @@ private fun VaultCell(
         ) {
             val thumbName = item.thumbFileName
             if (thumbName != null) {
-                val context = LocalContext.current
                 AsyncImage(
-                    model = remember(thumbName) {
-                        ImageRequest.Builder(context)
-                            .data(VaultImage(thumbName))
-                            .size(THUMBNAIL_SIDE)
-                            .memoryCacheKey(thumbnailKey(thumbName))
-                            .build()
-                    },
+                    model = rememberVaultThumbnail(thumbName),
                     contentDescription = item.displayName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),

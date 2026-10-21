@@ -6,6 +6,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Slideshow
@@ -153,16 +154,19 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
                     IconButton(onClick = { showSort = true }, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Rounded.Tune, contentDescription = stringResource(R.string.sort_title))
                     }
+                    val onMoveToVault = viewModel::requestMoveToVault.takeIf { viewModel.canMoveToVault && count > 0 }
                     if (isUserAlbum) {
-                        AlbumMenu(onRename = { renaming = true }, onDelete = { confirmDelete = true })
+                        AlbumMenu(onRename = { renaming = true }, onDelete = { confirmDelete = true }, onMoveToVault = onMoveToVault)
                     }
                     folderHidden?.let { hidden ->
-                        FolderMenu(hidden = hidden, onHiddenChange = viewModel::setFolderHidden)
+                        FolderMenu(hidden = hidden, onHiddenChange = viewModel::setFolderHidden, onMoveToVault = onMoveToVault)
                     }
                 },
                 scrollBehavior = scrollBehavior,
             )
         },
+        // Album passé en entier dans le coffre : vide (dossier) ou supprimé (album de l'application).
+        onAlbumMovedToVault = onBack,
         emptyContent = {
             EmptyState(
                 icon = Icons.Outlined.PhotoAlbum,
@@ -174,7 +178,7 @@ private fun CollectionContent(viewModel: CollectionViewModel, onBack: () -> Unit
 }
 
 @Composable
-private fun AlbumMenu(onRename: () -> Unit, onDelete: () -> Unit) {
+private fun AlbumMenu(onRename: () -> Unit, onDelete: () -> Unit, onMoveToVault: (() -> Unit)?) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }, shapes = IconButtonDefaults.shapes()) {
@@ -197,13 +201,19 @@ private fun AlbumMenu(onRename: () -> Unit, onDelete: () -> Unit) {
                     onDelete()
                 },
             )
+            onMoveToVault?.let { move ->
+                MoveToVaultItem {
+                    open = false
+                    move()
+                }
+            }
         }
     }
 }
 
-/** Menu d'un album dossier : masquer ou réafficher ses médias dans la timeline. */
+/** Menu d'un album dossier : masquer ou réafficher ses médias dans la timeline, le passer dans le coffre. */
 @Composable
-private fun FolderMenu(hidden: Boolean, onHiddenChange: (Boolean) -> Unit) {
+private fun FolderMenu(hidden: Boolean, onHiddenChange: (Boolean) -> Unit, onMoveToVault: (() -> Unit)?) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }, shapes = IconButtonDefaults.shapes()) {
@@ -220,6 +230,21 @@ private fun FolderMenu(hidden: Boolean, onHiddenChange: (Boolean) -> Unit) {
                     onHiddenChange(!hidden)
                 },
             )
+            onMoveToVault?.let { move ->
+                MoveToVaultItem {
+                    open = false
+                    move()
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun MoveToVaultItem(onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.vault_album_move_action)) },
+        leadingIcon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+        onClick = onClick,
+    )
 }

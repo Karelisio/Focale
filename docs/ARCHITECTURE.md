@@ -138,7 +138,8 @@ Index : `date_taken`, `bucket_id`, `media_type`.
 | `favorite` | médias favoris |
 | `album` / `album_media` | albums virtuels et leur contenu |
 | `trash_item` | corbeille applicative (API 29 uniquement) |
-| `vault_item` | entrées du coffre (fichiers chiffrés) |
+| `vault_item` | entrées du coffre (fichiers chiffrés), avec leur album du coffre (`album_id`, facultatif) |
+| `vault_album` | albums du coffre : nom, dossier d'origine d'un album-dossier, date du dernier import |
 | `search_history` | recherches récentes |
 | `face_scan` / `face` / `person` | visages détectés, empreintes SFace et personnes (nom, vignette, masquée, épinglée) |
 | `person_refusal` | paires de personnes déclarées distinctes (« Pas la même ») |
@@ -263,6 +264,32 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   aléatoire, blocage croissant après 5 erreurs) et biométrie forte (classe 3) en
   option ; état déverrouillé en mémoire seulement, reverrouillage dès la mise en
   arrière-plan ou après 1, 5 ou 15 min ; `FLAG_SECURE` sur les écrans du coffre.
+
+#### Albums du coffre
+- De la métadonnée seulement : `vault_album`, et `vault_item.album_id` (clé étrangère
+  `ON DELETE SET NULL` : supprimer un album garde ses éléments, hors album ; « Tous les
+  éléments » montre tout le coffre). Chaque élément restant chiffré à part, remplir, compléter
+  ou réorganiser un album ne chiffre que les médias qui entrent dans le coffre : ceux qui y
+  sont ne sont ni relus ni réécrits (`VaultAlbumImportTest`), et l'import n'exige toujours pas
+  de déverrouiller le coffre.
+- Album entier (menu de `CollectionScreen`, même pipeline d'import) : un dossier rejoint
+  l'album du coffre lié à son `BUCKET_ID` (`source_bucket_id`, `source_path`), créé au besoin ;
+  un album de l'application devient un nouvel album du même nom, puis il est supprimé s'il a
+  été vidé (il ne resterait dans la galerie que son nom, indice de ce qu'il contenait).
+- Nouveaux médias d'un album-dossier (bannière dans l'album, « Ajouter ») : médias du dossier,
+  hors corbeille, dont `date_added` suit `last_import_at` à une minute près (`DATE_ADDED` est à
+  la seconde et l'index suit MediaStore avec retard). Les originaux importés ayant quitté
+  MediaStore, la marge ne repropose que ceux dont la suppression a échoué. `last_import_at` est
+  l'instant pris juste avant l'instantané du dossier (après une synchronisation), retenu dès
+  qu'un média est entré.
+- Depuis la galerie, « Déplacer vers le coffre » choisit l'album (aucun, existant, nouveau). Les
+  noms des albums du coffre n'apparaissent que coffre déverrouillé, dans un dialogue protégé
+  des captures (`SecureFlagPolicy.SecureOn`) ; verrouillé, la sélection entre hors album, ou le
+  coffre se déverrouille seul (`VaultUnlockRoute`) sans montrer son contenu. Rien du coffre
+  n'apparaît dans la galerie.
+- Sauvegarde : le manifeste ajoute les albums et l'album de chaque élément, en champs
+  facultatifs ; une sauvegarde antérieure se restaure sans albums, une nouvelle les recrée (ou
+  rejoint un album de même nom et de même origine).
 
 ### 6.7 Partage sans métadonnées
 Option « retirer les métadonnées au partage » : copies dans `cache/shared/`,
@@ -394,7 +421,8 @@ NavHost racine
 ├── Viewer(query, mediaId)       plein écran, au-dessus des onglets
 ├── Editor(mediaId)
 ├── Slideshow(query, mediaId)
-└── VaultViewer(itemId)
+├── VaultAlbum(albumId)
+└── VaultViewer(itemId, albumId)
 ```
 Le `NavHost` racine est enveloppé dans un `SharedTransitionLayout` : la miniature
 de la grille et l'image de la visionneuse partagent la même clé

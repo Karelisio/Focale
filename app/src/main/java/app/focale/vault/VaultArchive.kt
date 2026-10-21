@@ -42,7 +42,9 @@ import kotlinx.serialization.json.Json
  * Flux chiffré, clé HKDF-SHA256(clé dérivée, « focale-vault-backup/stream »)
  *   manifeste      4 o   longueur, suivie du JSON UTF-8 de [ArchiveManifest] : date de
  *                        création puis, par élément, nom, type MIME, dates, dossier
- *                        d'origine, dimensions, durée, taille, présence d'une miniature
+ *                        d'origine, dimensions, durée, taille, présence d'une miniature,
+ *                        album ; enfin les albums (champs facultatifs : absents des
+ *                        sauvegardes antérieures, ignorés par les versions qui les précèdent)
  *   éléments             dans l'ordre du manifeste, le média puis la miniature, en blobs
  *   fin du flux
  *
@@ -224,7 +226,7 @@ object VaultArchive {
     private fun ArchiveManifest.isWellFormed(): Boolean = items.all { entry ->
         entry.name.isNotBlank() && entry.mimeType.isNotBlank() &&
             entry.size >= 0 && entry.durationMs >= 0 && entry.width >= 0 && entry.height >= 0
-    }
+    } && albums.all { it.name.isNotBlank() } && albums.distinctBy { it.id }.size == albums.size
 }
 
 /** Description de l'archive, en tête du flux chiffré. */
@@ -233,10 +235,26 @@ data class ArchiveManifest(
     /** Création de la sauvegarde (ms depuis l'époque). */
     val createdAt: Long,
     val items: List<ArchiveEntry>,
+    /** Albums du coffre ; aucun dans les sauvegardes antérieures aux albums. */
+    val albums: List<ArchiveAlbum> = emptyList(),
 ) {
     /** Taille cumulée des médias en clair. */
     val totalBytes: Long get() = items.sumOf { it.size }
 }
+
+/** Album du coffre, recréé à la restauration. */
+@Serializable
+data class ArchiveAlbum(
+    /** Identifiant propre à l'archive, auquel renvoie [ArchiveEntry.album]. */
+    val id: Long,
+    val name: String,
+    val createdAt: Long,
+    /** Dossier d'origine d'un album-dossier : `BUCKET_ID` et `RELATIVE_PATH`. */
+    val sourceBucketId: Long? = null,
+    val sourcePath: String? = null,
+    /** Dernier import depuis le dossier d'origine (ms). */
+    val lastImportAt: Long? = null,
+)
 
 /** Métadonnées d'un élément du coffre, telles que restaurées. */
 @Serializable
@@ -254,6 +272,8 @@ data class ArchiveEntry(
     val height: Int,
     val durationMs: Long,
     val hasThumbnail: Boolean,
+    /** Album de l'élément ([ArchiveAlbum.id]), null hors album ou dans une sauvegarde antérieure. */
+    val album: Long? = null,
 )
 
 /** Archive refusée à la lecture. */

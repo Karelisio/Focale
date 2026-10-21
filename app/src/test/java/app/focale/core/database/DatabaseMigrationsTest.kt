@@ -19,23 +19,50 @@ class DatabaseMigrationsTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun `la migration 1 vers 3 conserve les données et produit le schéma attendu par Room`() {
+    fun `la migration 1 vers 4 conserve les données et produit le schéma attendu par Room`() {
         val file = databaseAt(version = 1) { db ->
             db.execSQL("INSERT INTO favorite (media_id, added_at) VALUES (42, 1000)")
+            db.execSQL(vaultItem(id = 3))
         }
-        // Room applique les migrations puis vérifie que le schéma obtenu est celui de la version 3.
+        // Room applique les migrations puis vérifie que le schéma obtenu est celui de la dernière version.
         openMigrated(file) { db ->
             assertEquals(42L, db.longOf("SELECT media_id FROM favorite"))
             db.execSQL("INSERT INTO media_text (media_id, analyzed_modified, version, text, text_key) VALUES (42, 0, 1, 'Café', 'cafe')")
             assertEquals(1L, db.longOf("SELECT COUNT(*) FROM media_text"))
             db.execSQL("INSERT INTO person (id, name, cover_face_id, hidden, created_at) VALUES (1, NULL, NULL, 0, 0)")
             assertEquals(0L, db.longOf("SELECT pinned FROM person WHERE id = 1"))
-            assertEquals(3, db.version)
+            assertEquals(1L, db.longOf("SELECT COUNT(*) FROM vault_item WHERE id = 3 AND album_id IS NULL"))
+            db.execSQL("INSERT INTO vault_album (id, name, created_at) VALUES (1, 'Vacances', 0)")
+            assertEquals(1L, db.longOf("SELECT COUNT(*) FROM vault_album"))
+            assertEquals(LATEST, db.version)
         }
     }
 
     @Test
-    fun `la migration 2 vers 3 ajoute l'épinglage et les paires refusées`() {
+    fun `la migration 3 vers 4 ajoute les albums du coffre sans toucher à ses éléments`() {
+        val file = databaseAt(version = 3) { db ->
+            db.execSQL(vaultItem(id = 5))
+            db.execSQL(vaultItem(id = 6))
+        }
+        openMigrated(file) { db ->
+            // Éléments existants intacts, hors album : ils restent dans « Tous les éléments ».
+            assertEquals("5.bin", db.stringOf("SELECT file_name FROM vault_item WHERE id = 5"))
+            assertEquals(2L, db.longOf("SELECT COUNT(*) FROM vault_item WHERE album_id IS NULL"))
+            db.execSQL(
+                "INSERT INTO vault_album (id, name, source_bucket_id, source_path, created_at, last_import_at) " +
+                    "VALUES (1, 'WhatsApp Images', 77, 'Pictures/WhatsApp Images/', 3000, 3000)",
+            )
+            db.execSQL("UPDATE vault_item SET album_id = 1")
+            assertEquals("Pictures/WhatsApp Images/", db.stringOf("SELECT source_path FROM vault_album WHERE id = 1"))
+            // Album supprimé : ses éléments restent dans le coffre, hors album (clé étrangère active).
+            db.execSQL("DELETE FROM vault_album WHERE id = 1")
+            assertEquals(2L, db.longOf("SELECT COUNT(*) FROM vault_item WHERE album_id IS NULL"))
+            assertEquals(LATEST, db.version)
+        }
+    }
+
+    @Test
+    fun `la migration depuis la version 2 ajoute l'épinglage et les paires refusées`() {
         val file = databaseAt(version = 2) { db ->
             db.execSQL("INSERT INTO person (id, name, cover_face_id, hidden, created_at) VALUES (7, 'Léa', NULL, 0, 0)")
             db.execSQL("INSERT INTO person (id, name, cover_face_id, hidden, created_at) VALUES (8, NULL, NULL, 1, 0)")
@@ -49,9 +76,14 @@ class DatabaseMigrationsTest {
             db.execSQL("INSERT INTO person_refusal (person_low, person_high) VALUES (7, 8)")
             db.execSQL("DELETE FROM person WHERE id = 8")
             assertEquals(0L, db.longOf("SELECT COUNT(*) FROM person_refusal"))
-            assertEquals(3, db.version)
+            assertEquals(LATEST, db.version)
         }
     }
+
+    private fun vaultItem(id: Long) =
+        "INSERT INTO vault_item (id, display_name, mime_type, media_type, original_path, date_taken, size, width, height, " +
+            "duration, file_name, thumb_file_name, added_at) " +
+            "VALUES ($id, 'IMG_$id.jpg', 'image/jpeg', 1, 'DCIM/Camera/', 1000, 42, 4000, 3000, 0, '$id.bin', '$id.thumb', 2000)"
 
     /** Base en version [version], créée à partir du schéma exporté par Room. */
     private fun databaseAt(version: Int, fill: (SQLiteDatabase) -> Unit): File {
@@ -81,6 +113,11 @@ class DatabaseMigrationsTest {
         cursor.getLong(0)
     }
 
+    private fun SupportSQLiteDatabase.stringOf(sql: String): String = query(sql).use { cursor ->
+        cursor.moveToFirst()
+        cursor.getString(0)
+    }
+
     private fun createFromSchema(db: SQLiteDatabase, schemaFile: File) {
         val schema = JSONObject(schemaFile.readText()).getJSONObject("database")
         val entities = schema.getJSONArray("entities")
@@ -101,5 +138,6 @@ class DatabaseMigrationsTest {
         /** Dossier courant des tests : le module app. */
         val SCHEMAS = File("schemas/app.focale.core.database.FocaleDatabase")
         const val TABLE_NAME = "\${TABLE_NAME}"
+        const val LATEST = 4
     }
 }

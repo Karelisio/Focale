@@ -1,5 +1,6 @@
 package app.focale.ui.actions
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,20 +14,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -51,11 +58,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavHostController
 import app.focale.R
 import app.focale.core.image.thumbnail
 import app.focale.core.model.Album
@@ -63,6 +74,9 @@ import app.focale.core.model.FolderTarget
 import app.focale.core.model.MediaItem
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.VaultRoute
+import app.focale.ui.navigation.VaultUnlockRoute
+import app.focale.vault.VaultAlbum
+import app.focale.vault.VaultDestination
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -70,18 +84,22 @@ import kotlinx.coroutines.launch
 /**
  * Affiche les dialogues et messages de [MediaActions] : choix d'album ou de dossier,
  * renommage, partage, snackbar avec « Annuler ».
+ *
+ * @param onAlbumMoved l'album affiché est passé en entier dans le coffre : l'écran se ferme.
  */
 @Composable
 fun MediaActionsHost(
     actions: MediaActions,
     snackbarHostState: SnackbarHostState,
     onActionDone: () -> Unit = {},
+    onAlbumMoved: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val rootNav = LocalRootNavController.current
     val dialog by actions.dialog.collectAsStateWithLifecycle()
     val progress by actions.progress.collectAsStateWithLifecycle()
     val currentOnDone by rememberUpdatedState(onActionDone)
+    val currentOnAlbumMoved by rememberUpdatedState(onAlbumMoved)
     val undoLabel = stringResource(R.string.action_undo)
 
     LaunchedEffect(actions) {
@@ -89,6 +107,11 @@ fun MediaActionsHost(
             when (event) {
                 is ActionEvent.Share -> context.startActivity(event.intent)
                 is ActionEvent.Done -> currentOnDone()
+                is ActionEvent.AlbumMoved -> {
+                    // Message qui survit à l'écran fermé, comme à la sortie de l'éditeur.
+                    Toast.makeText(context, event.text.resolve(context), Toast.LENGTH_SHORT).show()
+                    currentOnAlbumMoved()
+                }
                 // Snackbar dans sa propre coroutine : les événements suivants (fin de
                 // l'action…) ne doivent pas attendre sa disparition.
                 is ActionEvent.Message -> launch {
@@ -131,45 +154,162 @@ fun MediaActionsHost(
             onConfirm = { actions.rename(current.item, it) },
             onDismiss = actions::dismissDialog,
         )
-        is ActionDialog.MoveToVault -> MoveToVaultDialog(
-            count = current.ids.size,
-            vaultConfigured = current.vaultConfigured,
-            onConfirm = {
-                if (current.vaultConfigured) {
-                    actions.moveToVault(current.ids)
-                } else {
-                    actions.dismissDialog()
-                    rootNav.navigate(VaultRoute)
-                }
-            },
-            onDismiss = actions::dismissDialog,
-        )
+        is ActionDialog.MoveToVault -> if (current.vaultConfigured) {
+            val unlocked by actions.vaultUnlocked.collectAsStateWithLifecycle()
+            val albums by remember(actions) { actions.vaultAlbums }.collectAsStateWithLifecycle(initialValue = emptyList())
+            MoveToVaultDialog(
+                count = current.ids.size,
+                unlocked = unlocked,
+                albums = albums,
+                onConfirm = { actions.moveToVault(current.ids, it) },
+                // Le dialogue reste ouvert : au retour, coffre déverrouillé, il propose ses albums.
+                onUnlock = { rootNav.navigate(VaultUnlockRoute) { launchSingleTop = true } },
+                onDismiss = actions::dismissDialog,
+            )
+        } else {
+            VaultSetupDialog(onSetUp = { setUpVault(actions, rootNav) }, onDismiss = actions::dismissDialog)
+        }
+        is ActionDialog.MoveAlbumToVault -> if (current.vaultConfigured) {
+            MoveAlbumToVaultDialog(
+                name = current.album.name,
+                photos = current.photos,
+                videos = current.videos,
+                onConfirm = { actions.moveAlbumToVault(current.album, current.photos + current.videos) },
+                onDismiss = actions::dismissDialog,
+            )
+        } else {
+            VaultSetupDialog(onSetUp = { setUpVault(actions, rootNav) }, onDismiss = actions::dismissDialog)
+        }
         null -> Unit
     }
 }
 
+/**
+ * Confirmation du déplacement d'une sélection vers le coffre, et choix de son album. Les noms
+ * des albums du coffre ne s'affichent que s'il est déverrouillé, dans une fenêtre protégée des
+ * captures ; verrouillé, il reçoit la sélection hors album, ou se déverrouille pour en choisir un.
+ */
 @Composable
-private fun MoveToVaultDialog(count: Int, vaultConfigured: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+private fun MoveToVaultDialog(
+    count: Int,
+    unlocked: Boolean,
+    albums: List<VaultAlbum>,
+    onConfirm: (VaultDestination) -> Unit,
+    onUnlock: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Album choisi : null hors album, NEW_VAULT_ALBUM pour un nouvel album.
+    var choice by rememberSaveable { mutableStateOf<Long?>(null) }
+    var name by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(unlocked) { if (!unlocked) choice = null }
+    val destination = when (val chosen = choice.takeIf { unlocked }) {
+        null -> VaultDestination.None
+        NEW_VAULT_ALBUM -> VaultDestination.NewAlbum(name)
+        else -> VaultDestination.Album(chosen)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(securePolicy = if (unlocked) SecureFlagPolicy.SecureOn else SecureFlagPolicy.Inherit),
+        icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+        title = { Text(pluralStringResource(R.plurals.vault_move_title, count, count)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(stringResource(R.string.vault_move_message))
+                Text(
+                    text = stringResource(R.string.vault_album_choice),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 20.dp, bottom = 4.dp),
+                )
+                if (unlocked) {
+                    AlbumOption(stringResource(R.string.vault_album_none), selected = choice == null) { choice = null }
+                    albums.forEach { album ->
+                        AlbumOption(album.name, selected = choice == album.id) { choice = album.id }
+                    }
+                    AlbumOption(stringResource(R.string.album_new), selected = choice == NEW_VAULT_ALBUM) { choice = NEW_VAULT_ALBUM }
+                    if (choice == NEW_VAULT_ALBUM) {
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = { Text(stringResource(R.string.album_name)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        )
+                    }
+                } else {
+                    Text(
+                        text = stringResource(R.string.vault_album_locked),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = onUnlock, modifier = Modifier.padding(top = 4.dp)) {
+                        Icon(Icons.Outlined.LockOpen, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                        Text(stringResource(R.string.vault_album_unlock), modifier = Modifier.padding(start = ButtonDefaults.IconSpacing))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(destination) },
+                enabled = destination !is VaultDestination.NewAlbum || destination.name.isNotBlank(),
+            ) { Text(stringResource(R.string.action_move)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
+}
+
+private const val NEW_VAULT_ALBUM = -1L
+
+/** Ligne à choix unique d'un dialogue. */
+@Composable
+private fun AlbumOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(vertical = 2.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null, modifier = Modifier.padding(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Déplacement d'un album entier : ce qui sera chiffré, et ce qu'il advient des originaux. */
+@Composable
+private fun MoveAlbumToVaultDialog(name: String, photos: Int, videos: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val photoCount = pluralStringResource(R.plurals.vault_album_photos, photos, photos)
+    val videoCount = pluralStringResource(R.plurals.vault_album_videos, videos, videos)
+    val content = when {
+        videos == 0 -> photoCount
+        photos == 0 -> videoCount
+        else -> stringResource(R.string.vault_album_photos_and_videos, photoCount, videoCount)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
-        title = {
-            Text(
-                if (vaultConfigured) {
-                    pluralStringResource(R.plurals.vault_move_title, count, count)
-                } else {
-                    stringResource(R.string.vault_setup_needed_title)
-                },
-            )
-        },
-        text = {
-            Text(stringResource(if (vaultConfigured) R.string.vault_move_message else R.string.vault_setup_needed_message))
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(if (vaultConfigured) R.string.action_move else R.string.action_set_up))
-            }
-        },
+        title = { Text(stringResource(R.string.vault_album_move_title, name)) },
+        text = { Text(stringResource(R.string.vault_album_move_message, content)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.action_move)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
+    )
+}
+
+private fun setUpVault(actions: MediaActions, rootNav: NavHostController) {
+    actions.dismissDialog()
+    rootNav.navigate(VaultRoute)
+}
+
+/** Coffre sans code : invitation à le configurer avant d'y déplacer quoi que ce soit. */
+@Composable
+private fun VaultSetupDialog(onSetUp: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+        title = { Text(stringResource(R.string.vault_setup_needed_title)) },
+        text = { Text(stringResource(R.string.vault_setup_needed_message)) },
+        confirmButton = { TextButton(onClick = onSetUp) { Text(stringResource(R.string.action_set_up)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
 }

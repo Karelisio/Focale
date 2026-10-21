@@ -19,6 +19,7 @@ import app.focale.data.AlbumRepository
 import app.focale.data.DateGrouping
 import app.focale.data.MediaRepository
 import app.focale.data.toGridItems
+import app.focale.ui.actions.AlbumSource
 import app.focale.ui.actions.MediaActions
 import app.focale.ui.components.GridSelection
 import app.focale.ui.navigation.CollectionKind
@@ -164,5 +165,21 @@ class CollectionViewModel @Inject constructor(
             albumRepository.setCover(id, mediaId)
             gridSelection.clear()
         }
+    }
+
+    // ── Coffre-fort ────────────────────────────────────────────────────────────────
+
+    /** Album dossier ou virtuel : il peut passer en entier dans le coffre. */
+    val canMoveToVault: Boolean = (kind == CollectionKind.FOLDER && baseQuery.bucketId != null) ||
+        (kind == CollectionKind.USER_ALBUM && albumId != null)
+
+    /** Tout l'album, filtres et tri de la grille mis à part. */
+    fun requestMoveToVault() {
+        val source = when {
+            kind == CollectionKind.FOLDER && baseQuery.bucketId != null -> AlbumSource.Folder(baseQuery.bucketId, title.value)
+            kind == CollectionKind.USER_ALBUM && albumId != null -> AlbumSource.User(albumId, title.value)
+            else -> return
+        }
+        actions.requestMoveAlbumToVault(source)
     }
 }

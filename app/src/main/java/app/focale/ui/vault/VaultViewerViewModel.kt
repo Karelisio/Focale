@@ -37,7 +37,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Visionneuse du coffre : parcourt son contenu à partir de l'élément touché. */
+/** Visionneuse du coffre : parcourt son contenu, ou celui d'un album, à partir de l'élément touché. */
 @HiltViewModel
 class VaultViewerViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
@@ -48,13 +48,16 @@ class VaultViewerViewModel @Inject constructor(
     settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
+    private val route = savedStateHandle.toRoute<VaultViewerRoute>()
+
     /** Élément courant, restauré après recréation. */
-    val startId: Long = savedStateHandle[KEY_CURRENT] ?: savedStateHandle.toRoute<VaultViewerRoute>().itemId
+    val startId: Long = savedStateHandle[KEY_CURRENT] ?: route.itemId
 
     val unlocked: StateFlow<Boolean> = session.unlocked
 
+    /** Contenu parcouru : l'album d'où l'on vient, ou tout le coffre. */
     val items: StateFlow<List<VaultItem>?> = session.unlocked
-        .flatMapLatest { unlocked -> if (unlocked) repository.observeItems() else flowOf(null) }
+        .flatMapLatest { unlocked -> if (unlocked) repository.observeItems(route.albumId) else flowOf(null) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val settings: StateFlow<AppSettings> = settingsRepository.current

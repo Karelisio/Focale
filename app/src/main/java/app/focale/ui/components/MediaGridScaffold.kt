@@ -63,6 +63,7 @@ fun MediaGridScaffold(
     extraSelectionActions: List<ExtraAction> = emptyList(),
     gridState: LazyGridState = rememberLazyGridState(),
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    onAlbumMovedToVault: () -> Unit = {},
     emptyContent: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -85,7 +86,12 @@ fun MediaGridScaffold(
         }
     }
 
-    MediaActionsHost(actions = actions, snackbarHostState = snackbarHostState, onActionDone = onClearSelection)
+    MediaActionsHost(
+        actions = actions,
+        snackbarHostState = snackbarHostState,
+        onActionDone = onClearSelection,
+        onAlbumMoved = onAlbumMovedToVault,
+    )
 
     Scaffold(
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

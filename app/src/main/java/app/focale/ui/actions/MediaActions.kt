@@ -6,6 +6,7 @@ import app.focale.R
 import app.focale.core.model.Album
 import app.focale.core.model.FolderTarget
 import app.focale.core.model.MediaItem
+import app.focale.core.model.MediaQuery
 import app.focale.core.util.UiText
 import app.focale.data.AlbumRepository
 import app.focale.data.FavoriteRepository
@@ -13,19 +14,26 @@ import app.focale.data.MediaOperations
 import app.focale.data.MediaRepository
 import app.focale.data.MediaSharer
 import app.focale.data.OperationResult
+import app.focale.vault.VaultAlbum
+import app.focale.vault.VaultDestination
 import app.focale.vault.VaultPinStore
 import app.focale.vault.VaultRepository
+import app.focale.vault.VaultSession
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Dialogue ouvert par une action (choix d'album, de dossier, renommage…). */
 @Immutable
@@ -37,6 +45,31 @@ sealed interface ActionDialog {
 
     /** Confirmation du déplacement vers le coffre, ou invitation à le configurer d'abord. */
     data class MoveToVault(val ids: List<Long>, val vaultConfigured: Boolean) : ActionDialog
+
+    /** Confirmation du déplacement d'un album entier : [photos] et [videos] à chiffrer. */
+    data class MoveAlbumToVault(
+        val album: AlbumSource,
+        val photos: Int,
+        val videos: Int,
+        val vaultConfigured: Boolean,
+    ) : ActionDialog
+}
+
+/** Album de la galerie déplacé en entier dans le coffre. */
+@Immutable
+sealed interface AlbumSource {
+    val name: String
+    val query: MediaQuery
+
+    /** Dossier de l'appareil : son album du coffre en reste lié, pour en recevoir les nouveaux médias. */
+    data class Folder(val bucketId: Long, override val name: String) : AlbumSource {
+        override val query: MediaQuery get() = MediaQuery(bucketId = bucketId)
+    }
+
+    /** Album de l'application. */
+    data class User(val id: Long, override val name: String) : AlbumSource {
+        override val query: MediaQuery get() = MediaQuery(albumId = id)
+    }
 }
 
 /** Opération longue en cours (chiffrement vers le coffre…). */
@@ -50,6 +83,9 @@ sealed interface ActionEvent {
 
     /** L'action a abouti : l'écran peut quitter le mode sélection. */
     data object Done : ActionEvent
+
+    /** Album entier passé dans le coffre : l'écran de l'album se ferme sur ce message. */
+    data class AlbumMoved(val text: UiText) : ActionEvent
 }
 
 /**
@@ -67,6 +103,7 @@ class MediaActions @Inject constructor(
     private val sharer: MediaSharer,
     private val vault: VaultRepository,
     private val vaultPins: VaultPinStore,
+    private val vaultSession: VaultSession,
 ) {
     private lateinit var scope: CoroutineScope
 
@@ -84,6 +121,12 @@ class MediaActions @Inject constructor(
 
     val userAlbums: Flow<List<Album.User>> get() = albums.observeUserAlbums()
     val folders: Flow<List<Album.Folder>> get() = albums.observeFolders()
+
+    val vaultUnlocked: StateFlow<Boolean> get() = vaultSession.unlocked
+
+    /** Albums du coffre, vides tant qu'il est verrouillé : leurs noms ne s'affichent pas autrement. */
+    val vaultAlbums: Flow<List<VaultAlbum>>
+        get() = vaultSession.unlocked.flatMapLatest { unlocked -> if (unlocked) vault.observeAlbums() else flowOf(emptyList()) }
 
     fun bind(scope: CoroutineScope) {
         this.scope = scope
@@ -182,19 +225,67 @@ class MediaActions @Inject constructor(
         _dialog.value = ActionDialog.MoveToVault(ids.toList(), vaultConfigured = vaultPins.hasPin.first())
     }
 
-    /** Chiffre les médias dans le coffre puis retire les originaux de la galerie. */
-    fun moveToVault(ids: List<Long>) = run(busy = true) {
+    /** Chiffre les médias dans le coffre, dans l'album [destination], puis retire les originaux de la galerie. */
+    fun moveToVault(ids: List<Long>, destination: VaultDestination = VaultDestination.None) = run(busy = true) {
         _dialog.value = null
         val items = media.getByIds(ids)
-        _progress.value = ActionProgress(UiText.Res(R.string.vault_progress, listOf(0, items.size)))
+        encryptionProgress(0, items.size)
         try {
-            val result = vault.import(items) { done, total ->
-                _progress.value = ActionProgress(UiText.Res(R.string.vault_progress, listOf(done, total)))
-            }
-            report(result, R.plurals.message_moved_to_vault)
+            report(vault.import(items, destination, ::encryptionProgress), R.plurals.message_moved_to_vault)
         } finally {
             _progress.value = null
         }
+    }
+
+    fun requestMoveAlbumToVault(album: AlbumSource) = run {
+        val items = media.list(album.query)
+        if (items.isEmpty()) return@run
+        val videos = items.count { it.isVideo }
+        _dialog.value = ActionDialog.MoveAlbumToVault(album, items.size - videos, videos, vaultPins.hasPin.first())
+    }
+
+    /**
+     * Déplace tout [album] dans un album du coffre du même nom. Un dossier y reste lié : ses
+     * nouveaux médias seront proposés dans le coffre. Un album de l'application vidé est
+     * supprimé : il ne resterait de lui, dans la galerie, que son nom.
+     */
+    fun moveAlbumToVault(album: AlbumSource, count: Int) = run(busy = true) {
+        _dialog.value = null
+        encryptionProgress(0, count)
+        try {
+            val result = when (album) {
+                is AlbumSource.Folder -> vault.importFolder(album.bucketId, album.name, ::encryptionProgress)
+                // Comme l'import, la suppression de l'album vidé va à son terme si l'écran se ferme.
+                is AlbumSource.User -> withContext(NonCancellable) {
+                    val items = media.list(album.query)
+                    val result = vault.import(items, VaultDestination.NewAlbum(album.name), ::encryptionProgress)
+                    if (result is OperationResult.Success && result.count > 0) albums.delete(album.id)
+                    result
+                }
+            }
+            if (result is OperationResult.Success && result.count > 0) {
+                val text = UiText.Plural(R.plurals.vault_album_moved, result.count, listOf(result.count, album.name))
+                channel.send(ActionEvent.AlbumMoved(text))
+            } else {
+                report(result, R.plurals.message_moved_to_vault)
+            }
+        } finally {
+            _progress.value = null
+        }
+    }
+
+    /** Ajoute à l'album du coffre [albumId] les médias arrivés dans son dossier d'origine depuis le dernier import. */
+    fun moveNewToVault(albumId: Long, count: Int) = run(busy = true) {
+        encryptionProgress(0, count)
+        try {
+            report(vault.importNewFromSource(albumId, ::encryptionProgress), R.plurals.message_moved_to_vault)
+        } finally {
+            _progress.value = null
+        }
+    }
+
+    private fun encryptionProgress(done: Int, total: Int) {
+        _progress.value = ActionProgress(UiText.Res(R.string.vault_progress, listOf(done, total)))
     }
 
     /** Retire des médias d'un album virtuel (les fichiers ne sont pas touchés). */
