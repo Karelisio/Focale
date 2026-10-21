@@ -187,20 +187,34 @@ interface VaultDao {
      * Ajoute en une transaction les éléments d'une sauvegarde restaurée : chaque groupe rejoint
      * son album, celui de même nom et de même dossier d'origine s'il existe, un nouvel album
      * sinon (l'identifiant des clés ne sert qu'à les distinguer) ; la clé null regroupe les
-     * éléments sans album.
+     * éléments sans album. Les éléments déjà présents [attach] rejoignent leur album s'ils ne
+     * sont rangés dans aucun.
      */
     @Transaction
-    suspend fun insertRestored(groups: Map<VaultAlbumEntity?, List<VaultItemEntity>>) {
+    suspend fun insertRestored(
+        groups: Map<VaultAlbumEntity?, List<VaultItemEntity>>,
+        attach: Map<VaultAlbumEntity, List<Long>> = emptyMap(),
+    ) {
         val existing = albums()
+        val resolved = HashMap<VaultAlbumEntity, Long>()
+        suspend fun idOf(wanted: VaultAlbumEntity): Long = resolved.getOrPut(wanted) {
+            existing.firstOrNull {
+                it.name == wanted.name && it.sourceBucketId == wanted.sourceBucketId && it.sourcePath == wanted.sourcePath
+            }?.id ?: insertAlbum(wanted.copy(id = 0))
+        }
         for ((album, items) in groups) {
-            val albumId = album?.let { wanted ->
-                existing.firstOrNull {
-                    it.name == wanted.name && it.sourceBucketId == wanted.sourceBucketId && it.sourcePath == wanted.sourcePath
-                }?.id ?: insertAlbum(wanted.copy(id = 0))
-            }
+            val albumId = album?.let { idOf(it) }
             if (items.isNotEmpty()) insertAll(items.map { it.copy(albumId = albumId) })
         }
+        for ((album, ids) in attach) {
+            val albumId = idOf(album)
+            ids.chunked(500).forEach { attachToAlbum(it, albumId) }
+        }
     }
+
+    /** Range dans [albumId] ceux des éléments [ids] qui ne sont dans aucun album ; 500 au plus. */
+    @Query("UPDATE vault_item SET album_id = :albumId WHERE id IN (:ids) AND album_id IS NULL")
+    suspend fun attachToAlbum(ids: List<Long>, albumId: Long)
 }
 
 /**

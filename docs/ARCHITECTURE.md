@@ -323,7 +323,8 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   n'apparaît dans la galerie.
 - Sauvegarde : le manifeste ajoute les albums et l'album de chaque élément, en champs
   facultatifs ; une sauvegarde antérieure se restaure sans albums, une nouvelle les recrée (ou
-  rejoint un album de même nom et de même origine).
+  rejoint un album de même nom et de même origine). Un élément déjà présent (même contenu) et
+  rangé dans aucun album rejoint celui de la sauvegarde ; déjà rangé, il reste où il est.
 
 ### 6.7 Partage sans métadonnées
 Option « retirer les métadonnées au partage » : copies dans `cache/shared/`,

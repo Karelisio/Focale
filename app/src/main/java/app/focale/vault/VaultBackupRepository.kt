@@ -85,7 +85,8 @@ sealed interface RestoreResult {
  * dans un dossier d'attente, et n'entre dans le coffre qu'une fois l'archive authentifiée
  * jusqu'à sa fin. Mot de passe faux, archive tronquée ou modifiée, annulation ou erreur :
  * rien n'est importé. Les doublons (même contenu, à l'octet près) sont ignorés. Les albums
- * sont recréés avec leurs éléments, ou rejoints s'il en existe un de même nom et même origine.
+ * sont recréés avec leurs éléments, ou rejoints s'il en existe un de même nom et même origine ;
+ * un élément déjà présent dans le coffre, dans aucun album, rejoint celui de la sauvegarde.
  */
 @Singleton
 class VaultBackupRepository internal constructor(
@@ -247,12 +248,25 @@ class VaultBackupRepository internal constructor(
         if (!storage.hasRoomFor(known.newBytes(manifest.items))) throw NoSpaceLeft()
 
         val staged = ArrayList<Staged.Added>(manifest.items.size)
+        // Éléments déjà dans le coffre, hors album, à ranger dans leur album de l'archive.
+        val attachments = LinkedHashMap<Long, Long>()
         var duplicates = 0
         var unreadable = 0
         for (entry in manifest.items) {
-            when (val result = stage(entry, reader, known, progress)) {
+            when (val result = stage(entry, reader, known, progress, staged.size)) {
                 is Staged.Added -> staged += result
-                Staged.Duplicate -> duplicates++
+                is Staged.Duplicate -> {
+                    duplicates++
+                    entry.album?.let { album ->
+                        when (val owner = result.owner) {
+                            is Owner.Existing -> if (owner.entity.albumId == null) attachments.putIfAbsent(owner.entity.id, album)
+                            is Owner.Restored -> {
+                                val added = staged[owner.index]
+                                if (added.album == null) staged[owner.index] = added.copy(album = album)
+                            }
+                        }
+                    }
+                }
                 Staged.Unreadable -> unreadable++
             }
             progress.itemDone()
@@ -260,7 +274,7 @@ class VaultBackupRepository internal constructor(
         // Fin authentifiée : sans elle, une archive tronquée passerait pour complète.
         reader.finish()
         progress.finishing()
-        commit(staged, manifest)
+        commit(staged, attachments, manifest)
         // Coffre vide restauré en entier (nouveau téléphone) : son contenu est sauvegardé,
         // à la date de l'archive ; le rappel « aucune sauvegarde » serait trompeur.
         if (existing.isEmpty() && staged.isNotEmpty() && unreadable == 0) {
@@ -277,12 +291,22 @@ class VaultBackupRepository internal constructor(
     private sealed interface Staged {
         /** [album] : album de l'élément dans l'archive ([ArchiveAlbum.id]). */
         data class Added(val entity: VaultItemEntity, val album: Long?) : Staged
-        data object Duplicate : Staged
+
+        /** Contenu déjà présent : dans le coffre, ou plus haut dans l'archive. */
+        data class Duplicate(val owner: Owner) : Staged
         data object Unreadable : Staged
     }
 
-    /** Rechiffre dans le dossier d'attente l'élément suivant de l'archive. */
-    private fun stage(entry: ArchiveEntry, reader: VaultArchiveReader, known: KnownContent, progress: Progress): Staged {
+    /** Élément qui porte déjà un contenu. */
+    private sealed interface Owner {
+        data class Existing(val entity: VaultItemEntity) : Owner
+
+        /** Élément de l'archive ajouté juste avant, à l'indice [index] des éléments retenus. */
+        data class Restored(val index: Int) : Owner
+    }
+
+    /** Rechiffre dans le dossier d'attente l'élément suivant de l'archive, retenu à l'indice [index]. */
+    private fun stage(entry: ArchiveEntry, reader: VaultArchiveReader, known: KnownContent, progress: Progress, index: Int): Staged {
         if (!storage.hasRoomFor(entry.size)) throw NoSpaceLeft()
         val base = UUID.randomUUID().toString()
         val mediaFile = storage.stagingFile(base + VaultStorage.MEDIA_SUFFIX)
@@ -298,11 +322,11 @@ class VaultBackupRepository internal constructor(
             return Staged.Unreadable
         }
         val hash = digest.digest()
-        if (known.contains(size, hash)) {
+        known.find(size, hash)?.let { owner ->
             mediaFile.delete()
-            return Staged.Duplicate
+            return Staged.Duplicate(owner)
         }
-        known.add(size, hash)
+        known.add(size, hash, Owner.Restored(index))
         val thumbFile = storage.stagingFile(base + VaultStorage.THUMB_SUFFIX)
         val hasThumbnail = entry.hasThumbnail && crypto.encrypt(thumbnail, thumbFile) > 0 && thumbnail.complete
         if (!hasThumbnail) thumbFile.delete()
@@ -327,9 +351,15 @@ class VaultBackupRepository internal constructor(
 
     /**
      * Ajoute au coffre les éléments vérifiés : fichiers déplacés depuis le dossier d'attente
-     * (même volume, simple renommage), puis entrées et albums insérés en une seule transaction.
+     * (même volume, simple renommage), puis entrées et albums insérés en une seule transaction,
+     * où les éléments déjà présents ([attachments] : élément → album de l'archive) rejoignent
+     * leur album.
      */
-    private suspend fun commit(staged: List<Staged.Added>, manifest: ArchiveManifest) = withContext(NonCancellable) {
+    private suspend fun commit(
+        staged: List<Staged.Added>,
+        attachments: Map<Long, Long>,
+        manifest: ArchiveManifest,
+    ) = withContext(NonCancellable) {
         val moved = ArrayList<File>()
         try {
             for (added in staged) {
@@ -339,8 +369,12 @@ class VaultBackupRepository internal constructor(
                     moved += target
                 }
             }
-            val groups = groupsOf(staged, manifest)
-            if (groups.isNotEmpty()) dao.insertRestored(groups)
+            val albums = manifest.albums.associate { it.id to it.toEntity() }
+            val groups = groupsOf(staged, manifest, albums)
+            val attach = attachments.entries
+                .mapNotNull { (item, album) -> albums[album]?.let { it to item } }
+                .groupBy({ it.first }, { it.second })
+            if (groups.isNotEmpty() || attach.isNotEmpty()) dao.insertRestored(groups, attach)
         } catch (error: Throwable) {
             moved.forEach(File::delete)
             throw error
@@ -351,8 +385,11 @@ class VaultBackupRepository internal constructor(
      * Éléments ajoutés, par album. Un album de l'archive n'est recréé que s'il reçoit un élément,
      * ou s'il était vide dans le coffre sauvegardé ; un élément dont l'album manque reste hors album.
      */
-    private fun groupsOf(staged: List<Staged.Added>, manifest: ArchiveManifest): Map<VaultAlbumEntity?, List<VaultItemEntity>> {
-        val albums = manifest.albums.associate { it.id to it.toEntity() }
+    private fun groupsOf(
+        staged: List<Staged.Added>,
+        manifest: ArchiveManifest,
+        albums: Map<Long, VaultAlbumEntity>,
+    ): Map<VaultAlbumEntity?, List<VaultItemEntity>> {
         val used = manifest.items.mapNotNullTo(HashSet()) { it.album }
         val groups = LinkedHashMap<VaultAlbumEntity?, MutableList<VaultItemEntity>>()
         manifest.albums.filter { it.id !in used }.forEach { groups[albums.getValue(it.id)] = ArrayList() }
@@ -376,18 +413,19 @@ class VaultBackupRepository internal constructor(
      */
     private inner class KnownContent(existing: List<VaultItemEntity>, private val progress: Progress) {
         private val unhashed = existing.groupByTo(HashMap<Long, MutableList<VaultItemEntity>>()) { it.size }
-        private val hashes = HashMap<Long, MutableList<ByteArray>>()
+        private val hashes = HashMap<Long, MutableList<Pair<ByteArray, Owner>>>()
 
         /** Place à prévoir : éléments dont aucun contenu présent n'a la taille. */
         fun newBytes(entries: List<ArchiveEntry>): Long = entries.filter { it.size !in unhashed }.sumOf { it.size }
 
-        fun contains(size: Long, hash: ByteArray): Boolean {
-            unhashed.remove(size)?.forEach { entity -> fingerprint(entity)?.let { add(size, it) } }
-            return hashes[size]?.any { MessageDigest.isEqual(it, hash) } == true
+        /** Élément qui porte déjà ce contenu, null s'il est nouveau. */
+        fun find(size: Long, hash: ByteArray): Owner? {
+            unhashed.remove(size)?.forEach { entity -> fingerprint(entity)?.let { add(size, it, Owner.Existing(entity)) } }
+            return hashes[size]?.firstOrNull { (known, _) -> MessageDigest.isEqual(known, hash) }?.second
         }
 
-        fun add(size: Long, hash: ByteArray) {
-            hashes.getOrPut(size) { ArrayList() } += hash
+        fun add(size: Long, hash: ByteArray, owner: Owner) {
+            hashes.getOrPut(size) { ArrayList() } += hash to owner
         }
 
         private fun fingerprint(entity: VaultItemEntity): ByteArray? = try {
