@@ -64,7 +64,8 @@ cible, les choix techniques structurants et le découpage du développement.
                 │
 ┌───────────────┴───────────── Arrière-plan ───────────────────────────────┐
 │ WorkManager : synchro MediaStore, analyse (étiquettes, pHash, flou,      │
-│ GPS, lieu, texte), purge corbeille, rafraîchissement du widget           │
+│ GPS, lieu, texte), purge corbeille, rafraîchissement du widget, coffre : │
+│ import, contrôle au lancement, nouveaux médias, purge de sa corbeille    │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 

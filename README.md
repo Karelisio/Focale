@@ -18,8 +18,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   grille, vidéos (Media3) aux commandes Material You, photos animées (Motion Photos
   Google et Samsung, appui long pour les lire), GIF animés, photos Ultra HDR affichées
   en HDR (Android 14+), rotation à deux doigts (enregistrée sans perte dans l'orientation
-  EXIF des JPEG et WebP), panneau d'infos EXIF / localisation, texte de la photo
-  sélectionnable et copiable.
+  EXIF des JPEG et WebP, et dans leur orientation XMP que lisent Lightroom et d'autres
+  logiciels), panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
+  copiable.
 - **Application par défaut** : photos et vidéos des autres applications (« Ouvrir avec »,
   revue de l'appareil photo) ouvertes parmi celles de leur dossier, ou seules (messageries,
   téléchargements) ; Réglages → Fichiers indique l'application par défaut et aide à choisir Focale.
@@ -58,7 +59,10 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   biométrie, reverrouillage automatique, captures d'écran interdites ; sauvegarde
   chiffrée par mot de passe (`.fvault`, PBKDF2 + AES-256-GCM en flux) à restaurer sur un
   autre téléphone. Albums du coffre : un album entier y entre d'un geste, et ses nouvelles
-  photos s'y ajoutent sans rien déchiffrer (chaque élément est chiffré à part).
+  photos s'y ajoutent sans rien déchiffrer (chaque élément est chiffré à part), signalées
+  par une notification qui les y met d'un geste. Mise au coffre en tâche de fond (service
+  au premier plan, reprise sans rien rechiffrer, état réparé au lancement), tri mémorisé
+  des éléments et des albums, corbeille de 30 jours. Une photo qui en sort retrouve sa date.
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir

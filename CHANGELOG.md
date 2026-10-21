@@ -5,6 +5,22 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.7.0
+
+- Une photo sortie du coffre-fort garde sa date d'origine : elle reprend sa place dans la
+  timeline au lieu d'y revenir en tête (aussi pour un album sorti du coffre, une sauvegarde
+  restaurée, une copie ou une retouche enregistrée en copie).
+- Coffre-fort : tri des éléments (date de prise de vue, date d'ajout, nom, taille) et des
+  albums (nom, date, nombre d'éléments), mémorisé.
+- Mise au coffre fiable : un long déplacement continue en arrière-plan, avec sa progression
+  en notification, et reprend sans rien rechiffrer si Focale est fermée. Un déplacement
+  interrompu ne laisse plus de photo en double : au besoin, « Retirer de la galerie ».
+- Notification « N nouvelles photos dans « Dossier » à mettre au coffre » pour les albums
+  liés à un dossier, avec « Mettre au coffre » en un geste.
+- Corbeille du coffre : un élément supprimé y reste 30 jours avant d'être effacé.
+- Restauration d'une sauvegarde du coffre : une photo déjà présente rejoint son album.
+- Rotation enregistrée : l'orientation XMP suit, pour Lightroom et les autres logiciels.
+
 ## 1.6.0
 
 - Albums dans le coffre-fort : « Déplacer dans le coffre-fort » depuis un album, puis
