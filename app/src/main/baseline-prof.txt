@@ -1,18 +1,49 @@
 # Profil de référence (« baseline profile ») écrit à la main : Android compile à
-# l'installation le code du démarrage, de la timeline et de la visionneuse, au lieu
-# d'attendre que l'usage le révèle. Les bibliothèques (Compose, Room, Coil, Media3…)
-# fournissent leurs propres profils, fusionnés par le plugin Android.
+# l'installation le code du démarrage et des parcours fréquents, au lieu d'attendre que l'usage
+# le révèle. Les bibliothèques (Compose, Room, Coil, Media3…) fournissent leurs propres profils,
+# fusionnés par le plugin Android. Génération et mesure sur émulateur : docs/PERFORMANCE.md.
 #
 # Syntaxe : H (chaud), S (démarrage), P (après démarrage), L (classe) ; ** couvre les
 # sous-paquets. Les noms d'origine sont réécrits par R8 dans la build release.
+#
+# Choix des drapeaux :
+# - S : exécuté avant la première image de la timeline. Ces méthodes sont regroupées dans la
+#   partie « démarrage » du DEX : à réserver à ce qui tourne vraiment au lancement.
+# - H : appelé souvent ou dans des boucles (défilement, calcul par pixel ou par empreinte) :
+#   compilé dès l'installation au lieu d'être interprété puis compilé à la volée.
+# - P : utilisé après le démarrage ; avec H, compilé sans alourdir la partie démarrage.
 
-# Démarrage : application, activité, injection, thème et navigation.
+# Démarrage : application, activité, injection (classes de base Hilt et composant Dagger),
+# thème, navigation, pastille de mise à jour de la barre de navigation, nouveautés.
 HSPLapp/focale/FocaleApplication;->**(**)**
 HSPLapp/focale/MainActivity;->**(**)**
 HSPLapp/focale/Hilt_**;->**(**)**
+HSPLapp/focale/DaggerFocaleApplication_HiltComponents_**;->**(**)**
 HSPLapp/focale/core/**;->**(**)**
 HSPLapp/focale/ui/theme/**;->**(**)**
 HSPLapp/focale/ui/navigation/**;->**(**)**
+HSPLapp/focale/ui/update/**;->**(**)**
+HSPLapp/focale/update/**;->**(**)**
+HSPLapp/focale/ui/whatsnew/**;->**(**)**
+HSPLapp/focale/whatsnew/**;->**(**)**
+
+# Lancement des tâches de fond (AppInitializer) : analyse, corbeille. Le paquet sert aussi
+# pendant toute l'analyse (worker, file des lots), d'où H.
+HSPLapp/focale/work/**;->**(**)**
+
+# Au lancement, le coffre et les personnes ne font que s'inscrire : verrouillage automatique,
+# contrôles planifiés, nouveaux médias des dossiers liés, fetchers Coil des images chiffrées
+# et des vignettes de visages. Le reste de ces paquets vient plus bas, après le démarrage.
+HSPLapp/focale/vault/VaultModule**;->**(**)**
+HSPLapp/focale/vault/VaultSession**;->**(**)**
+HSPLapp/focale/vault/VaultImports**;->**(**)**
+HSPLapp/focale/vault/VaultNotifications**;->**(**)**
+HSPLapp/focale/vault/VaultRepairWorker**;->**(**)**
+HSPLapp/focale/vault/VaultTrashPurgeWorker**;->**(**)**
+HSPLapp/focale/vault/VaultNewMediaWatch**;->**(**)**
+HSPLapp/focale/vault/VaultImage**;->**(**)**
+HSPLapp/focale/people/PeopleModule**;->**(**)**
+HSPLapp/focale/people/FaceThumbnail**;->**(**)**
 
 # Timeline : grille, en-têtes, défilement rapide, souvenirs, sélection.
 HSPLapp/focale/data/**;->**(**)**
@@ -20,13 +51,46 @@ HSPLapp/focale/ui/timeline/**;->**(**)**
 HSPLapp/focale/ui/components/**;->**(**)**
 HSPLapp/focale/ui/actions/**;->**(**)**
 
-# Visionneuse : pages photo et vidéo, barres, informations.
+# Visionneuse : pages photo et vidéo (photos animées comprises), barres, informations.
 HPLapp/focale/ui/viewer/**;->**(**)**
+HPLapp/focale/video/**;->**(**)**
 
-# Onglets secondaires, utilisés après le démarrage.
+# Onglets secondaires et grilles (albums, dossiers, favoris), utilisés après le démarrage.
 HPLapp/focale/ui/albums/**;->**(**)**
-HPLapp/focale/ui/search/**;->**(**)**
-HPLapp/focale/ui/more/**;->**(**)**
 HPLapp/focale/ui/collection/**;->**(**)**
+HPLapp/focale/ui/more/**;->**(**)**
+
+# Recherche : requête analysée et traduite à chaque frappe (ml), recherche par le sens
+# (empreinte de la phrase comparée à toutes les photos : ml/semantic), avancement de l'analyse.
+HPLapp/focale/ui/search/**;->**(**)**
+HPLapp/focale/ui/analysis/**;->**(**)**
+
+# Analyse en arrière-plan, des heures durant sur une grande bibliothèque, juste après
+# l'installation : boucles par pixel (dHash, netteté, alignement des visages, prétraitement
+# CLIP), géocodage, regroupement des visages, comparaison des empreintes (recherche).
+HPLapp/focale/ml/**;->**(**)**
+HPLapp/focale/people/**;->**(**)**
+
+# Personnes : liste, personne, revue des visages, photos ensemble.
+HPLapp/focale/ui/people/**;->**(**)**
+
+# Coffre une fois déverrouillé : grilles et albums, tri, visionneuse, déchiffrement en flux
+# des images (Coil) et des vidéos (Media3), corbeille ; sauvegardes chiffrées, à la demande ou
+# automatiques en tâche de fond (archive de tout le coffre, chiffrée en flux).
+HPLapp/focale/ui/vault/**;->**(**)**
+HPLapp/focale/vault/**;->**(**)**
+
+# Éditeur : rendu des réglages et des filtres (matrices de couleur), recadrage et redressement
+# (règle graduée et geste à deux doigts : géométrie recalculée à chaque image), dessin ;
+# montage vidéo.
+HPLapp/focale/ui/editor/**;->**(**)**
+HPLapp/focale/edit/**;->**(**)**
+HPLapp/focale/ui/videoeditor/**;->**(**)**
+
+# Carte (fond vectoriel redessiné et photos regroupées à chaque déplacement), diaporama, widget.
+HPLapp/focale/ui/map/**;->**(**)**
+HPLapp/focale/map/**;->**(**)**
+HPLapp/focale/ui/slideshow/**;->**(**)**
+HPLapp/focale/widget/**;->**(**)**
 
 Lapp/focale/**;

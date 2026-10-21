@@ -32,6 +32,13 @@ interface AnalysisStep {
     suspend fun pending(limit: Int): List<MediaItem>
 
     /**
+     * Lot suivant d'un passage, après [after], dernier média du lot précédent dans l'ordre de
+     * [pending] : le parcours reprend là au lieu de repasser sur les médias déjà traités, si bien
+     * que le coût d'un lot ne croît pas avec l'avancement. Par défaut, [pending].
+     */
+    suspend fun pendingAfter(after: MediaItem, limit: Int): List<MediaItem> = pending(limit)
+
+    /**
      * Traite [items] et enregistre le résultat de chacun, échec compris : un média en
      * échec est marqué comme traité pour ne pas être retenté en boucle.
      */

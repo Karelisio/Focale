@@ -56,6 +56,9 @@ class FakeTextDao(var pendingRows: List<MediaEntity> = emptyList()) : TextDao {
 
     override suspend fun pending(version: Int, limit: Int): List<MediaEntity> = pendingRows.take(limit)
 
+    override suspend fun pendingAfter(version: Int, screenshot: Boolean, dateTaken: Long, id: Long, limit: Int): List<MediaEntity> =
+        pendingRows.filter { it.isScreenshot == screenshot && (it.dateTaken < dateTaken || (it.dateTaken == dateTaken && it.id < id)) }.take(limit)
+
     override suspend fun upsert(texts: List<MediaTextEntity>) {
         upserts++
         texts.forEach { rows[it.mediaId] = it }

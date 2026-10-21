@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -19,7 +20,7 @@ class DatabaseMigrationsTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun `la migration 1 vers 5 conserve les données et produit le schéma attendu par Room`() {
+    fun `la migration 1 vers 6 conserve les données et produit le schéma attendu par Room`() {
         val file = databaseAt(version = 1) { db ->
             db.execSQL("INSERT INTO favorite (media_id, added_at) VALUES (42, 1000)")
             db.execSQL(vaultItem(id = 3))
@@ -97,6 +98,58 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun `la migration 5 vers 6 donne à la timeline, aux dossiers et aux filtres des index composés`() {
+        // Base de la 1.7.0, avec les index simples de la corbeille, des dossiers et des types.
+        val file = databaseAt(version = 5) { db ->
+            db.execSQL(
+                "INSERT INTO media (id, media_type, mime_type, display_name, relative_path, bucket_id, bucket_name, date_taken, " +
+                    "date_added, date_modified, generation, size, width, height, orientation, duration, volume_name, " +
+                    "is_screenshot, is_gif, is_trashed, date_expires) " +
+                    "VALUES (7, 1, 'image/jpeg', 'IMG_7.jpg', 'DCIM/Camera/', 42, 'Camera', 1000, 1000, 1000, 1, 1, 1, 1, 0, 0, " +
+                    "'external_primary', 0, 0, 0, 0)",
+            )
+        }
+        openMigrated(file) { db ->
+            // L'index seul de la corbeille (qui faisait trier toute la bibliothèque), ceux des dossiers
+            // et des types sont remplacés par des index qui finissent par la date.
+            assertEquals(
+                setOf(
+                    "index_media_date_taken",
+                    "index_media_is_trashed_date_taken",
+                    "index_media_bucket_id_is_trashed_date_taken",
+                    "index_media_media_type_is_trashed_date_taken",
+                ),
+                db.indexNames("media"),
+            )
+            assertEquals(listOf("is_trashed", "date_taken"), db.indexColumns("index_media_is_trashed_date_taken"))
+            assertEquals(listOf("bucket_id", "is_trashed", "date_taken"), db.indexColumns("index_media_bucket_id_is_trashed_date_taken"))
+            assertEquals(listOf("media_type", "is_trashed", "date_taken"), db.indexColumns("index_media_media_type_is_trashed_date_taken"))
+            assertEquals(7L, db.longOf("SELECT id FROM media WHERE bucket_id = 42 AND is_trashed = 0"))
+            // Timeline, dossier et filtre Vidéos se lisent dans l'ordre de leur index, sans tri temporaire.
+            val order = "ORDER BY m.date_taken DESC, m.id DESC LIMIT 10"
+            val timeline = db.plan("SELECT * FROM media m WHERE m.is_trashed = 0 $order")
+            assertTrue(timeline, "index_media_is_trashed_date_taken" in timeline && "TEMP B-TREE" !in timeline)
+            val folder = db.plan("SELECT * FROM media m WHERE m.is_trashed = 0 AND m.bucket_id = 42 $order")
+            assertTrue(folder, "index_media_bucket_id_is_trashed_date_taken" in folder && "TEMP B-TREE" !in folder)
+            val videos = db.plan("SELECT * FROM media m WHERE m.is_trashed = 0 AND m.media_type = 3 $order")
+            assertTrue(videos, "index_media_media_type_is_trashed_date_taken" in videos && "TEMP B-TREE" !in videos)
+            assertEquals(LATEST, db.version)
+        }
+    }
+
+    private fun SupportSQLiteDatabase.indexNames(table: String): Set<String> = query("PRAGMA index_list(`$table`)").use { cursor ->
+        buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
+    }
+
+    private fun SupportSQLiteDatabase.indexColumns(index: String): List<String> = query("PRAGMA index_info(`$index`)").use { cursor ->
+        buildList { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
+    }
+
+    private fun SupportSQLiteDatabase.plan(sql: String): String = query("EXPLAIN QUERY PLAN $sql").use { cursor ->
+        buildList { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("detail"))) }.joinToString(" | ")
+    }
+
     private fun vaultItem(id: Long) =
         "INSERT INTO vault_item (id, display_name, mime_type, media_type, original_path, date_taken, size, width, height, " +
             "duration, file_name, thumb_file_name, added_at) " +
@@ -155,6 +208,6 @@ class DatabaseMigrationsTest {
         /** Dossier courant des tests : le module app. */
         val SCHEMAS = File("schemas/app.focale.core.database.FocaleDatabase")
         const val TABLE_NAME = "\${TABLE_NAME}"
-        const val LATEST = 5
+        const val LATEST = 6
     }
 }

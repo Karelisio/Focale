@@ -49,22 +49,47 @@ data class PlaceKeyRow(
 @Dao
 interface AnalysisDao {
 
-    /** Médias à analyser (jamais analysés, modifiés depuis, ou analysés par une ancienne version). */
+    /**
+     * Médias à analyser (jamais analysés, modifiés depuis, ou analysés par une ancienne version),
+     * les plus récents d'abord ; ordre total (identifiant en second) pour [pendingAfter].
+     */
     @Query(
         """
         SELECT m.* FROM media m LEFT JOIN media_analysis a ON a.media_id = m.id
         WHERE m.is_trashed = 0
           AND (a.media_id IS NULL OR a.analyzed_modified != m.date_modified OR a.version < :version)
-        ORDER BY m.date_taken DESC
+        ORDER BY m.date_taken DESC, m.id DESC
         LIMIT :limit
         """,
     )
     suspend fun pending(version: Int, limit: Int): List<MediaEntity>
 
+    /**
+     * Suite de [pending] après le média ([dateTaken], [id]) d'un lot précédent, dans le même
+     * ordre : la borne sur `date_taken` fait partir le parcours de l'index de la timeline de ce
+     * média, sans repasser sur les médias déjà analysés (voir `AnalysisQueue`).
+     */
+    @Query(
+        """
+        SELECT m.* FROM media m LEFT JOIN media_analysis a ON a.media_id = m.id
+        WHERE m.is_trashed = 0
+          AND m.date_taken <= :dateTaken AND (m.date_taken < :dateTaken OR m.id < :id)
+          AND (a.media_id IS NULL OR a.analyzed_modified != m.date_modified OR a.version < :version)
+        ORDER BY m.date_taken DESC, m.id DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun pendingAfter(version: Int, dateTaken: Long, id: Long, limit: Int): List<MediaEntity>
+
+    /**
+     * Nombre de médias à analyser. Toute la table est lue : « + » écarte l'index de la timeline
+     * (trié par date) au profit d'un parcours dans l'ordre des identifiants, qui lit `media` et
+     * `media_analysis` dans le même ordre, bien plus vite (docs/PERFORMANCE.md).
+     */
     @Query(
         """
         SELECT COUNT(*) FROM media m LEFT JOIN media_analysis a ON a.media_id = m.id
-        WHERE m.is_trashed = 0
+        WHERE +m.is_trashed = 0
           AND (a.media_id IS NULL OR a.analyzed_modified != m.date_modified OR a.version < :version)
         """,
     )

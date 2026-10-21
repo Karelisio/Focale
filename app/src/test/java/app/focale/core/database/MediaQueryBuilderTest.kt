@@ -22,6 +22,22 @@ class MediaQueryBuilderTest {
     }
 
     @Test
+    fun `timeline, dossiers et filtres de type ou de date ne lisent que la table media`() {
+        assertTrue(MediaQueryBuilder.readsOnlyMedia(MediaQuery.Timeline))
+        assertTrue(
+            MediaQueryBuilder.readsOnlyMedia(
+                MediaQuery(filter = MediaFilter.VIDEOS, bucketId = 4L, excludedBuckets = listOf(1L, 2L), dateFrom = 0L, month = 7, mediaIds = listOf(9L)),
+            ),
+        )
+        // Favoris, albums, lieux et recherche lisent d'autres tables : leurs grilles les suivent.
+        assertFalse(MediaQueryBuilder.readsOnlyMedia(MediaQuery(favoritesOnly = true)))
+        assertFalse(MediaQueryBuilder.readsOnlyMedia(MediaQuery(albumId = 3L)))
+        assertFalse(MediaQueryBuilder.readsOnlyMedia(MediaQuery(geotaggedOnly = true)))
+        assertFalse(MediaQueryBuilder.readsOnlyMedia(MediaQuery(personId = 5L)))
+        assertFalse(MediaQueryBuilder.readsOnlyMedia(MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"))))))
+    }
+
+    @Test
     fun `filtres de type et d'album produisent les clauses attendues`() {
         val args = mutableListOf<Any?>()
         val where = MediaQueryBuilder.where(
