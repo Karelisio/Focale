@@ -43,8 +43,9 @@ object EditRenderer {
     }
 
     /**
-     * Applique géométrie, recadrage, couleurs puis dessin ; l'aperçu géométrique se passe du
-     * recadrage, des couleurs et du dessin (tracé en direct par l'écran).
+     * Applique géométrie (quarts de tour, miroir, redressement), recadrage, couleurs puis
+     * dessin ; l'aperçu géométrique se passe du recadrage, des couleurs et du dessin (tracé en
+     * direct par l'écran).
      */
     fun render(
         source: Bitmap,
@@ -55,6 +56,13 @@ object EditRenderer {
     ): Bitmap {
         val (matrix, size) = geometry(source.width, source.height, state.quarterTurns, state.flipHorizontal)
         val (fullWidth, fullHeight) = size
+        if (state.straighten != 0f) {
+            // Redressement autour du centre du cadre, image très légèrement agrandie : aucun
+            // pixel à demi couvert dans les coins du recadrage ([StraightenMath.bleed]).
+            val bleed = StraightenMath.bleed(fullWidth.toFloat(), fullHeight.toFloat())
+            matrix.postRotate(state.straighten, fullWidth / 2f, fullHeight / 2f)
+            matrix.postScale(bleed, bleed, fullWidth / 2f, fullHeight / 2f)
+        }
         val crop = if (includeCrop) state.crop else NormRect.Full
         val left = (crop.left * fullWidth).roundToInt().coerceIn(0, fullWidth - 1)
         val top = (crop.top * fullHeight).roundToInt().coerceIn(0, fullHeight - 1)

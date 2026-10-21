@@ -24,9 +24,11 @@ import app.focale.edit.EditState
 import app.focale.edit.FilterPreset
 import app.focale.edit.NormRect
 import app.focale.edit.SaveMode
+import app.focale.edit.StraightenMath
 import app.focale.ui.navigation.EditorRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -67,7 +69,10 @@ class EditorViewModel @Inject constructor(
     private val _item = MutableStateFlow<MediaItem?>(null)
     val item: StateFlow<MediaItem?> = _item.asStateFlow()
 
-    /** Aperçu géométrique : rotation et miroir appliqués, sans recadrage, couleur ni dessin. */
+    /**
+     * Aperçu géométrique : rotation et miroir appliqués, sans redressement (appliqué à
+     * l'affichage, instantané), recadrage, couleur ni dessin.
+     */
     private val _preview = MutableStateFlow<EditorPreview?>(null)
     val preview: StateFlow<EditorPreview?> = _preview.asStateFlow()
     private var previewJob: Job? = null
@@ -89,6 +94,17 @@ class EditorViewModel @Inject constructor(
 
     private val _saving = MutableStateFlow(false)
     val saving: StateFlow<Boolean> = _saving.asStateFlow()
+
+    /** Redressement en cours (règle ou deux doigts) : grille fine sur l'aperçu. */
+    private val _straightening = MutableStateFlow(false)
+    val straightening: StateFlow<Boolean> = _straightening.asStateFlow()
+
+    /**
+     * Recadrage voulu, d'où se déduit l'affiché à chaque angle ([StraightenMath.fit]) : le
+     * cadre rapetisse en redressant, puis retrouve sa taille en revenant vers 0°. Oublié dès
+     * que le recadrage change autrement (geste, annulation…), puis retrouvé d'après l'état.
+     */
+    private var straightenReference: NormRect? = null
 
     private val _seed = MutableStateFlow<Color?>(null)
     val seed: StateFlow<Color?> = _seed.asStateFlow()
@@ -132,21 +148,26 @@ class EditorViewModel @Inject constructor(
         // Rotation et miroir ne commutent pas : avec miroir, un quart de tour horaire de
         // l'image affichée correspond à un quart de tour antihoraire de l'original.
         val turns = if (current.flipHorizontal) current.quarterTurns - 1 else current.quarterTurns + 1
-        // Recadrage et traits, exprimés dans le repère affiché, tournent avec lui.
+        // Recadrage et traits, exprimés dans le repère affiché, tournent avec lui ; le
+        // redressement, rotation lui aussi, ne change pas.
         val rotated = current.copy(
             quarterTurns = Math.floorMod(turns, 4),
             crop = CropMath.rotateClockwise(current.crop),
             strokes = current.strokes.map(DrawingStroke::rotateClockwise),
         )
+        straightenReference = straightenReference?.let(CropMath::rotateClockwise)
         commit(if (current.aspect == CropAspect.FREE) rotated else refit(rotated))
         refreshPreview()
     }
 
     fun flip() {
         val current = _state.value
+        // Dans un miroir, le redressement tourne dans l'autre sens.
+        straightenReference = straightenReference?.let(CropMath::flipHorizontal)
         commit(
             current.copy(
                 flipHorizontal = !current.flipHorizontal,
+                straighten = StraightenMath.clamp(-current.straighten),
                 crop = CropMath.flipHorizontal(current.crop),
                 strokes = current.strokes.map(DrawingStroke::flipHorizontal),
             ),
@@ -160,8 +181,26 @@ class EditorViewModel @Inject constructor(
 
     /** Pendant un geste de recadrage : pas d'entrée d'historique à chaque mouvement. */
     fun dragCrop(rect: NormRect) {
+        straightenReference = null
         _state.value = _state.value.copy(crop = rect)
     }
+
+    /** Début d'un redressement à la règle ou à deux doigts : une seule étape d'historique. */
+    fun beginStraighten() {
+        remember()
+        _straightening.value = true
+    }
+
+    /** Pendant un redressement : angle et recadrage suivent, sans entrée d'historique. */
+    fun straighten(angle: Float) {
+        _state.value = straightened(_state.value, angle)
+    }
+
+    fun endStraighten() {
+        _straightening.value = false
+    }
+
+    fun resetStraighten() = commit(straightened(_state.value, 0f))
 
     fun beginGesture() = remember()
 
@@ -202,7 +241,10 @@ class EditorViewModel @Inject constructor(
         applyHistory(next)
     }
 
-    fun resetAll() = commit(EditState())
+    fun resetAll() {
+        straightenReference = null
+        commit(EditState())
+    }
 
     fun save(mode: SaveMode) {
         val media = _item.value ?: return
@@ -230,13 +272,43 @@ class EditorViewModel @Inject constructor(
         return CropMath.normalizedRatio(_state.value.aspect, preview.width, preview.height, preview.width.toFloat() / preview.height)
     }
 
+    /** Cadre automatique du format de [state], ramené dans l'image redressée, et retenu comme recadrage voulu. */
     private fun refit(state: EditState): EditState {
-        val source = base ?: return state
-        val turned = state.quarterTurns % 2 == 1
-        val width = if (turned) source.height else source.width
-        val height = if (turned) source.width else source.height
-        val original = width.toFloat() / height
-        return state.copy(crop = CropMath.fit(CropMath.normalizedRatio(state.aspect, width, height, original)))
+        val (width, height) = frameSize(state) ?: return state
+        val format = formatFit(state, width, height)
+        straightenReference = format
+        return state.copy(crop = StraightenMath.fit(format, state.straighten, width.toFloat(), height.toFloat()))
+    }
+
+    /** [state] redressé de [angle] degrés, recadrage déduit du recadrage voulu. */
+    private fun straightened(state: EditState, angle: Float): EditState {
+        val (width, height) = frameSize(state) ?: return state
+        val reference = straightenReference ?: referenceFor(state, width, height).also { straightenReference = it }
+        val clamped = StraightenMath.clamp(angle)
+        return state.copy(straighten = clamped, crop = StraightenMath.fit(reference, clamped, width.toFloat(), height.toFloat()))
+    }
+
+    /**
+     * Recadrage voulu retrouvé d'après [state] : le cadre automatique du format (l'image
+     * entière en format libre) si le recadrage affiché en découle encore, sinon l'affiché.
+     */
+    private fun referenceFor(state: EditState, width: Int, height: Int): NormRect {
+        val automatic = formatFit(state, width, height)
+        val shown = StraightenMath.fit(automatic, state.straighten, width.toFloat(), height.toFloat())
+        val crop = state.crop
+        val same = abs(crop.left - shown.left) < EPSILON && abs(crop.top - shown.top) < EPSILON &&
+            abs(crop.right - shown.right) < EPSILON && abs(crop.bottom - shown.bottom) < EPSILON
+        return if (same) automatic else crop
+    }
+
+    /** Plus grand cadre centré du format de [state], sans redressement. */
+    private fun formatFit(state: EditState, width: Int, height: Int): NormRect =
+        CropMath.fit(CropMath.normalizedRatio(state.aspect, width, height, width.toFloat() / height))
+
+    /** Dimensions (px de l'aperçu) de l'image tournée de [state], celles de son cadre ; null avant le chargement. */
+    private fun frameSize(state: EditState): Pair<Int, Int>? {
+        val source = base ?: return null
+        return if (state.quarterTurns % 2 == 1) source.height to source.width else source.width to source.height
     }
 
     private fun commit(newState: EditState) {
@@ -254,6 +326,7 @@ class EditorViewModel @Inject constructor(
 
     private fun applyHistory(state: EditState) {
         val geometryChanged = state.quarterTurns != _state.value.quarterTurns || state.flipHorizontal != _state.value.flipHorizontal
+        straightenReference = null
         _state.value = state
         updateHistoryFlags()
         if (geometryChanged) refreshPreview()
@@ -271,7 +344,7 @@ class EditorViewModel @Inject constructor(
         previewJob?.cancel()
         previewJob = viewModelScope.launch {
             val image = withContext(dispatcher) {
-                EditRenderer.render(source, state, includeCrop = false, includeColor = false, includeDrawing = false).asImageBitmap()
+                EditRenderer.render(source, EditState(quarterTurns = state.quarterTurns, flipHorizontal = state.flipHorizontal)).asImageBitmap()
             }
             _preview.value = EditorPreview(image, state.quarterTurns, state.flipHorizontal)
         }
@@ -279,5 +352,8 @@ class EditorViewModel @Inject constructor(
 
     private companion object {
         const val HISTORY = 50
+
+        /** Écart toléré entre deux recadrages normalisés tenus pour identiques. */
+        const val EPSILON = 1e-4f
     }
 }

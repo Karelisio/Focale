@@ -3,6 +3,8 @@ package app.focale.vault
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.system.ErrnoException
+import android.system.OsConstants
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import app.focale.core.database.MediaQueryBuilder
@@ -15,9 +17,11 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.ByteBuffer
 import java.security.DigestInputStream
 import java.security.GeneralSecurityException
 import java.security.MessageDigest
+import java.util.Base64
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -63,7 +67,63 @@ sealed interface ExportResult {
 
     /** [partialFileLeft] : le fichier inachevé n'a pas pu être supprimé. */
     data class Cancelled(val partialFileLeft: Boolean) : ExportResult
-    data class Failed(val partialFileLeft: Boolean) : ExportResult
+
+    /** [noSpace] : plus de place à l'emplacement de la sauvegarde. */
+    data class Failed(val partialFileLeft: Boolean, val noSpace: Boolean = false) : ExportResult
+}
+
+/**
+ * Contenu du coffre à sauvegarder, lu en une fois : éléments visibles ([VaultDao.observeAll],
+ * hors corbeille) et albums.
+ */
+class VaultSnapshot internal constructor(
+    internal val items: List<VaultItemEntity>,
+    internal val albums: List<VaultAlbumEntity>,
+) {
+    val isEmpty: Boolean get() = items.isEmpty()
+
+    /**
+     * Empreinte légère, sans rien relire ni déchiffrer : éléments (identifiant, fichier, album)
+     * et albums (identifiant, nom, dossier d'origine). Un élément ne change plus une fois au
+     * coffre : même empreinte, même archive (dates de création mises à part).
+     */
+    val fingerprint: String by lazy {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val number = ByteBuffer.allocate(Long.SIZE_BYTES)
+        fun long(value: Long) {
+            number.clear()
+            digest.update(number.putLong(value).array())
+        }
+        fun optional(value: Long?) {
+            long(if (value == null) 0 else 1)
+            value?.let(::long)
+        }
+        fun text(value: String?) {
+            val bytes = value?.toByteArray(Charsets.UTF_8)
+            optional(bytes?.size?.toLong())
+            bytes?.let(digest::update)
+        }
+        long(FINGERPRINT_VERSION)
+        long(items.size.toLong())
+        for (item in items.sortedBy { it.id }) {
+            long(item.id)
+            text(item.fileName)
+            optional(item.albumId)
+        }
+        long(albums.size.toLong())
+        for (album in albums.sortedBy { it.id }) {
+            long(album.id)
+            text(album.name)
+            optional(album.sourceBucketId)
+            text(album.sourcePath)
+        }
+        Base64.getEncoder().encodeToString(digest.digest())
+    }
+
+    private companion object {
+        /** À augmenter quand le contenu des archives s'enrichit : la sauvegarde suivante est alors refaite. */
+        const val FINGERPRINT_VERSION = 1L
+    }
 }
 
 sealed interface RestoreResult {
@@ -127,33 +187,75 @@ class VaultBackupRepository internal constructor(
         password: CharArray,
         cancelled: () -> Boolean = { false },
         onProgress: (BackupProgress) -> Unit = {},
-    ): ExportResult = mutex.withLock { exportLocked(target, password, cancelled, onProgress) }
+    ): ExportResult = try {
+        mutex.withLock {
+            exportLocked(target, snapshot = null, cancelled, onProgress) {
+                // Le mot de passe ne sert qu'à la dérivation : effacé aussitôt après.
+                try {
+                    VaultArchive.deriveKeys(password, iterations)
+                } finally {
+                    password.fill('\u0000')
+                }
+            }
+        }
+    } finally {
+        password.fill('\u0000')
+    }
 
+    /**
+     * Sauvegarde automatique ([VaultAutoBackup]) : comme [export], du contenu [snapshot] et avec
+     * des clés déjà tirées du mot de passe, effacées ensuite. Le document [target] est supprimé
+     * si elle n'aboutit pas.
+     */
+    internal suspend fun export(
+        target: Uri,
+        keys: VaultArchiveKeys,
+        snapshot: VaultSnapshot,
+        cancelled: () -> Boolean = { false },
+    ): ExportResult = try {
+        mutex.withLock { exportLocked(target, snapshot, cancelled, onProgress = {}) { keys } }
+    } finally {
+        keys.close()
+    }
+
+    /** Contenu actuel du coffre, tel qu'une sauvegarde l'écrirait. */
+    suspend fun snapshot(): VaultSnapshot = withContext(io) { VaultSnapshot(dao.observeAll().first(), dao.albums()) }
+
+    /**
+     * Écrit l'archive : seule implémentation de la sauvegarde, manuelle ou automatique.
+     *
+     * @param snapshot contenu à sauvegarder, lu ici si null.
+     * @param keys clés de l'archive, obtenues une fois l'avancement annoncé (la dérivation d'un
+     *   mot de passe est lente), puis effacées.
+     */
     private suspend fun exportLocked(
         target: Uri,
-        password: CharArray,
+        snapshot: VaultSnapshot?,
         cancelled: () -> Boolean,
         onProgress: (BackupProgress) -> Unit,
+        keys: () -> VaultArchiveKeys,
     ): ExportResult = withContext(io) {
         val result = try {
-            val items = dao.observeAll().first()
-            val albums = dao.albums()
+            val content = snapshot ?: snapshot()
+            val items = content.items
             onProgress(BackupProgress(BackupProgress.Stage.PREPARING, total = items.size))
             val progress = Progress(items.size, items.sumOf { it.size }, cancelled, coroutineContext.job, onProgress)
             var unreadable = 0
-            openOutput(target).use { output ->
-                VaultArchive.write(output, password, manifestOf(items, albums), iterations, progress::onBytes) { writer ->
-                    progress.start()
-                    for (item in items) {
-                        progress.countingMedia = true
-                        if (!writer.blob { crypto.openDecrypting(storage.file(item.fileName)) }) {
-                            // Identifiant seulement : le nom d'un élément du coffre n'a rien à faire dans les journaux.
-                            Log.w(TAG, "Élément illisible, non sauvegardé : ${item.id}")
-                            unreadable++
+            keys().use { archiveKeys ->
+                openOutput(target).use { output ->
+                    VaultArchive.write(output, archiveKeys, manifestOf(items, content.albums), progress::onBytes) { writer ->
+                        progress.start()
+                        for (item in items) {
+                            progress.countingMedia = true
+                            if (!writer.blob { crypto.openDecrypting(storage.file(item.fileName)) }) {
+                                // Identifiant seulement : le nom d'un élément du coffre n'a rien à faire dans les journaux.
+                                Log.w(TAG, "Élément illisible, non sauvegardé : ${item.id}")
+                                unreadable++
+                            }
+                            progress.countingMedia = false
+                            writer.blob { item.thumbFileName?.let { crypto.openDecrypting(storage.file(it)) } }
+                            progress.itemDone()
                         }
-                        progress.countingMedia = false
-                        writer.blob { item.thumbFileName?.let { crypto.openDecrypting(storage.file(it)) } }
-                        progress.itemDone()
                     }
                 }
             }
@@ -165,9 +267,7 @@ class VaultBackupRepository internal constructor(
             throw error
         } catch (error: Exception) {
             Log.w(TAG, "Sauvegarde impossible", error)
-            return@withContext ExportResult.Failed(partialFileLeft = !delete(target))
-        } finally {
-            password.fill('\u0000')
+            return@withContext ExportResult.Failed(partialFileLeft = !delete(target), noSpace = error.isNoSpace())
         }
         // Archive complète : noter sa date ne doit plus pouvoir la compromettre.
         withContext(NonCancellable) {
@@ -565,3 +665,8 @@ class VaultBackupRepository internal constructor(
 private class CancelledByUser : RuntimeException()
 
 private class NoSpaceLeft : RuntimeException()
+
+/** Plus de place sur le support écrit (ENOSPC), à travers les exceptions qui l'enveloppent. */
+private fun Throwable.isNoSpace(): Boolean = generateSequence(this) { it.cause }.any { error ->
+    (error is ErrnoException && error.errno == OsConstants.ENOSPC) || error.message?.contains("ENOSPC") == true
+}

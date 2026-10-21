@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -22,22 +23,30 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import app.focale.edit.CropHandle
-import app.focale.edit.CropMath
 import app.focale.edit.NormRect
+import app.focale.edit.StraightenMath
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 /**
- * Cadre de recadrage : assombrit l'extérieur, affiche la grille des tiers et des
- * poignées ; coins, bords et intérieur se manipulent au doigt.
+ * Cadre de recadrage : assombrit l'extérieur, affiche la grille des tiers (une grille fine
+ * pendant un redressement, pour aligner un horizon) et des poignées ; coins, bords et
+ * intérieur se manipulent au doigt, sans jamais quitter l'image redressée.
  *
  * @param imageRect zone (px) où l'image complète est affichée.
+ * @param angle redressement de l'image, en degrés.
+ * @param imageSize dimensions de l'image pivotée (seul leur rapport compte).
+ * @param straightening redressement en cours : grille fine.
  */
 @Composable
 fun CropOverlay(
     imageRect: Rect,
     crop: NormRect,
     ratio: Float?,
+    angle: Float,
+    imageSize: Size,
+    straightening: Boolean,
     accent: Color,
     onGestureStart: () -> Unit,
     onCropChange: (NormRect) -> Unit,
@@ -48,6 +57,8 @@ fun CropOverlay(
     val currentCrop by rememberUpdatedState(crop)
     val currentRatio by rememberUpdatedState(ratio)
     val currentImage by rememberUpdatedState(imageRect)
+    val currentAngle by rememberUpdatedState(angle)
+    val currentSize by rememberUpdatedState(imageSize)
 
     Canvas(
         modifier = modifier
@@ -69,7 +80,16 @@ fun CropOverlay(
                         change.consume()
                         val image = currentImage
                         onCropChange(
-                            CropMath.drag(currentCrop, active, amount.x / image.width, amount.y / image.height, currentRatio),
+                            StraightenMath.drag(
+                                currentCrop,
+                                active,
+                                amount.x / image.width,
+                                amount.y / image.height,
+                                currentRatio,
+                                currentAngle,
+                                currentSize.width,
+                                currentSize.height,
+                            ),
                         )
                     },
                 )
@@ -83,14 +103,7 @@ fun CropOverlay(
             addRect(rect)
         }
         drawPath(shade, Color.Black.copy(alpha = 0.55f))
-        // Grille des tiers.
-        val gridColor = Color.White.copy(alpha = 0.45f)
-        for (i in 1..2) {
-            val x = rect.left + rect.width * i / 3f
-            val y = rect.top + rect.height * i / 3f
-            drawLine(gridColor, Offset(x, rect.top), Offset(x, rect.bottom), strokeWidth = 1.dp.toPx())
-            drawLine(gridColor, Offset(rect.left, y), Offset(rect.right, y), strokeWidth = 1.dp.toPx())
-        }
+        if (straightening) grid(rect, GRID_CELL.toPx(), Color.White.copy(alpha = 0.35f)) else grid(rect, columns = 3, rows = 3)
         drawRoundRect(
             color = Color.White,
             topLeft = rect.topLeft,
@@ -110,6 +123,29 @@ fun CropOverlay(
             drawLine(accent, corner, corner + Offset(arm * direction.x, 0f), strokeWidth = stroke, cap = StrokeCap.Round)
             drawLine(accent, corner, corner + Offset(0f, arm * direction.y), strokeWidth = stroke, cap = StrokeCap.Round)
         }
+    }
+}
+
+/** Côté approximatif d'une case de la grille fine. */
+private val GRID_CELL = 28.dp
+
+/** Grille fine : des cases à peu près carrées, de [cell] px de côté. */
+private fun DrawScope.grid(rect: Rect, cell: Float, color: Color) = grid(
+    rect,
+    columns = (rect.width / cell).roundToInt().coerceAtLeast(3),
+    rows = (rect.height / cell).roundToInt().coerceAtLeast(3),
+    color = color,
+)
+
+private fun DrawScope.grid(rect: Rect, columns: Int, rows: Int, color: Color = Color.White.copy(alpha = 0.45f)) {
+    val width = 1.dp.toPx()
+    for (i in 1 until columns) {
+        val x = rect.left + rect.width * i / columns
+        drawLine(color, Offset(x, rect.top), Offset(x, rect.bottom), strokeWidth = width)
+    }
+    for (i in 1 until rows) {
+        val y = rect.top + rect.height * i / rows
+        drawLine(color, Offset(rect.left, y), Offset(rect.right, y), strokeWidth = width)
     }
 }
 
