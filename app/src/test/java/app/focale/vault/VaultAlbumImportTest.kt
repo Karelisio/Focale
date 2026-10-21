@@ -326,6 +326,32 @@ class VaultAlbumImportTest {
         assertTrue(!storage.file(copy.fileName).exists())
     }
 
+    @Test
+    fun `la corbeille du coffre garde les éléments 30 jours, puis les efface`() = runTest {
+        val albumId = repository.createAlbum("Vacances")
+        gallery(photo(1), photo(2), photo(3))
+        repository.import(listOf(media(1), media(2), media(3)), VaultDestination.Album(albumId))
+        val (first, second, third) = repository.observeItems(albumId).first().sortedBy { it.displayName }
+
+        assertEquals(OperationResult.Success(2), repository.trash(listOf(first, second)))
+        // Hors de l'album, de son nombre et de sa couverture ; dans la corbeille.
+        assertEquals(listOf(third.id), repository.observeItems(albumId).first().map { it.id })
+        assertEquals(1, repository.observeAlbums().first().single().count)
+        assertEquals(setOf(first.id, second.id), repository.observeTrash().first().map { it.item.id }.toSet())
+
+        // Remis dans le coffre : de retour dans son album.
+        repository.untrash(listOf(first))
+        assertEquals(setOf(first.id, third.id), repository.observeItems(albumId).first().map { it.id }.toSet())
+
+        // Trente jours plus tard, la corbeille est purgée : fichiers chiffrés compris.
+        val entry = repository.observeTrash().first().single()
+        assertEquals(0, repository.purgeTrash(now = entry.deletedAt + VaultRepository.TRASH_RETENTION_MS - 1))
+        assertEquals(1, repository.purgeTrash(now = entry.deletedAt + VaultRepository.TRASH_RETENTION_MS + 1))
+        assertTrue(repository.observeTrash().first().isEmpty())
+        assertTrue(!storage.file(second.fileName).exists())
+        assertTrue(storage.file(first.fileName).exists())
+    }
+
     /** Copie chiffrée du média [id] laissée par un import interrompu (cachée, original en place). */
     private suspend fun interruptedCopy(id: Long, albumId: Long?): VaultItemEntity = copyOf(id, albumId, importing = true)
 

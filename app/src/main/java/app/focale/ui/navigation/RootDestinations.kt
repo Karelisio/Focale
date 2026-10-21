@@ -17,6 +17,7 @@ import app.focale.ui.slideshow.SlideshowScreen
 import app.focale.ui.vault.VaultAlbumScreen
 import app.focale.ui.vault.VaultPickerScreen
 import app.focale.ui.vault.VaultScreen
+import app.focale.ui.vault.VaultTrashScreen
 import app.focale.ui.vault.VaultViewerScreen
 import app.focale.ui.videoeditor.VideoEditorScreen
 import app.focale.ui.viewer.ExternalMediaScreen
@@ -44,7 +45,11 @@ fun NavGraphBuilder.additionalRootDestinations(rootNav: NavHostController) {
             onOpen = { rootNav.navigate(VaultViewerRoute(it.id)) { launchSingleTop = true } },
             onAdd = { rootNav.navigate(VaultPickerRoute()) { launchSingleTop = true } },
             onOpenAlbum = { rootNav.navigate(VaultAlbumRoute(it.id)) { launchSingleTop = true } },
+            onOpenTrash = { rootNav.navigate(VaultTrashRoute) { launchSingleTop = true } },
         )
+    }
+    fullScreen<VaultTrashRoute> {
+        VaultTrashScreen(onBack = { rootNav.popBackStack() })
     }
     fullScreen<VaultUnlockRoute> {
         VaultScreen(

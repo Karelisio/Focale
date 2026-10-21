@@ -235,6 +235,35 @@ class VaultRepository @Inject constructor(
         }
     }
 
+    // ── Corbeille ──────────────────────────────────────────────────────────────────
+
+    /** Corbeille du coffre, les dernières mises à la corbeille d'abord. */
+    fun observeTrash(): Flow<List<VaultTrashEntry>> = dao.observeTrash().map { rows ->
+        rows.map { VaultTrashEntry(it.toModel(), deletedAt = requireNotNull(it.deletedAt)) }
+    }
+
+    fun observeTrashCount(): Flow<Int> = dao.observeTrashCount()
+
+    /** Met à la corbeille : rien n'est effacé avant [TRASH_RETENTION_MS], les fichiers restent chiffrés. */
+    suspend fun trash(items: List<VaultItem>): OperationResult = withContext(io) {
+        val now = System.currentTimeMillis()
+        items.map { it.id }.chunked(MediaRepository.MAX_SQL_ARGS).forEach { dao.setDeleted(it, now) }
+        OperationResult.Success(items.size)
+    }
+
+    /** Remet dans le coffre, dans leur album s'il existe encore. */
+    suspend fun untrash(items: List<VaultItem>): OperationResult = withContext(io) {
+        items.map { it.id }.chunked(MediaRepository.MAX_SQL_ARGS).forEach { dao.setDeleted(it, null) }
+        OperationResult.Success(items.size)
+    }
+
+    /** Efface les éléments mis à la corbeille il y a plus de [TRASH_RETENTION_MS] ; renvoie leur nombre. */
+    suspend fun purgeTrash(now: Long = System.currentTimeMillis()): Int = withContext(io + NonCancellable) {
+        val expired = dao.expiredTrash(now - TRASH_RETENTION_MS)
+        expired.forEach { discard(it) }
+        expired.size
+    }
+
     /** Suppression définitive : les fichiers chiffrés sont effacés. */
     suspend fun delete(items: List<VaultItem>): OperationResult = withContext(io) {
         items.forEach { deleteFiles(it.fileName, it.thumbFileName) }
@@ -486,12 +515,15 @@ class VaultRepository @Inject constructor(
             else -> 0
         }
 
-    private companion object {
-        const val TAG = "VaultRepository"
+    companion object {
+        /** Durée de la corbeille du coffre, comme celle de la galerie. */
+        val TRASH_RETENTION_MS: Long = MediaOperations.TRASH_RETENTION_MS
+
+        private const val TAG = "VaultRepository"
         /** Âge au-delà duquel un fichier chiffré sans élément n'est plus une écriture en cours. */
-        const val ORPHAN_AGE_MS = 60 * 60_000L
-        const val THUMB_SIZE = 512
-        const val THUMB_QUALITY = 85
-        const val BUFFER = 256 * 1024
+        private const val ORPHAN_AGE_MS = 60 * 60_000L
+        private const val THUMB_SIZE = 512
+        private const val THUMB_QUALITY = 85
+        private const val BUFFER = 256 * 1024
     }
 }

@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "b18ddd14e189229d8b6fa6f91087bfd4",
+    "identityHash": "84866c36e7bb3800d26021d070bed2e2",
     "entities": [
       {
         "tableName": "media",
@@ -522,7 +522,7 @@
       },
       {
         "tableName": "vault_item",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `display_name` TEXT NOT NULL, `mime_type` TEXT NOT NULL, `media_type` INTEGER NOT NULL, `original_path` TEXT NOT NULL, `date_taken` INTEGER NOT NULL, `size` INTEGER NOT NULL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `duration` INTEGER NOT NULL, `file_name` TEXT NOT NULL, `thumb_file_name` TEXT, `added_at` INTEGER NOT NULL, `album_id` INTEGER, `source_media_id` INTEGER, `importing` INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(`album_id`) REFERENCES `vault_album`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `display_name` TEXT NOT NULL, `mime_type` TEXT NOT NULL, `media_type` INTEGER NOT NULL, `original_path` TEXT NOT NULL, `date_taken` INTEGER NOT NULL, `size` INTEGER NOT NULL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `duration` INTEGER NOT NULL, `file_name` TEXT NOT NULL, `thumb_file_name` TEXT, `added_at` INTEGER NOT NULL, `album_id` INTEGER, `source_media_id` INTEGER, `importing` INTEGER NOT NULL DEFAULT 0, `deleted_at` INTEGER, FOREIGN KEY(`album_id`) REFERENCES `vault_album`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
         "fields": [
           {
             "fieldPath": "id",
@@ -617,6 +617,11 @@
             "affinity": "INTEGER",
             "notNull": true,
             "defaultValue": "0"
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deleted_at",
+            "affinity": "INTEGER"
           }
         ],
         "primaryKey": {
@@ -1066,7 +1071,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b18ddd14e189229d8b6fa6f91087bfd4')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '84866c36e7bb3800d26021d070bed2e2')"
     ]
   }
 }

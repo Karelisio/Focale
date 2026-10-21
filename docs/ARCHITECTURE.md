@@ -138,7 +138,7 @@ Index : `date_taken`, `bucket_id`, `media_type`.
 | `favorite` | médias favoris |
 | `album` / `album_media` | albums virtuels et leur contenu |
 | `trash_item` | corbeille applicative (API 29 uniquement) |
-| `vault_item` | entrées du coffre (fichiers chiffrés), avec leur album du coffre (`album_id`, facultatif) |
+| `vault_item` | entrées du coffre (fichiers chiffrés), avec leur album du coffre (`album_id`, facultatif), le journal de leur import (`source_media_id`, `importing`) et leur mise à la corbeille (`deleted_at`) |
 | `vault_album` | albums du coffre : nom, dossier d'origine d'un album-dossier, date du dernier import |
 | `media_date` | date d'origine d'un média restauré ou copié, quand MediaStore n'en a retrouvé aucune (voir § 6.1) |
 | `search_history` | recherches récentes |
@@ -293,6 +293,10 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   option ; état déverrouillé en mémoire seulement, reverrouillage dès la mise en
   arrière-plan ou après 1, 5 ou 15 min ; `FLAG_SECURE` sur les écrans du coffre.
 
+- Corbeille du coffre : supprimer un élément du coffre le met à la corbeille (`deleted_at`), où
+  il reste chiffré 30 jours, hors des grilles, albums, sauvegardes et contrôles ; il peut en être
+  remis (dans son album s'il existe encore) ou effacé définitivement. `VaultTrashPurgeWorker`
+  efface chaque jour ceux dont le délai est passé (fichiers chiffrés compris).
 - Tri (`VaultContent`, réglages `vaultSort` et `vaultAlbumSort`) : éléments par date de prise
   de vue, date d'ajout au coffre, nom (`Collator` primaire) ou taille, albums par nom, date de
   création ou nombre d'éléments, dans les deux sens ; même feuille que les grilles de la

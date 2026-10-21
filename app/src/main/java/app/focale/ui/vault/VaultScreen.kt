@@ -39,7 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.Backup
-import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -134,6 +134,7 @@ fun VaultScreen(
     onOpen: (VaultItem) -> Unit,
     onAdd: () -> Unit,
     onOpenAlbum: (VaultAlbum) -> Unit,
+    onOpenTrash: () -> Unit = {},
     onUnlocked: (() -> Unit)? = null,
     viewModel: VaultViewModel = hiltViewModel(),
     backupViewModel: VaultBackupViewModel = hiltViewModel(),
@@ -254,6 +255,7 @@ fun VaultScreen(
                 onOpen = onOpen,
                 onAdd = onAdd,
                 onOpenAlbum = onOpenAlbum,
+                onOpenTrash = onOpenTrash,
                 onToggleBiometric = { enabled ->
                     if (enabled) enableBiometrics?.invoke() else viewModel.setBiometricEnabled(false)
                 },
@@ -349,6 +351,7 @@ private fun VaultContentPane(
     onOpen: (VaultItem) -> Unit,
     onAdd: () -> Unit,
     onOpenAlbum: (VaultAlbum) -> Unit,
+    onOpenTrash: () -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
     onPickBackupTarget: () -> Unit,
     onRestoreBackup: () -> Unit,
@@ -363,6 +366,7 @@ private fun VaultContentPane(
     val albumSort by viewModel.albumSort.collectAsStateWithLifecycle()
     val leftInGallery by viewModel.leftInGallery.collectAsStateWithLifecycle()
     val newMediaAlerts by viewModel.newMediaAlerts.collectAsStateWithLifecycle()
+    val trashCount by viewModel.trashCount.collectAsStateWithLifecycle()
     val requestNotifications = rememberNotificationPermission()
     val selecting = selection.isNotEmpty()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
@@ -437,6 +441,8 @@ private fun VaultContentPane(
                             biometricAvailable = biometricAvailable,
                             biometricEnabled = biometricEnabled,
                             newMediaAlerts = newMediaAlerts,
+                            trashCount = trashCount,
+                            onOpenTrash = onOpenTrash,
                             onBackup = backupViewModel::requestBackup,
                             onRestoreBackup = onRestoreBackup,
                             onToggleBiometric = onToggleBiometric,
@@ -594,20 +600,20 @@ internal fun VaultSelectionToolbar(
             Icon(Icons.AutoMirrored.Outlined.DriveFileMove, contentDescription = stringResource(R.string.vault_move_to_album))
         }
         TextButton(onClick = onDelete, enabled = !busy) {
-            Icon(Icons.Outlined.DeleteForever, contentDescription = null)
+            Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
             Text(stringResource(R.string.action_delete), modifier = Modifier.padding(start = 8.dp))
         }
     }
 }
 
-/** Confirmation de la suppression définitive de [count] éléments du coffre. */
+/** Confirmation de la mise à la corbeille du coffre de [count] éléments. */
 @Composable
 internal fun VaultDeleteDialog(count: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Outlined.DeleteForever, contentDescription = null) },
-        title = { Text(pluralStringResource(R.plurals.trash_delete_confirm, count, count)) },
-        text = { Text(stringResource(R.string.vault_delete_message)) },
+        icon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null) },
+        title = { Text(pluralStringResource(R.plurals.vault_trash_confirm, count, count)) },
+        text = { Text(stringResource(R.string.vault_trash_confirm_message)) },
         confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.action_delete)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } },
     )
@@ -620,6 +626,8 @@ private fun VaultMenu(
     biometricAvailable: Boolean,
     biometricEnabled: Boolean,
     newMediaAlerts: Boolean,
+    trashCount: Int,
+    onOpenTrash: () -> Unit,
     onBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
     onToggleBiometric: (Boolean) -> Unit,
@@ -632,6 +640,20 @@ private fun VaultMenu(
             Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.vault_trash_menu)) },
+                leadingIcon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null) },
+                trailingIcon = if (trashCount > 0) {
+                    { Text(trashCount.toString(), style = MaterialTheme.typography.labelLarge) }
+                } else {
+                    null
+                },
+                onClick = {
+                    open = false
+                    onOpenTrash()
+                },
+            )
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.vault_backup_action)) },
                 leadingIcon = { Icon(Icons.Outlined.Backup, contentDescription = null) },

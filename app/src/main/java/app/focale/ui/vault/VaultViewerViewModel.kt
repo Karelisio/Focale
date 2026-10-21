@@ -76,7 +76,7 @@ class VaultViewerViewModel @Inject constructor(
 
     fun restore(item: VaultItem) = run(item, R.plurals.message_restored) { repository.restore(listOf(it)) }
 
-    fun delete(item: VaultItem) = run(item, R.plurals.message_deleted) { repository.delete(listOf(it)) }
+    fun delete(item: VaultItem) = run(item, R.plurals.vault_trashed) { repository.trash(listOf(it)) }
 
     /** Lecteur dont la source déchiffre la vidéo à la volée. */
     @OptIn(UnstableApi::class)

@@ -104,6 +104,11 @@ class VaultViewModel @Inject constructor(
 
     private val removingOriginals = MutableStateFlow(false)
 
+    /** Éléments de la corbeille du coffre. */
+    val trashCount: StateFlow<Int> = session.unlocked
+        .flatMapLatest { unlocked -> if (unlocked) repository.observeTrashCount() else flowOf(0) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     /** Notification des nouvelles photos des dossiers liés à un album du coffre. */
     val newMediaAlerts: StateFlow<Boolean> = settings.settings.map { it.vaultNewMediaAlerts }
         .stateIn(viewModelScope, SharingStarted.Eagerly, settings.current.value.vaultNewMediaAlerts)

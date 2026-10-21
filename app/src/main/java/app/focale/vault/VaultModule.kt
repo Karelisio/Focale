@@ -13,7 +13,7 @@ import dagger.multibindings.IntoSet
 
 /**
  * Branche le coffre dans Coil (images chiffrées), le cycle de vie (verrouillage auto) et le
- * démarrage (contrôle des imports interrompus).
+ * démarrage (contrôle des imports interrompus, purge de la corbeille, nouveaux médias).
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -38,6 +38,7 @@ object VaultModule {
     @IntoSet
     fun vaultRepair(workManager: Lazy<WorkManager>): AppInitializer = AppInitializer {
         VaultRepairWorker.schedule(workManager.get())
+        VaultTrashPurgeWorker.schedule(workManager.get())
         // Nouveaux médias des dossiers liés : compte à jour peu après le démarrage, puis surveillance.
         VaultNewMediaWatch.checkNow(workManager.get(), delaySeconds = STARTUP_CHECK_DELAY_S)
     }

@@ -29,7 +29,8 @@ object DatabaseMigrations {
 
     /**
      * Version 5 : dates d'origine des médias restaurés ou copiés que MediaStore n'a pas retrouvées ;
-     * journal de l'import dans le coffre (original encore dans la galerie, copie en cours).
+     * journal de l'import dans le coffre (original encore dans la galerie, copie en cours) ;
+     * corbeille du coffre.
      */
     val MIGRATION_4_5 = object : Migration(4, 5) {
         override fun migrate(db: SupportSQLiteDatabase) {
@@ -68,5 +69,6 @@ object DatabaseMigrations {
         "ALTER TABLE `vault_item` ADD COLUMN `source_media_id` INTEGER",
         "ALTER TABLE `vault_item` ADD COLUMN `importing` INTEGER NOT NULL DEFAULT 0",
         "CREATE INDEX IF NOT EXISTS `index_vault_item_source_media_id` ON `vault_item` (`source_media_id`)",
+        "ALTER TABLE `vault_item` ADD COLUMN `deleted_at` INTEGER",
     )
 }

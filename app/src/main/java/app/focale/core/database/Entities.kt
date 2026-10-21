@@ -229,6 +229,8 @@ data class VaultItemEntity(
     @ColumnInfo(name = "source_media_id") val sourceMediaId: Long? = null,
     /** Copie d'un import inachevé, cachée jusqu'à la suppression de son original. */
     @ColumnInfo(name = "importing", defaultValue = "0") val importing: Boolean = false,
+    /** Mise à la corbeille du coffre (ms), null hors corbeille ; effacé 30 jours après. */
+    @ColumnInfo(name = "deleted_at") val deletedAt: Long? = null,
 )
 
 @Entity(tableName = "search_history")

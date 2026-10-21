@@ -31,6 +31,12 @@ data class VaultItem(
     fun image(): VaultImage = VaultImage(fileName)
 }
 
+/** Élément de la corbeille du coffre, effacé définitivement à [expiresAt]. */
+@Immutable
+data class VaultTrashEntry(val item: VaultItem, val deletedAt: Long) {
+    val expiresAt: Long get() = deletedAt + VaultRepository.TRASH_RETENTION_MS
+}
+
 fun VaultItemEntity.toModel(): VaultItem = VaultItem(
     id = id,
     displayName = displayName,

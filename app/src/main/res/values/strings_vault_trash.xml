@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Coffre-fort : corbeille -->
+    <string name="vault_trash_title">Vault trash</string>
+    <string name="vault_trash_menu">Trash</string>
+    <string name="vault_trash_subtitle">Items stay encrypted here for 30 days, then are erased permanently</string>
+    <string name="vault_trash_empty_title">The vault trash is empty</string>
+    <string name="vault_trash_empty_message">Items deleted from the vault stay here, encrypted, for 30 days before being erased permanently.</string>
+    <plurals name="vault_trash_confirm">
+        <item quantity="one">Move %d item to the vault trash?</item>
+        <item quantity="other">Move %,d items to the vault trash?</item>
+    </plurals>
+    <string name="vault_trash_confirm_message">They stay encrypted in the vault trash for 30 days, then are erased permanently. You can put them back until then.</string>
+    <string name="vault_trash_restore">Put back</string>
+    <plurals name="vault_trashed">
+        <item quantity="one">%d item moved to the vault trash</item>
+        <item quantity="other">%,d items moved to the vault trash</item>
+    </plurals>
+    <plurals name="vault_untrashed">
+        <item quantity="one">%d item put back in the vault</item>
+        <item quantity="other">%,d items put back in the vault</item>
+    </plurals>
+</resources>

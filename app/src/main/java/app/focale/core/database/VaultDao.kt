@@ -24,19 +24,43 @@ data class VaultOriginalRow(
 
 /**
  * Accès au coffre. Les copies d'un import en cours (`importing`) n'apparaissent dans aucune
- * liste : elles n'entrent au coffre qu'une fois leur original supprimé de la galerie.
+ * liste : elles n'entrent au coffre qu'une fois leur original supprimé de la galerie. Les
+ * éléments de la corbeille (`deleted_at`) n'apparaissent que dans la sienne.
  */
 @Dao
 interface VaultDao {
 
-    @Query("SELECT * FROM vault_item WHERE importing = 0 ORDER BY date_taken DESC, id DESC")
+    @Query("SELECT * FROM vault_item WHERE importing = 0 AND deleted_at IS NULL ORDER BY date_taken DESC, id DESC")
     fun observeAll(): Flow<List<VaultItemEntity>>
 
-    @Query("SELECT * FROM vault_item WHERE album_id = :albumId AND importing = 0 ORDER BY date_taken DESC, id DESC")
+    @Query(
+        "SELECT * FROM vault_item WHERE album_id = :albumId AND importing = 0 AND deleted_at IS NULL " +
+            "ORDER BY date_taken DESC, id DESC",
+    )
     fun observeInAlbum(albumId: Long): Flow<List<VaultItemEntity>>
 
-    @Query("SELECT * FROM vault_item WHERE album_id = :albumId AND importing = 0 ORDER BY date_taken DESC, id DESC")
+    @Query(
+        "SELECT * FROM vault_item WHERE album_id = :albumId AND importing = 0 AND deleted_at IS NULL " +
+            "ORDER BY date_taken DESC, id DESC",
+    )
     suspend fun inAlbum(albumId: Long): List<VaultItemEntity>
+
+    // ── Corbeille ────────────────────────────────────────────────────────────────
+
+    /** Corbeille du coffre, les dernières mises à la corbeille d'abord. */
+    @Query("SELECT * FROM vault_item WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, id DESC")
+    fun observeTrash(): Flow<List<VaultItemEntity>>
+
+    @Query("SELECT COUNT(*) FROM vault_item WHERE deleted_at IS NOT NULL")
+    fun observeTrashCount(): Flow<Int>
+
+    /** Met à la corbeille (instant [at]) ou en retire (null) ; 500 identifiants au plus. */
+    @Query("UPDATE vault_item SET deleted_at = :at WHERE id IN (:ids)")
+    suspend fun setDeleted(ids: List<Long>, at: Long?)
+
+    /** Éléments mis à la corbeille avant [before], à effacer. */
+    @Query("SELECT * FROM vault_item WHERE deleted_at IS NOT NULL AND deleted_at < :before")
+    suspend fun expiredTrash(before: Long): List<VaultItemEntity>
 
     /** 500 identifiants au plus. */
     @Query("SELECT * FROM vault_item WHERE id IN (:ids)")
@@ -59,7 +83,7 @@ interface VaultDao {
     @Query(
         """
         SELECT v.id AS item_id, m.id AS media_id FROM vault_item v JOIN media m ON m.id = v.source_media_id
-        WHERE v.importing = 0 AND m.is_trashed = 0
+        WHERE v.importing = 0 AND v.deleted_at IS NULL AND m.is_trashed = 0
         """,
     )
     fun observeLeftInGallery(): Flow<List<VaultOriginalRow>>
@@ -67,7 +91,7 @@ interface VaultDao {
     @Query(
         """
         SELECT v.id AS item_id, m.id AS media_id FROM vault_item v JOIN media m ON m.id = v.source_media_id
-        WHERE v.importing = 0 AND m.is_trashed = 0
+        WHERE v.importing = 0 AND v.deleted_at IS NULL AND m.is_trashed = 0
         """,
     )
     suspend fun leftInGallery(): List<VaultOriginalRow>
@@ -81,7 +105,7 @@ interface VaultDao {
         SELECT v.id AS item_id, m.id AS media_id FROM vault_item v JOIN media m
           ON m.display_name = v.display_name AND m.relative_path = v.original_path
           AND m.size = v.size AND m.date_taken = v.date_taken
-        WHERE v.source_media_id IS NULL AND v.importing = 0 AND m.is_trashed = 0
+        WHERE v.source_media_id IS NULL AND v.importing = 0 AND v.deleted_at IS NULL AND m.is_trashed = 0
         """,
     )
     suspend fun lookalikesInGallery(): List<VaultOriginalRow>
@@ -114,7 +138,7 @@ interface VaultDao {
     suspend fun insert(item: VaultItemEntity): Long
 
     /** Le nombre d'éléments visibles du coffre. */
-    @Query("SELECT COUNT(*) FROM vault_item WHERE importing = 0")
+    @Query("SELECT COUNT(*) FROM vault_item WHERE importing = 0 AND deleted_at IS NULL")
     suspend fun count(): Int
 
     /** Insertion groupée, en une transaction (restauration d'une sauvegarde). */
@@ -229,8 +253,8 @@ private const val NEW_MEDIA_MARGIN_MS = 60_000L
 
 private const val ALBUM_ROWS = """
     SELECT a.*,
-           (SELECT COUNT(*) FROM vault_item i WHERE i.album_id = a.id AND i.importing = 0) AS count,
-           (SELECT i.thumb_file_name FROM vault_item i WHERE i.album_id = a.id AND i.importing = 0
+           (SELECT COUNT(*) FROM vault_item i WHERE i.album_id = a.id AND i.importing = 0 AND i.deleted_at IS NULL) AS count,
+           (SELECT i.thumb_file_name FROM vault_item i WHERE i.album_id = a.id AND i.importing = 0 AND i.deleted_at IS NULL
               AND i.thumb_file_name IS NOT NULL
             ORDER BY i.date_taken DESC, i.id DESC LIMIT 1) AS cover_thumb
     FROM vault_album a

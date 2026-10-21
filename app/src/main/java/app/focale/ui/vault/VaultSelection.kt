@@ -18,8 +18,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * Sélection d'une grille du coffre et ce qui s'y applique : restaurer, supprimer, ranger dans
- * un album. Propre à chaque ViewModel, qui lui fournit sa portée et le contenu affiché.
+ * Sélection d'une grille du coffre et ce qui s'y applique : restaurer, mettre à la corbeille du
+ * coffre, ranger dans un album. Propre à chaque ViewModel, qui lui fournit sa portée et le
+ * contenu affiché.
  */
 class VaultSelection(
     private val scope: CoroutineScope,
@@ -51,7 +52,8 @@ class VaultSelection(
 
     fun restore() = run(R.plurals.message_restored) { repository.restore(it) }
 
-    fun delete() = run(R.plurals.message_deleted) { repository.delete(it) }
+    /** Met à la corbeille du coffre : effacée définitivement après 30 jours, d'ici là récupérable. */
+    fun delete() = run(R.plurals.vault_trashed) { repository.trash(it) }
 
     /** Range la sélection dans [destination], l'un des [albums] ou un nouveau. Rien n'est déchiffré. */
     fun moveTo(destination: VaultDestination, albums: List<VaultAlbum>) {
