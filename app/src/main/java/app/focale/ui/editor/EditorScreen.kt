@@ -55,6 +55,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSliderState
@@ -63,18 +64,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -103,6 +108,7 @@ import app.focale.edit.FilterPreset
 import app.focale.edit.ImageFrame
 import app.focale.edit.NormRect
 import app.focale.edit.SaveMode
+import app.focale.edit.StraightenMath
 import app.focale.ui.components.Choice
 import app.focale.ui.components.ConnectedChoiceGroup
 import app.focale.ui.theme.PhotoTheme
@@ -113,7 +119,10 @@ import kotlin.math.roundToInt
 fun EditorScreen(onClose: () -> Unit, viewModel: EditorViewModel = hiltViewModel()) {
     val seed by viewModel.seed.collectAsStateWithLifecycle()
     PhotoTheme(seed = seed, forceDark = true) {
-        EditorContent(viewModel, onClose)
+        // Surface : couleur de contenu du thème pour le titre et les icônes (noire par défaut).
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+            EditorContent(viewModel, onClose)
+        }
     }
 }
 
@@ -129,6 +138,7 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
     val saving by viewModel.saving.collectAsStateWithLifecycle()
     val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
     val canRedo by viewModel.canRedo.collectAsStateWithLifecycle()
+    val straightening by viewModel.straightening.collectAsStateWithLifecycle()
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var showOriginal by remember { mutableStateOf(false) }
 
@@ -199,8 +209,12 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                     ratio = viewModel.cropRatio(),
                     drawing = drawing,
                     ink = ink,
+                    straightening = straightening,
                     onGestureStart = viewModel::beginGesture,
                     onCropChange = viewModel::dragCrop,
+                    onStraightenStart = viewModel::beginStraighten,
+                    onStraighten = viewModel::straighten,
+                    onStraightenEnd = viewModel::endStraighten,
                     onStroke = viewModel::addStroke,
                     onErase = viewModel::eraseStroke,
                     onCompare = { showOriginal = it },
@@ -221,7 +235,16 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
             label = "toolPanel",
         ) { current ->
             when (current) {
-                EditorTool.CROP -> CropPanel(state, onRotate = viewModel::rotate, onFlip = viewModel::flip, onAspect = viewModel::setAspect)
+                EditorTool.CROP -> CropPanel(
+                    state = state,
+                    onRotate = viewModel::rotate,
+                    onFlip = viewModel::flip,
+                    onAspect = viewModel::setAspect,
+                    onStraightenStart = viewModel::beginStraighten,
+                    onStraighten = viewModel::straighten,
+                    onStraightenEnd = viewModel::endStraighten,
+                    onStraightenReset = viewModel::resetStraighten,
+                )
                 EditorTool.FILTERS -> FiltersPanel(preview?.image, state, onSelect = viewModel::setFilter)
                 EditorTool.ADJUST -> AdjustPanel(
                     state = state,
@@ -240,26 +263,31 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                 )
             }
         }
-        // Quatre outils : seul l'outil actif affiche son libellé.
-        ConnectedChoiceGroup(
-            choices = listOf(
-                Choice(EditorTool.CROP, stringResource(R.string.editor_crop), Icons.Outlined.Crop),
-                Choice(EditorTool.FILTERS, stringResource(R.string.editor_filters), Icons.Outlined.AutoFixHigh),
-                Choice(EditorTool.ADJUST, stringResource(R.string.editor_adjust), Icons.Outlined.Tune),
-                Choice(EditorTool.DRAW, stringResource(R.string.editor_draw), Icons.Outlined.Draw),
-            ),
-            selected = tool,
-            onSelect = viewModel::selectTool,
-            compact = true,
-            modifier = Modifier
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+        EditorToolChoices(tool = tool, onSelect = viewModel::selectTool)
     }
 }
 
+/** Quatre outils : seul l'outil actif affiche son libellé. */
 @Composable
-private fun EditorTopBar(
+internal fun EditorToolChoices(tool: EditorTool, onSelect: (EditorTool) -> Unit) {
+    ConnectedChoiceGroup(
+        choices = listOf(
+            Choice(EditorTool.CROP, stringResource(R.string.editor_crop), Icons.Outlined.Crop),
+            Choice(EditorTool.FILTERS, stringResource(R.string.editor_filters), Icons.Outlined.AutoFixHigh),
+            Choice(EditorTool.ADJUST, stringResource(R.string.editor_adjust), Icons.Outlined.Tune),
+            Choice(EditorTool.DRAW, stringResource(R.string.editor_draw), Icons.Outlined.Draw),
+        ),
+        selected = tool,
+        onSelect = onSelect,
+        compact = true,
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    )
+}
+
+@Composable
+internal fun EditorTopBar(
     canUndo: Boolean,
     canRedo: Boolean,
     canSave: Boolean,
@@ -317,12 +345,14 @@ private fun EditorTopBar(
 }
 
 /**
- * Aperçu : en mode recadrage, l'image entière et le cadre ; sinon la zone recadrée. Les
- * traits sont tracés par-dessus avec le rendu de l'export, et l'outil Dessin y pose sa
- * couche de saisie. Un appui long affiche l'original (sans filtre, réglage ni dessin).
+ * Aperçu : en mode recadrage, l'image entière et le cadre ; sinon la zone recadrée. Le
+ * redressement est appliqué à l'affichage (même géométrie que l'export), et un geste à deux
+ * doigts le règle en mode recadrage. Les traits sont tracés par-dessus avec le rendu de
+ * l'export, et l'outil Dessin y pose sa couche de saisie. Un appui long affiche l'original
+ * (sans filtre, réglage ni dessin).
  */
 @Composable
-private fun EditorCanvas(
+internal fun EditorCanvas(
     preview: EditorPreview,
     state: EditState,
     tool: EditorTool,
@@ -330,16 +360,26 @@ private fun EditorCanvas(
     ratio: Float?,
     drawing: DrawingOptions,
     ink: Color,
+    straightening: Boolean,
     onGestureStart: () -> Unit,
     onCropChange: (NormRect) -> Unit,
+    onStraightenStart: () -> Unit,
+    onStraighten: (Float) -> Unit,
+    onStraightenEnd: () -> Unit,
     onStroke: (DrawingStroke) -> Unit,
     onErase: (DrawingStroke) -> Unit,
     onCompare: (Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val image = preview.image
     val cropMode = tool == EditorTool.CROP
     val drawMode = tool == EditorTool.DRAW
+    val angle = state.straighten
+    val currentAngle by rememberUpdatedState(angle)
+    // Juste après un miroir, l'aperçu rendu en arrière-plan n'est pas encore retourné : il
+    // l'est ici, en accord avec l'angle, déjà inversé dans l'état.
+    val mirrored = preview.quarterTurns == state.quarterTurns && preview.flipHorizontal != state.flipHorizontal
     val colorFilter = remember(state.filter, state.brightness, state.contrast, state.saturation, state.warmth, showOriginal) {
         val values = state.colorMatrix()
         if (showOriginal || values.contentEquals(ColorMatrices.identity)) null else ColorFilter.colorMatrix(ColorMatrix(values))
@@ -347,7 +387,14 @@ private fun EditorCanvas(
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .padding(20.dp),
+            .padding(20.dp)
+            .then(
+                if (cropMode) {
+                    Modifier.straightenGesture({ currentAngle }, haptics, onStraightenStart, onStraighten, onStraightenEnd)
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         val region = if (cropMode) NormRect.Full else state.crop
         val containerWidth = with(density) { maxWidth.toPx() }
@@ -384,17 +431,35 @@ private fun EditorCanvas(
                     },
                 ),
         ) {
-            drawImage(
-                image = image,
-                srcOffset = IntOffset((region.left * image.width).roundToInt(), (region.top * image.height).roundToInt()),
-                srcSize = IntSize(
-                    (region.width * image.width).roundToInt().coerceAtLeast(1),
-                    (region.height * image.height).roundToInt().coerceAtLeast(1),
-                ),
-                dstOffset = dstOffset,
-                dstSize = dstSize,
-                colorFilter = colorFilter,
-            )
+            if (angle == 0f && !mirrored) {
+                drawImage(
+                    image = image,
+                    srcOffset = IntOffset((region.left * image.width).roundToInt(), (region.top * image.height).roundToInt()),
+                    srcSize = IntSize(
+                        (region.width * image.width).roundToInt().coerceAtLeast(1),
+                        (region.height * image.height).roundToInt().coerceAtLeast(1),
+                    ),
+                    dstOffset = dstOffset,
+                    dstSize = dstSize,
+                    colorFilter = colorFilter,
+                )
+            } else {
+                // Image entière pivotée autour de son centre, découpée à la zone visible ; en mode
+                // recadrage, les coins hors de l'image redressée restent vides.
+                val pivot = Offset(image.width / 2f, image.height / 2f)
+                val bleed = if (angle == 0f) 1f else StraightenMath.bleed(frame.width, frame.height)
+                clipRect(visible.left, visible.top, visible.right, visible.bottom) {
+                    withTransform({
+                        translate(frame.left, frame.top)
+                        scale(frame.width / image.width, frame.height / image.height, Offset.Zero)
+                        rotate(angle, pivot)
+                        scale(bleed, bleed, pivot)
+                        if (mirrored) scale(-1f, 1f, pivot)
+                    }) {
+                        drawImage(image, colorFilter = colorFilter)
+                    }
+                }
+            }
             if (prepared.isNotEmpty()) {
                 clipRect(visible.left, visible.top, visible.right, visible.bottom) {
                     drawIntoCanvas { canvas ->
@@ -411,6 +476,9 @@ private fun EditorCanvas(
                 imageRect = visible,
                 crop = state.crop,
                 ratio = ratio,
+                angle = angle,
+                imageSize = Size(image.width.toFloat(), image.height.toFloat()),
+                straightening = straightening,
                 accent = MaterialTheme.colorScheme.primary,
                 onGestureStart = onGestureStart,
                 onCropChange = onCropChange,
@@ -432,13 +500,33 @@ private fun EditorCanvas(
     }
 }
 
+/**
+ * Panneau Recadrage : valeur du redressement (un appui la ramène à 0°), règle graduée entre
+ * le quart de tour et le miroir, puis les formats.
+ */
 @Composable
-private fun CropPanel(state: EditState, onRotate: () -> Unit, onFlip: () -> Unit, onAspect: (CropAspect) -> Unit) {
+internal fun CropPanel(
+    state: EditState,
+    onRotate: () -> Unit,
+    onFlip: () -> Unit,
+    onAspect: (CropAspect) -> Unit,
+    onStraightenStart: () -> Unit,
+    onStraighten: (Float) -> Unit,
+    onStraightenEnd: () -> Unit,
+    onStraightenReset: () -> Unit,
+) {
     val haptics = LocalHapticFeedback.current
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        StraightenValue(
+            angle = state.straighten,
+            onReset = onStraightenReset,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+        )
         Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
         ) {
             FilledTonalIconButton(
                 onClick = {
@@ -447,6 +535,16 @@ private fun CropPanel(state: EditState, onRotate: () -> Unit, onFlip: () -> Unit
                 },
                 shapes = IconButtonDefaults.shapes(),
             ) { Icon(Icons.AutoMirrored.Rounded.RotateRight, contentDescription = stringResource(R.string.editor_rotate)) }
+            StraightenRuler(
+                angle = state.straighten,
+                onStart = onStraightenStart,
+                onAngle = onStraighten,
+                onEnd = onStraightenEnd,
+                onReset = onStraightenReset,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
+            )
             FilledTonalIconButton(
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)

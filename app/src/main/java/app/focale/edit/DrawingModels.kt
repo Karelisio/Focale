@@ -16,7 +16,9 @@ enum class DrawTool {
  * Trait de dessin, dans le repère de [EditState.crop] : coordonnées normalisées (0..1) de
  * l'image entière après rotation et miroir, avant recadrage. Le trait reste ainsi attaché
  * au contenu de la photo : un recadrage ultérieur le découpe sans le déplacer, une
- * rotation ou un miroir le transforment avec l'image, comme le cadre de recadrage.
+ * rotation ou un miroir le transforment avec l'image, comme le cadre de recadrage. Le
+ * redressement, lui, fait pivoter la photo dans son cadre, sous les traits : une forme
+ * tracée sur la photo redressée reste droite.
  *
  * @param points abscisses et ordonnées alternées (x0, y0, x1, y1…), jamais modifiées
  *   après construction ; pour une forme, départ et arrivée du geste.

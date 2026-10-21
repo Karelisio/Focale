@@ -533,6 +533,24 @@ application ouvre les photos et proposer de choisir Focale.
   l'éditeur, en copie ou à la place. Clé mémoire Coil des images pleine taille liée à
   `date_modified`.
 
+### 7.5 Éditeur
+- `EditState` appliqué dans l'ordre : quarts de tour, miroir, redressement, recadrage,
+  couleurs (mêmes matrices pour l'aperçu et l'export), dessin. L'aperçu tourné est rendu en
+  arrière-plan ; le redressement est appliqué à l'affichage, instantané.
+- Redressement à angle libre (±45°, au dixième de degré) : règle graduée (retour haptique à
+  chaque degré, marqué à 0° ; double appui ou valeur affichée pour revenir à 0°) ou rotation
+  à deux doigts sur l'aperçu en mode recadrage, rotations parasites d'un pincement ignorées
+  (seuil de 5°, doigts d'abord écartés ou rapprochés). Grille fine pendant le geste.
+- Géométrie pure (`StraightenMath`) : l'image pivote dans son cadre, le recadrage reste
+  normalisé dans ce cadre et doit tenir dans l'image tournée. Recadrage automatique : plus
+  grand rectangle de la proportion voulue (format imposé compris), en forme close (la zone
+  permise est symétrique : un rectangle qui y tient quelque part y tient centré), rapproché
+  du centre seulement si besoin ; il retrouve sa taille en revenant vers 0°. Les poignées
+  s'arrêtent au bord de l'image tournée. Quart de tour : même angle ; miroir : angle opposé.
+- Export (`EditRenderer`, `ImageEditor`) : même rotation autour du centre du cadre, image
+  agrandie de 3 px (`bleed`) pour qu'aucun coin ne soit à demi transparent. Les traits
+  restent alignés sur le cadre : une forme tracée sur la photo redressée reste droite.
+
 ---
 
 ## 8. Découpage du développement

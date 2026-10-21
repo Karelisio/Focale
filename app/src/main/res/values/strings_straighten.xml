@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Éditeur : redressement à angle libre -->
+    <string name="editor_straighten">Straighten</string>
+    <string name="editor_straighten_reset">Reset to 0°</string>
+</resources>
