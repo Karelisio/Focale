@@ -15,6 +15,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -31,6 +32,8 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -57,9 +60,15 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import app.focale.R
+import app.focale.cast.CastTarget
 import app.focale.core.image.ThumbnailSizes
 import app.focale.core.image.version
 import app.focale.core.model.MediaItem
+import app.focale.ui.cast.CastButton
+import app.focale.ui.cast.CastPresentation
+import app.focale.ui.cast.CastSheet
+import app.focale.ui.cast.CastViewModel
+import app.focale.ui.cast.castEffects
 import app.focale.ui.viewer.ImmersiveSystemBars
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
@@ -71,6 +80,9 @@ import kotlinx.coroutines.delay
  * Diaporama plein écran : fondu enchaîné et lent zoom (effet Ken Burns), avance
  * automatique selon l'intervalle des réglages, glisser pour passer d'une photo à
  * l'autre, appui pour afficher les commandes. L'écran reste allumé.
+ *
+ * Diffusé, le diaporama passe sur l'écran externe (mêmes animations, à sa taille) ou sur la TV,
+ * qui reçoit chaque nouvelle photo ; le téléphone garde le diaporama et ses commandes.
  */
 @Composable
 fun SlideshowScreen(onClose: () -> Unit, viewModel: SlideshowViewModel = hiltViewModel()) {
@@ -94,11 +106,32 @@ fun SlideshowScreen(onClose: () -> Unit, viewModel: SlideshowViewModel = hiltVie
         val start = initialIndex ?: return@LaunchedEffect
         if (index < 0 && count > 0) index = start.coerceIn(0, count - 1)
     }
-    // Avance automatique ; le diaporama boucle à la fin.
+    val step: (Int) -> Unit = { delta ->
+        if (count > 0) index = Math.floorMod(index + delta, count)
+    }
+    val current = if (index in 0 until count) items[index] else null
+
+    // Diffusion : la photo en cours sur l'écran externe (même fondu et même zoom) ou sur la TV,
+    // qui change de photo avec le diaporama ; les commandes restent sur le téléphone.
+    val cast: CastViewModel = hiltViewModel()
+    val castState by cast.state.collectAsStateWithLifecycle()
+    var castSheet by rememberSaveable { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val castOwner = castEffects(cast, current?.takeUnless { it.isVideo }) { snackbarHostState.showSnackbar(it, withDismissAction = true) }
+
+    // Avance automatique ; le diaporama boucle à la fin. En arrière-plan, la composition est
+    // suspendue et l'effet n'est plus relancé à chaque photo : pendant une diffusion vers une TV,
+    // la boucle continue seule et lui envoie elle-même la photo suivante (écran du téléphone éteint).
     LaunchedEffect(index, playing, intervalMs, count) {
         if (!playing || index < 0 || count == 0) return@LaunchedEffect
-        delay(intervalMs)
-        index = (index + 1) % count
+        var next = index
+        while (true) {
+            delay(intervalMs)
+            next = (next + 1) % count
+            index = next
+            if (!cast.tvActive) break
+            items[next]?.takeUnless { it.isVideo }?.let { cast.present(castOwner, it) }
+        }
     }
     // Commandes masquées automatiquement après quelques secondes.
     LaunchedEffect(controlsVisible, playing) {
@@ -114,11 +147,6 @@ fun SlideshowScreen(onClose: () -> Unit, viewModel: SlideshowViewModel = hiltVie
             SingletonImageLoader.get(context).enqueue(slideRequest(context, next))
         }
     }
-
-    val step: (Int) -> Unit = { delta ->
-        if (count > 0) index = Math.floorMod(index + delta, count)
-    }
-    val current = if (index in 0 until count) items[index] else null
 
     Box(
         Modifier
@@ -136,15 +164,7 @@ fun SlideshowScreen(onClose: () -> Unit, viewModel: SlideshowViewModel = hiltVie
                 ) { _, amount -> dragged += amount }
             },
     ) {
-        AnimatedContent(
-            targetState = current,
-            contentKey = { it?.id },
-            transitionSpec = { fadeIn(tween(CROSSFADE_MS)) togetherWith fadeOut(tween(CROSSFADE_MS)) },
-            label = "slide",
-            modifier = Modifier.fillMaxSize(),
-        ) { item ->
-            if (item != null) KenBurnsSlide(item = item, durationMs = intervalMs + CROSSFADE_MS)
-        }
+        SlideshowSlides(current, intervalMs)
 
         AnimatedVisibility(
             visible = controlsVisible,
@@ -164,6 +184,8 @@ fun SlideshowScreen(onClose: () -> Unit, viewModel: SlideshowViewModel = hiltVie
                     IconButton(onClick = onClose, shapes = IconButtonDefaults.shapes()) {
                         Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.action_close), tint = Color.White)
                     }
+                    Spacer(Modifier.weight(1f))
+                    CastButton(castState, onClick = { castSheet = true }, tint = Color.White)
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -196,6 +218,35 @@ fun SlideshowScreen(onClose: () -> Unit, viewModel: SlideshowViewModel = hiltVie
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 112.dp),
+        )
+    }
+
+    if (castSheet) CastSheet(cast, castState, onDismiss = { castSheet = false })
+    (castState.target as? CastTarget.Screen)?.let { screen ->
+        CastPresentation(screen.display) {
+            Box(Modifier.fillMaxSize().background(Color.Black)) { SlideshowSlides(current, intervalMs) }
+        }
+    }
+}
+
+/** Photos du diaporama : fondu enchaîné de l'une à l'autre, chacune animée de son lent zoom. */
+@Composable
+private fun SlideshowSlides(current: MediaItem?, intervalMs: Long) {
+    AnimatedContent(
+        targetState = current,
+        contentKey = { it?.id },
+        transitionSpec = { fadeIn(tween(CROSSFADE_MS)) togetherWith fadeOut(tween(CROSSFADE_MS)) },
+        label = "slide",
+        modifier = Modifier.fillMaxSize(),
+    ) { item ->
+        if (item != null) KenBurnsSlide(item = item, durationMs = intervalMs + CROSSFADE_MS)
     }
 }
 

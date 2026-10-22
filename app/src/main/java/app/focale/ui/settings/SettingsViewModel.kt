@@ -69,6 +69,7 @@ class SettingsViewModel @Inject constructor(
     fun setSlideshowInterval(seconds: Int) = update { setSlideshowInterval(seconds) }
     fun setVaultAutoLock(seconds: Int) = update { setVaultAutoLockSeconds(seconds) }
     fun setAutoCheckUpdates(enabled: Boolean) = update { setAutoCheckUpdates(enabled) }
+    fun setTvDiscovery(enabled: Boolean) = update { setTvDiscovery(enabled) }
     fun setFolderHidden(bucketId: Long, hidden: Boolean) = update { setFolderHidden(bucketId, hidden) }
 
     private companion object {

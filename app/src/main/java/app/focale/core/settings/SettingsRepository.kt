@@ -56,6 +56,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setSlideshowInterval(seconds: Int) = edit { it[Keys.SLIDESHOW_INTERVAL] = seconds.coerceIn(2, 30) }
     suspend fun setVaultAutoLockSeconds(seconds: Int) = edit { it[Keys.VAULT_AUTO_LOCK] = seconds.coerceAtLeast(0) }
     suspend fun setAutoCheckUpdates(enabled: Boolean) = edit { it[Keys.AUTO_UPDATES] = enabled }
+    suspend fun setTvDiscovery(enabled: Boolean) = edit { it[Keys.TV_DISCOVERY] = enabled }
     suspend fun setPeopleSort(sort: PeopleSort) = edit { it[Keys.PEOPLE_SORT] = sort.name }
     suspend fun setVaultSort(sort: VaultSort) = edit {
         it[Keys.VAULT_SORT] = sort.order.name
@@ -146,6 +147,7 @@ class SettingsRepository @Inject constructor(
             slideshowIntervalSeconds = prefs[Keys.SLIDESHOW_INTERVAL] ?: defaults.slideshowIntervalSeconds,
             vaultAutoLockSeconds = prefs[Keys.VAULT_AUTO_LOCK] ?: defaults.vaultAutoLockSeconds,
             autoCheckUpdates = prefs[Keys.AUTO_UPDATES] ?: defaults.autoCheckUpdates,
+            tvDiscovery = prefs[Keys.TV_DISCOVERY] ?: defaults.tvDiscovery,
             hiddenFolders = prefs[Keys.HIDDEN_FOLDERS].orEmpty().mapNotNullTo(HashSet()) { it.toLongOrNull() },
             peopleSort = prefs[Keys.PEOPLE_SORT].toEnum(defaults.peopleSort),
             vaultSort = VaultSort(
@@ -214,6 +216,7 @@ class SettingsRepository @Inject constructor(
             choice<VaultAlbumOrder>(Keys.VAULT_ALBUM_SORT),
             flag(Keys.VAULT_ALBUM_SORT_ASCENDING),
             flag(Keys.VAULT_NEW_MEDIA_ALERTS),
+            flag(Keys.TV_DISCOVERY),
         )
 
         /**
@@ -260,5 +263,6 @@ class SettingsRepository @Inject constructor(
         val VAULT_ALBUM_SORT = stringPreferencesKey("vault_album_sort")
         val VAULT_ALBUM_SORT_ASCENDING = booleanPreferencesKey("vault_album_sort_ascending")
         val VAULT_NEW_MEDIA_ALERTS = booleanPreferencesKey("vault_new_media_alerts")
+        val TV_DISCOVERY = booleanPreferencesKey("tv_discovery")
     }
 }

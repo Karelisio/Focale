@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -30,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.outlined.CastConnected
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.FilledTonalIconButton
@@ -46,6 +48,7 @@ import androidx.compose.material3.rememberSliderState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,12 +97,29 @@ import kotlinx.coroutines.delay
 import androidx.media3.common.MediaItem as ExoMediaItem
 
 /**
+ * Diffusion de la vidéo courante de la visionneuse, vue de sa page : sur un écran externe, le
+ * lecteur du téléphone y envoie l'image ([Screen]) ; sur une TV, un lecteur distant reflète la
+ * lecture de la TV ([Tv], [Tv.player]). Dans les deux cas, le téléphone montre l'affiche de la
+ * vidéo, [label] et les commandes.
+ */
+@Immutable
+sealed interface VideoCast {
+    val label: String
+
+    data class Screen(override val label: String) : VideoCast
+
+    class Tv(val udn: String, override val label: String, val player: (MediaItem) -> Player) : VideoCast
+}
+
+/**
  * Page vidéo de la visionneuse pour un média de la galerie.
  *
  * @param playbackSpeed vitesse de lecture de la visionneuse ([rememberVideoSpeed]), choisie dans
  *   les commandes ([onPlaybackSpeedChange]).
  * @param controlsWidth largeur de la barre d'outils flottante, sur laquelle s'aligne la
  *   progression (non précisée : toute la largeur disponible, dans la limite des barres).
+ * @param cast diffusion en cours (page courante seulement) ; [onPlayer] reçoit le lecteur du
+ *   téléphone, que l'écran externe affiche.
  */
 @Composable
 fun VideoPage(
@@ -113,7 +133,10 @@ fun VideoPage(
     onPlaybackSpeedChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     controlsWidth: Dp = Dp.Unspecified,
+    cast: VideoCast? = null,
+    onPlayer: ((Player?) -> Unit)? = null,
 ) {
+    val tv = cast as? VideoCast.Tv
     VideoPlayerPage(
         key = item.id,
         isCurrent = isCurrent,
@@ -128,8 +151,19 @@ fun VideoPage(
         modifier = modifier,
         controlsWidth = controlsWidth,
         contentDescription = item.displayName,
+        // Vers une TV, un autre lecteur : la position passe de l'un à l'autre (PlaybackMemory).
+        playerKey = tv?.udn,
+        playerFactory = if (tv != null) { _ -> tv.player(item) } else ::galleryPlayer,
+        castLabel = cast?.label,
+        // La TV continue quand Focale passe en arrière-plan (service au premier plan).
+        pauseInBackground = tv == null,
+        onPlayerChanged = onPlayer,
     )
 }
+
+/** Lecteur des vidéos de la galerie : aucune donnée de diagnostic transmise à la plateforme. */
+@OptIn(UnstableApi::class)
+private fun galleryPlayer(context: Context): Player = ExoPlayer.Builder(context).setUsePlatformDiagnostics(false).build()
 
 /**
  * Page vidéo générique. Le lecteur n'est créé que pour la page courante et libéré dès
@@ -153,6 +187,11 @@ fun VideoPage(
  * @param contentDescription nom de la vidéo, annoncé par TalkBack avec ses actions de saut.
  * @param playerFactory permet une source de données dédiée (vidéos chiffrées du coffre). Par
  *   défaut, aucune donnée de diagnostic n'est transmise à la plateforme.
+ * @param playerKey change quand le lecteur doit être recréé (diffusion vers une TV).
+ * @param castLabel diffusion en cours : l'image n'est pas affichée ici (écran externe, TV), mais
+ *   l'affiche et ce libellé.
+ * @param pauseInBackground pause à la mise en arrière-plan (pas pour une TV, qui continue).
+ * @param onPlayerChanged reçoit le lecteur de la page courante, puis null à sa libération.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -170,7 +209,11 @@ fun VideoPlayerPage(
     modifier: Modifier = Modifier,
     controlsWidth: Dp = Dp.Unspecified,
     contentDescription: String? = null,
-    playerFactory: (Context) -> Player = { ExoPlayer.Builder(it).setUsePlatformDiagnostics(false).build() },
+    playerFactory: (Context) -> Player = ::galleryPlayer,
+    playerKey: Any? = null,
+    castLabel: String? = null,
+    pauseInBackground: Boolean = true,
+    onPlayerChanged: ((Player?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val memory = rememberSaveable(key, saver = PlaybackMemory.Saver) { PlaybackMemory() }
@@ -199,7 +242,7 @@ fun VideoPlayerPage(
             ViewerChromeTheme { PlayGlyph() }
             return@Box
         }
-        val player = remember(key) {
+        val player = remember(key, playerKey) {
             playerFactory(context).apply {
                 setMediaItem(mediaItem())
                 repeatMode = Player.REPEAT_MODE_ONE
@@ -207,28 +250,38 @@ fun VideoPlayerPage(
                 prepare()
             }
         }
+        val currentOnPlayerChanged by rememberUpdatedState(onPlayerChanged)
         DisposableEffect(player) {
             memory.attach(player)
             seeking.attach(player)
+            currentOnPlayerChanged?.invoke(player)
             onDispose {
+                currentOnPlayerChanged?.invoke(null)
                 seeking.detach()
                 memory.detach()
                 player.release()
             }
         }
-        LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { memory.pauseForBackground() }
+        val currentPauseInBackground by rememberUpdatedState(pauseInBackground)
+        LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { if (currentPauseInBackground) memory.pauseForBackground() }
         LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { memory.backInForeground() }
         // Vitesse de la visionneuse, au lecteur neuf puis à chaque choix : Media3 n'en change que
         // le tempo, la hauteur du son reste celle de la vidéo.
         LaunchedEffect(player, playbackSpeed) { player.setPlaybackSpeed(playbackSpeed) }
 
-        ContentFrame(
-            player = player,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
-            keepContentOnReset = true,
-            shutter = poster,
-        )
+        if (castLabel == null) {
+            ContentFrame(
+                player = player,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+                keepContentOnReset = true,
+                shutter = poster,
+            )
+        } else {
+            // Image sur l'écran externe ou la TV : ici, l'affiche et l'appareil qui joue la vidéo.
+            poster()
+            ViewerChromeTheme { CastLabel(castLabel, Modifier.align(Alignment.TopCenter)) }
+        }
         // Cumul des sauts, sous les commandes ; effacé peu après le dernier appui de la série.
         val feedback = seeking.feedback
         LaunchedEffect(feedback) {
@@ -349,6 +402,33 @@ private fun PlayGlyph() {
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(IconButtonDefaults.mediumIconSize))
+        }
+    }
+}
+
+/** « Lecture sur … » : pastille sous la barre supérieure, pendant une diffusion. */
+@Composable
+private fun CastLabel(label: String, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        shape = CircleShape,
+        color = colors.secondaryContainer.copy(alpha = BUTTON_ALPHA),
+        contentColor = colors.onSecondaryContainer,
+        modifier = modifier
+            .statusBarsPadding()
+            .padding(top = CastLabelTop),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Icon(Icons.Outlined.CastConnected, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(
+                text = stringResource(R.string.cast_playing_on, label),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 }
@@ -604,5 +684,8 @@ private val ContentInset = 8.dp
 private val TrackHeight = 6.dp
 private val ThumbSize = DpSize(4.dp, 22.dp)
 private val ButtonGap = 16.dp
+
+/** Sous la barre supérieure de la visionneuse. */
+private val CastLabelTop = 72.dp
 private val GradientExtent = 72.dp
 private const val BUTTON_ALPHA = 0.85f

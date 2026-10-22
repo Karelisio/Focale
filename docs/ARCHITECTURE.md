@@ -10,7 +10,7 @@ cible, les choix techniques structurants et le découpage du développement.
 
 | Principe | Conséquence concrète |
 |---|---|
-| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. Les seules connexions réseau sont le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement, et la recherche quotidienne de mises à jour sur GitHub (désactivable) ; la variante `strict` retire même la permission `INTERNET`. |
+| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. Les seules connexions réseau sont le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement, et la recherche quotidienne de mises à jour sur GitHub (désactivable) ; la diffusion vers une TV (DLNA, § 6.12) ne parle qu'aux adresses du réseau local. La variante `strict` retire toute permission réseau, `INTERNET` comprise. |
 | **Fluide avec 50 000+ médias** | MediaStore est indexé dans Room ; toutes les listes passent par Paging 3 (placeholders + sauts) ; les miniatures viennent du cache système de MediaStore (`loadThumbnail`) via un `Fetcher` Coil dédié. Tests de charge sur 50 000 médias, plans d'exécution surveillés, profil de référence : [PERFORMANCE.md](PERFORMANCE.md). |
 | **MediaStore reste la source de vérité** | Room n'est qu'un miroir (index) + les métadonnées propres à l'app (favoris, albums virtuels, étiquettes ML, empreintes, coffre). |
 | **Material You partout** | Couleurs dynamiques du fond d'écran, palette maison en repli, thème « couleur depuis la photo » dans la visionneuse et les albums. |
@@ -40,6 +40,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Chiffrement | Tink `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo), keyset protégé par Android Keystore |
 | Authentification | androidx.biometric (biométrie forte ou identifiants de l'appareil) + code PIN (PBKDF2) |
 | Widget | Glance (`GlanceTheme` = couleurs dynamiques du système) |
+| Diffusion | API `Presentation` / `DisplayManager` (écran externe) ; DLNA/UPnP écrit dans l'application (SSDP, SOAP, serveur HTTP local), sans SDK Google Cast |
 | CI | GitHub Actions : tests unitaires, lint, APK debug + release, test de fumée de l'APK release sur émulateur |
 
 ---
@@ -97,6 +98,7 @@ app/src/main/java/app/focale/
 │   └── util/                   dates, formats, haptique, extensions
 ├── data/                       repositories
 ├── backup/                     sauvegardes par mot de passe : données, format commun au coffre, automatiques
+├── cast/                       diffusion : écrans externes (display/), TV DLNA (dlna/), service au premier plan
 ├── collage/                    collages : dispositions, géométrie, cadrage, orientation, rendu
 ├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur, texte
 ├── people/                     visages : détection, alignement, SFace, regroupement
@@ -110,7 +112,7 @@ app/src/main/java/app/focale/
     ├── components/             composants réutilisables
     ├── navigation/             routes typées, NavHost, barre adaptative
     ├── timeline/  viewer/  albums/  search/  more/  favorites/  trash/
-    ├── cleanup/   editor/  vault/   map/     slideshow/  memories/  settings/  backup/
+    ├── cleanup/   editor/  vault/   map/     slideshow/  memories/  settings/  backup/  cast/
     ├── collage/
 ```
 
@@ -311,7 +313,8 @@ instanciés par réflexion depuis le manifeste ; `proguard-rules.pro` le garde, 
 vérifie les APK release avec `tools/release/check_constructors.py`, puis avec
 `tools/release/check_privacy.py` : aucun fournisseur d'ONNX Runtime ni backend de télémétrie de
 ML Kit dans le manifeste (leur retrait se fait par leur nom, qu'une mise à jour peut changer),
-ni permission `INTERNET` dans la variante strict. Le job `smoke` exécute
+ni permission réseau (`INTERNET`, état du réseau et du Wi-Fi, multicast, réseau local) ni service
+de diffusion DLNA dans la variante strict. Le job `smoke` exécute
 ensuite l'APK release universel sur un émulateur (API 34, `google_apis`) : deux images de
 test (texte, visage), puis attente que la base contienne étiquettes, texte « facture » et
 visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend.
@@ -440,7 +443,7 @@ exposées par un `FileProvider` et purgées au bout d'une heure.
   tuiles : aucune requête réseau n'est possible.
 - **Diaporama** : même requête que la grille d'origine (photos seules si elle est
   mixte), pagination identique à la visionneuse, préchargement de la photo suivante,
-  `keepScreenOn`.
+  `keepScreenOn` ; diffusé sur un écran externe ou une TV (§ 6.12).
 - **Widget** : Glance, photo choisie par `WidgetPhotoPicker` (souvenir du carrousel avec
   son titre, sinon favori, sinon photo récente), stable sur une période de 4 h ;
   renouvellement par WorkManager tant qu'une instance existe, et immédiatement après un
@@ -608,6 +611,67 @@ sauvegarde, chiffrée par un mot de passe, emporte les données de l'application
   réglage et notifié sans rien des données) ; réglage, clés, jeu de clés du Keystore, DataStore
   (`data_backup`) et fichiers (`focale-auto-AAAA-MM-JJ.focale`) propres : elle fonctionne sans
   coffre, et aucune des deux ne touche aux fichiers de l'autre.
+
+### 6.12 Diffusion vers une TV ou un écran externe
+Package `cast/` (logique), `ui/cast/` (bouton, feuille, présentation). Ni SDK Google Cast ni
+bibliothèque tierce : API du système et protocoles ouverts, écrits dans l'application.
+`CastManager` (singleton) réunit les appareils, la cible et le média en cours ; la visionneuse et
+le diaporama y proposent leur média (`present`/`withdraw`, le temps de leur composition), et
+seuls les médias de MediaStore sont diffusés (`CastMediaPreparer.isCastable`) : le coffre, dont
+les éléments n'ont pas d'URI MediaStore, ne l'est jamais, ni servi ni présenté (ses écrans gardent
+`FLAG_SECURE`, noirs sur un écran recopié).
+
+- **Écran externe** (deux variantes) : `ExternalDisplays` suit `DisplayManager`
+  (`DISPLAY_CATEGORY_PRESENTATION`, arrivée et départ) ; `PresentationDisplays` retient les écrans
+  de présentation publics et allumés, hors écran de l'appareil (HDMI, USB-C, Miracast, « Caster
+  l'écran »), et prend le premier que l'utilisateur n'a pas arrêté (« Arrêter » : retour à la
+  recopie jusqu'au départ de l'écran). `CastPresentation` y ouvre une `Presentation` dont la
+  `ComposeView` partage la composition de l'écran appelant (`setParentCompositionContext`), à la
+  densité de l'écran externe : photo à sa taille (`ViewerPresentationContent`), vidéo du lecteur du
+  téléphone (`ContentFrame`, le téléphone n'affichant que l'affiche et « Lecture sur … »), diaporama
+  avec ses fondus et son zoom. Le téléphone garde pager, commandes vidéo et diaporama. En
+  arrière-plan, la présentation est masquée (observateur du cycle de vie : la composition, elle,
+  est suspendue) et la vidéo mise en pause ; elle reparaît au retour.
+- **TV DLNA** (variante `standard`, `BuildConfig.TV_CAST_AVAILABLE`) :
+  - découverte (`DlnaDiscovery`) : M-SEARCH `urn:schemas-upnp-org:device:MediaRenderer:1` envoyé
+    trois fois au groupe SSDP sous verrou multicast Wi-Fi, sans `USER-AGENT`, réponses écoutées
+    4 s (`Ssdp`), puis description de chaque appareil (`DeviceDescription` : lecteur racine ou
+    imbriqué offrant AVTransport, `URLBase` ou adresse de la description, RenderingControl s'il
+    existe). Automatique à l'ouverture de la visionneuse ou du diaporama, au plus une fois par
+    minute (réglage « Rechercher les TV automatiquement »), sinon à la demande (menu « Diffuser sur
+    une TV… », feuille) ; une recherche remplace la liste, sauf la TV en cours ;
+  - commandes (`RendererClient`, `Soap`, `Didl`) : SetAVTransportURI avec métadonnées DIDL-Lite
+    (profil `JPEG_LRG` pour une photo), Play (répété tant que la TV répond 701), Pause, Seek
+    (`REL_TIME`), Stop, GetTransportInfo et GetPositionInfo, SetVolume/GetVolume. Les requêtes SOAP
+    et les descriptions passent par `LanHttpClient`, client HTTP/1.1 minimal sur socket brute : la
+    politique de sécurité réseau n'autorise pas le trafic en clair, et ce client n'accepte que des
+    adresses privées écrites en clair (`LanAddresses` : 10/8, 172.16/12, 192.168/16, lien local,
+    IPv6 locales), sans résolution DNS, par le réseau Wi-Fi même sous VPN (`Network.socketFactory`) ;
+  - serveur local (`MediaServer`) : démarré avec la diffusion, lié à l'adresse Wi-Fi sur un port
+    tiré par le système, il ne sert que le média publié, sous `/<jeton>/media.<ext>` (128 bits de
+    `SecureRandom`, neuf à chaque média, comparé en temps constant), GET et HEAD, une plage `Range`,
+    en-têtes DLNA, 8 transferts au plus ; clients hors réseau local refusés (403) ; arrêté (socket
+    et transferts coupés) à la fin. Photo décodée par `ImageDecoder` (orientation EXIF appliquée),
+    réduite à 3 840 px et réencodée en JPEG (aucune métadonnée) ; vidéo servie telle quelle depuis
+    MediaStore, lue à la position demandée ;
+  - session : média en cours envoyé à chaque changement (`collectLatest`), TV interrogée chaque
+    seconde pendant une vidéo (toutes les 3 s pour une photo) ; trois échecs de suite : « Connexion
+    perdue », diffusion arrêtée. Erreur UPnP 714-716, état `ERROR_OCCURRED` ou vidéo jamais lue en
+    10 s : « La TV ne lit pas ce format ». La page vidéo prend alors un `RemotePlayer`
+    (`SimpleBasePlayer` qui reflète la lecture de la TV) : lecture, pause, curseur et sauts de 10 s
+    inchangés, position passée du lecteur local à la TV et retour (`PlaybackMemory`). Écran quitté :
+    TV arrêtée au bout de 3 s (le temps d'ouvrir le diaporama), diffusion close après 5 min sans
+    média ;
+  - arrière-plan : `CastService`, service au premier plan `connectedDevice` démarré depuis
+    l'écran, garde le processus actif tant qu'une TV est servie, avec la notification « Diffusion
+    sur … » et « Arrêter » ; fermer Focale depuis les applications récentes arrête la diffusion. Le
+    diaporama continue d'avancer sur la TV écran éteint (sa boucle présente elle-même la photo
+    suivante, la composition étant suspendue).
+- **Interface** : bouton « Diffuser » dans la barre de la visionneuse et du diaporama, visible
+  seulement si un écran externe ou une TV est là, pendant une recherche ou une diffusion
+  (`CastState.available`) ; feuille (`CastSheet`) : diffusion en cours avec « Arrêter » et volume,
+  écrans externes, TV et état de leur recherche (aucune, Wi-Fi absent, accès au réseau local à
+  autoriser sur Android 17+).
 
 ---
 
@@ -935,5 +999,16 @@ logique pure : requêtes, regroupement, parsing de recherche, hash, flou, PIN…
 | `ACCESS_MEDIA_LOCATION` | coordonnées GPS non masquées des EXIF |
 | `MANAGE_MEDIA` (31+, facultatif) | opérations sans confirmation à chaque fois |
 | `USE_BIOMETRIC` | coffre-fort |
-| `INTERNET` (variante `standard` uniquement) | fond de carte OSM (sur activation explicite), mises à jour |
+| `INTERNET` (variante `standard` uniquement) | fond de carte OSM (sur activation explicite), mises à jour ; sockets de la diffusion DLNA |
 | `REQUEST_INSTALL_PACKAGES`, `UPDATE_PACKAGES_WITHOUT_USER_ACTION` (`standard`) | installation des mises à jour, sans confirmation sur Android 12+ |
+| `ACCESS_NETWORK_STATE` (`standard`) | réseau Wi-Fi et son adresse pour la diffusion DLNA (déjà déclarée par WorkManager, retirée de `strict`) |
+| `CHANGE_WIFI_MULTICAST_STATE` (`standard`) | verrou multicast pendant la recherche SSDP des TV |
+| `ACCESS_LOCAL_NETWORK` (`standard`, Android 17+, à l'exécution) | joindre les TV du réseau local ; demandée dans la feuille « Diffuser », jamais à l'ouverture de la visionneuse |
+| `FOREGROUND_SERVICE_CONNECTED_DEVICE` (`standard`) | service au premier plan tant qu'une TV lit un média servi par Focale |
+
+`ACCESS_WIFI_STATE` n'est pas demandée : l'adresse vient de `ConnectivityManager` et le verrou
+multicast ne demande que `CHANGE_WIFI_MULTICAST_STATE`. Aucune autorisation globale du trafic en
+clair (`cleartextTrafficPermitted`) : seuls les sockets bruts de la diffusion, limités au réseau
+local, parlent HTTP. La variante `strict` n'a aucune permission réseau (`INTERNET`, état du réseau
+et du Wi-Fi, multicast, réseau local) ni le service de diffusion : `tools/release/check_privacy.py`
+le vérifie sur chaque APK release ; l'écran externe n'en demande aucune.

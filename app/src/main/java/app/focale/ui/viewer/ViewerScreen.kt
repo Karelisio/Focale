@@ -87,11 +87,13 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import app.focale.R
+import app.focale.cast.CastTarget
 import app.focale.core.image.ThumbnailSizes
 import app.focale.core.image.UltraHdr
 import app.focale.core.image.thumbnail
@@ -101,6 +103,13 @@ import app.focale.core.util.Formatters
 import app.focale.ml.CountryResolver
 import app.focale.ml.LabelDictionary
 import app.focale.ui.actions.MediaActionsHost
+import app.focale.ui.cast.CastButton
+import app.focale.ui.cast.CastPresentation
+import app.focale.ui.cast.CastSheet
+import app.focale.ui.cast.CastViewModel
+import app.focale.ui.cast.ViewerPresentationContent
+import app.focale.ui.cast.castEffects
+import app.focale.ui.cast.castTargetName
 import app.focale.ui.components.isNavTransitionRunning
 import app.focale.ui.components.sharedMedia
 import app.focale.ui.navigation.EditorRoute
@@ -161,6 +170,21 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val rotation = remember { PhotoRotationState() }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    // Diffusion : bouton, feuille, média proposé à la TV, image sur l'écran externe.
+    val cast: CastViewModel = hiltViewModel()
+    val castState by cast.state.collectAsStateWithLifecycle()
+    var castSheet by rememberSaveable { mutableStateOf(false) }
+    // Lecteur de la vidéo courante, que l'écran externe affiche.
+    var videoPlayer by remember { mutableStateOf<Player?>(null) }
+    castEffects(cast, current) { snackbarHostState.showSnackbar(it, withDismissAction = true) }
+    val castTarget = castState.target
+    val videoCast = castTarget?.let { target ->
+        val name = castTargetName(target)
+        when (target) {
+            is CastTarget.Screen -> VideoCast.Screen(name)
+            is CastTarget.Tv -> remember(target.renderer.udn, name) { VideoCast.Tv(target.renderer.udn, name, cast::remotePlayer) }
+        }
+    }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
     // Vitesse des vidéos : la même d'une vidéo à l'autre, 1× à chaque ouverture.
     var videoSpeed by rememberVideoSpeed()
@@ -246,6 +270,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     rotation = rotation,
                     rotationEnabled = !motionState.isPlaying,
                     controlsWidth = toolbarWidth,
+                    videoCast = videoCast,
+                    onVideoPlayer = { videoPlayer = it },
                     onToggleChrome = { chromeVisible = !chromeVisible },
                     onZoomChanged = { zoomed = it },
                     onPageChanged = { item ->
@@ -281,6 +307,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                         if (motionPhoto?.mediaId == item.id && rotation.pending == 0) {
                             MotionPhotoChip(playing = motionState.isPlaying, onClick = motionState::toggle)
                         }
+                        CastButton(castState, onClick = { castSheet = true }, tint = MaterialTheme.colorScheme.onSurface)
                     },
                 )
             }
@@ -359,7 +386,14 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     }
                     val rotatable = item != null && !item.isVideo && !item.isGif && !motionState.isPlaying &&
                         !rotation.awaitsNewVersion && motionPhoto?.mediaId != item.id
-                    ViewerExtraMenuItems(viewModel, item, dismiss, onRotate = item?.takeIf { rotatable }?.let { { rotation.rotateClockwise(it) } })
+                    ViewerExtraMenuItems(
+                        viewModel,
+                        item,
+                        dismiss,
+                        onRotate = item?.takeIf { rotatable }?.let { { rotation.rotateClockwise(it) } },
+                        // Recherche des TV à la demande, même sans TV déjà trouvée (bouton masqué).
+                        onCast = if (castState.tvSupported) ({ castSheet = true }) else null,
+                    )
                 },
             )
         }
@@ -401,6 +435,10 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     }
     MediaActionsHost(actions = viewModel.actions, snackbarHostState = snackbarHostState)
     ViewerExtraSheets()
+    if (castSheet) CastSheet(cast, castState, onDismiss = { castSheet = false })
+    (castTarget as? CastTarget.Screen)?.let { screen ->
+        CastPresentation(screen.display) { ViewerPresentationContent(current, videoPlayer) }
+    }
 
     val infoItem = current
     if (showInfo && infoItem != null) {
@@ -437,6 +475,8 @@ private fun ViewerPager(
     rotation: PhotoRotationState,
     rotationEnabled: Boolean,
     controlsWidth: Dp,
+    videoCast: VideoCast?,
+    onVideoPlayer: (Player?) -> Unit,
     onToggleChrome: () -> Unit,
     onZoomChanged: (Boolean) -> Unit,
     onPageChanged: (MediaItem) -> Unit,
@@ -479,6 +519,8 @@ private fun ViewerPager(
                 playbackSpeed = videoSpeed,
                 onPlaybackSpeedChange = onVideoSpeedChange,
                 controlsWidth = controlsWidth,
+                cast = videoCast?.takeIf { isCurrent },
+                onPlayer = onVideoPlayer,
             )
             else -> MotionPhotoBox(
                 // Pas de lecture tant qu'une rotation attend : la vidéo, elle, ne tournerait pas.
