@@ -8,11 +8,13 @@ import app.focale.core.model.GroupLevel
 import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaQuery
 import app.focale.core.model.SearchTerm
+import app.focale.data.MediaRepository
 import app.focale.ml.ImageAnalyzer
 import app.focale.ml.semantic.ClipModels
 import app.focale.ml.text.TextRecognitionStep
 import app.focale.people.FaceAnalysisStep
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -38,12 +40,14 @@ class QueryPlanTest {
 
     private val statements = CopyOnWriteArrayList<Pair<String, List<Any?>>>()
     private lateinit var database: FocaleDatabase
+    private lateinit var repository: MediaRepository
 
     @Before
     fun open() = runBlocking<Unit> {
         database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), FocaleDatabase::class.java)
             .setQueryCallback({ sql, args -> statements += sql to args }, { it.run() })
             .build()
+        repository = MediaRepository(database.mediaDao(), Dispatchers.IO, database.invalidationTracker)
         // Quelques lignes, pour que chaque requête aille jusqu'au bout (le plan ne dépend pas du volume).
         database.mediaDao().upsert((1L..3L).map { media(it) })
     }
@@ -61,22 +65,29 @@ class QueryPlanTest {
             MediaQuery(filter = MediaFilter.VIDEOS) to TYPE_INDEX,
         )
         for ((query, index) in queries) {
-            val plans = plansOf { page(database.mediaDao().pagingSourceOfMedia(MediaQueryBuilder.select(query)), key = 45_000) }
+            val plans = plansOf { page(repository.pagingSource(query), key = 45_000) }
             // Page à une position lointaine : parcours de l'index dans l'ordre de la grille, arrêté après la page.
-            val page = plans.single { it.sql.startsWith("SELECT * FROM (") }
+            val page = plans.single { it.sql.startsWith("SELECT m.* FROM media m") }
             page.assertSearches("m", index)
             page.assertNoTempBTree()
-            // Nombre total de la PagingSource (à chaque ouverture, donc à chaque saut).
-            val count = plans.single { it.sql.startsWith("SELECT COUNT(*) FROM (") }
-            count.assertSearches("m", index)
+            // La base de test n'a que trois médias : la page lointaine elle-même, par son SQL.
+            val far = explain(MediaQueryBuilder.select(query, limit = 360, offset = 45_000).sql, emptyList())
+            assertTrue(far.sql, far.sql.endsWith("LIMIT 360 OFFSET 45000"))
+            far.assertSearches("m", index)
+            far.assertNoTempBTree()
+            // Nombre total de la PagingSource (à chaque ouverture, donc à chaque saut) : l'index seul,
+            // sans relire la requête triée ligne à ligne (`SELECT COUNT(*) FROM (…)` de Room).
+            val count = plans.single { it.sql.startsWith("SELECT COUNT(*) FROM media m") }
+            if (query.excludedBuckets.isEmpty()) count.assertCovering("m", index) else count.assertSearches("m", index)
             count.assertNoTempBTree()
+            assertFalse(plans.any { it.sql.startsWith("SELECT COUNT(*) FROM (") })
         }
     }
 
     @Test
     fun `grille d'un dossier et couverture de chaque dossier par l'index des dossiers`() = runBlocking<Unit> {
-        val folder = plansOf { page(database.mediaDao().pagingSourceOfMedia(MediaQueryBuilder.select(MediaQuery(bucketId = 42L))), key = 20_000) }
-            .single { it.sql.startsWith("SELECT * FROM (") }
+        val folder = plansOf { page(repository.pagingSource(MediaQuery(bucketId = 42L)), key = 20_000) }
+            .single { it.sql.startsWith("SELECT m.* FROM media m") }
         folder.assertSearches("m", FOLDER_INDEX)
         folder.assertNoTempBTree()
 
@@ -92,13 +103,30 @@ class QueryPlanTest {
         val dao = database.mediaDao()
         plansOf { dao.observeCountOfMedia(MediaQueryBuilder.count(MediaQuery.Timeline)).first() }.single().assertCovering("m", TIMELINE_INDEX)
         plansOf { dao.observeTotalCount().first() }.single().assertCovering("media", TIMELINE_INDEX)
-        // Histogramme : tous les médias, mais par l'index seul (le regroupement par mois local reste un tri).
-        plansOf { dao.observeHistogramOfMedia(MediaQueryBuilder.histogram(MediaQuery.Timeline, GroupLevel.MONTH)).first() }
-            .single().assertCovering("m", TIMELINE_INDEX)
         plansOf { dao.count(MediaQueryBuilder.position(MediaQuery.Timeline, media(2))) }.single().assertCovering("m", TIMELINE_INDEX)
         // Compteurs des filtres (onglet Albums) : index des types seul.
         plansOf { dao.observeCountOfMedia(MediaQueryBuilder.count(MediaQuery(filter = MediaFilter.VIDEOS))).first() }
             .single().assertCovering("m", TYPE_INDEX)
+    }
+
+    @Test
+    fun `histogramme et position dans la grille par plages de dates de l'index, sans date locale par média`() = runBlocking<Unit> {
+        // Histogramme (bulle de date) et en-têtes avant un média (retour de la visionneuse) : bornes
+        // des périodes calculées en Kotlin, chaque période cherchée dans l'index par sa plage de dates.
+        for ((query, index) in mapOf(MediaQuery.Timeline to TIMELINE_INDEX, MediaQuery(filter = MediaFilter.PHOTOS) to TYPE_INDEX)) {
+            val plans = (
+                plansOf { repository.histogram(query, GroupLevel.MONTH) } +
+                    plansOf { repository.gridPositionOf(query, mediaId = 2, level = GroupLevel.DAY) }
+                ).filter { "FROM media m" in it.sql }
+            // Dates extrêmes, comptes par période, position du média, périodes non vides avant lui.
+            assertTrue(plans.joinToString("\n") { it.sql }, plans.size == 4)
+            for (plan in plans) {
+                assertFalse("date locale calculée pour chaque média : ${plan.sql}", "strftime" in plan.sql)
+                plan.assertCovering("m", index)
+                plan.assertNoTempBTree()
+            }
+            for (plan in plans.filter { "column1" in it.sql }) plan.assertSearches("m", index, constraint = "date_taken<?")
+        }
     }
 
     private fun media(id: Long) = MediaEntity(
@@ -143,10 +171,10 @@ class QueryPlanTest {
         // Toute la table est comptée : l'ordre des identifiants lit les deux tables dans le même
         // ordre, là où un index trié par date les lirait au hasard (trois fois plus lent à 50 000).
         val plans = listOf(
-            plansOf { database.analysisDao().observePendingCount(ImageAnalyzer.VERSION).first() } to "a",
-            plansOf { database.textDao().observeProgress(TextRecognitionStep.VERSION).first() } to "t",
-            plansOf { database.faceDao().observeProgress(FaceAnalysisStep.VERSION).first() } to "s",
-            plansOf { database.embeddingDao().observeProgress(ClipModels.VERSION).first() } to "e",
+            plansOf { database.analysisDao().pendingCount(ImageAnalyzer.VERSION) } to "a",
+            plansOf { database.textDao().progress(TextRecognitionStep.VERSION) } to "t",
+            plansOf { database.faceDao().progress(FaceAnalysisStep.VERSION) } to "s",
+            plansOf { database.embeddingDao().progress(ClipModels.VERSION) } to "e",
         )
         for ((statements, step) in plans) {
             val plan = statements.single()
@@ -159,17 +187,35 @@ class QueryPlanTest {
     @Test
     fun `la recherche par étiquette passe par l'index des étiquettes`() = runBlocking<Unit> {
         val dog = MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog", "Poodle"))))
-        val plans = plansOf { page(database.mediaDao().pagingSourceWithAnalysis(MediaQueryBuilder.select(dog)), key = 0) } +
-            plansOf { database.mediaDao().observeCountWithAnalysis(MediaQueryBuilder.count(dog)).first() }
-        for (plan in plans) {
-            plan.assertSearches("media_label", "index_media_label_label")
+        val page = plansOf { page(repository.pagingSource(dog), key = 0) }.filter { "FROM media m" in it.sql }
+        val count = plansOf { database.mediaDao().observeCountWithAnalysis(MediaQueryBuilder.count(dog)).first() }.single()
+        for (plan in page + count) {
+            plan.assertCovering("media_label", LABEL_INDEX)
             plan.assertNoScan("media_label")
         }
-        // Onglet Recherche : la couverture de chaque étiquette ne parcourt que ses médias.
-        val stats = plansOf { database.analysisDao().observeLabelStats(60).first() }.single()
+        // Nombre de résultats : depuis les médias de l'étiquette (par la clé primaire), pas depuis
+        // toute la timeline ; de même pour une personne et les favoris.
+        count.assertSearches("m", "INTEGER PRIMARY KEY")
+        for (query in listOf(MediaQuery(personId = 3), MediaQuery(favoritesOnly = true))) {
+            plansOf { database.mediaDao().observeCount(MediaQueryBuilder.count(query)).first() }.single().assertSearches("m", "INTEGER PRIMARY KEY")
+        }
+        // Texte libre (nom de fichier) : `media` lue dans l'ordre des identifiants, pas des dates.
+        val words = MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"), text = "chien")))
+        plansOf { database.mediaDao().observeCountWithAnalysis(MediaQueryBuilder.count(words)).first() }.single().assertScans("m")
+    }
+
+    @Test
+    fun `étiquettes de l'onglet Recherche comptées par l'index seul, couverture des seules retenues`() = runBlocking<Unit> {
+        val stats = plansOf { database.analysisDao().labelStats(60) }.single()
+        // Comptage dans l'ordre de l'index, sans regrouper les lignes dans un arbre temporaire.
+        stats.assertScansIndex("l", LABEL_INDEX)
+        assertFalse(stats.text, "TEMP B-TREE FOR GROUP BY" in stats.text)
+        // Couverture : la première de l'index de l'étiquette, par confiance décroissante.
         val cover = stats.subtree("CORRELATED SCALAR SUBQUERY")
-        cover.assertSearches("l2", "index_media_label_label")
+        cover.assertCovering("l2", LABEL_INDEX)
         cover.assertNoScan("l2")
+        // Tri des seules égalités de confiance (« RIGHT PART »), jamais de toutes ses photos.
+        assertFalse(cover.text, cover.rows.any { it.detail == "USE TEMP B-TREE FOR ORDER BY" })
     }
 
     @Test
@@ -252,6 +298,12 @@ class QueryPlanTest {
             assertTrue("$table devrait être lue dans l'ordre des identifiants : $text\n$sql", rows.any { pattern.containsMatchIn(it.detail) })
         }
 
+        /** Parcours de toute la table [table] dans l'ordre de l'[index], lu seul. */
+        fun assertScansIndex(table: String, index: String) {
+            val pattern = Regex("""^SCAN (TABLE )?(\w+ AS )?$table USING COVERING INDEX $index\b""")
+            assertTrue("$table devrait être parcourue par l'index $index seul : $text\n$sql", rows.any { pattern.containsMatchIn(it.detail) })
+        }
+
         /** Aucun parcours complet de [table] (SCAN), alors qu'un index permet de la chercher. */
         fun assertNoScan(table: String) {
             val pattern = Regex("""^SCAN (TABLE )?(\w+ AS )?$table\b""")
@@ -263,5 +315,6 @@ class QueryPlanTest {
         const val TIMELINE_INDEX = "index_media_is_trashed_date_taken"
         const val FOLDER_INDEX = "index_media_bucket_id_is_trashed_date_taken"
         const val TYPE_INDEX = "index_media_media_type_is_trashed_date_taken"
+        const val LABEL_INDEX = "index_media_label_label_confidence_media_id"
     }
 }

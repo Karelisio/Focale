@@ -18,7 +18,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 
 /**
@@ -42,7 +41,9 @@ class EmbeddingStep @Inject constructor(
 
     override val kind: AnalysisKind = AnalysisKind.SEMANTIC
 
-    override fun observeProgress(): Flow<StepCounts> = dao.observeProgress(ClipModels.VERSION)
+    override suspend fun progress(): StepCounts = dao.progress(ClipModels.VERSION)
+
+    override val progressTables = arrayOf("media", "media_embedding")
 
     private var encoder: ClipImageEncoder? = null
 

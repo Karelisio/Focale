@@ -12,7 +12,6 @@ import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.Flow
 
 /**
  * Étape « texte » : lit le texte des photos (captures d'écran d'abord, voir
@@ -33,7 +32,9 @@ class TextRecognitionStep @Inject constructor(
 
     override val kind: AnalysisKind = AnalysisKind.TEXT
 
-    override fun observeProgress(): Flow<StepCounts> = dao.observeProgress(VERSION)
+    override suspend fun progress(): StepCounts = dao.progress(VERSION)
+
+    override val progressTables = arrayOf("media", "media_text")
 
     override suspend fun pending(limit: Int): List<MediaItem> = dao.pending(VERSION, limit).map { it.toModel() }
 

@@ -46,7 +46,7 @@ class SearchFiltersQueryTest {
         database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), FocaleDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        media = MediaRepository(database.mediaDao(), Dispatchers.IO)
+        media = MediaRepository(database.mediaDao(), Dispatchers.IO, database.invalidationTracker)
         runBlocking {
             database.mediaDao().upsert(
                 listOf(

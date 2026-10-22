@@ -28,7 +28,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Injection | Hilt (+ hilt-work, hilt-navigation-compose) |
 | Asynchrone | Coroutines, Flow |
 | Persistance | Room (index + métadonnées), DataStore Preferences (réglages) |
-| Pagination | Paging 3 (`PagingSource` Room via `@RawQuery`) |
+| Pagination | Paging 3 (`MediaPagingSource` sur des `@RawQuery` Room : positions, placeholders, sauts ; nombre total par l'index) |
 | Images | Coil 3 (miniatures MediaStore, GIF animés, frames vidéo), telephoto (zoom + sous-échantillonnage, glisser pour fermer) |
 | Vidéo | Media3 ExoPlayer + `media3-ui-compose` (contrôles M3 maison) |
 | Couleurs depuis photo | MaterialKolor (quantification + score Material Color Utilities) |
@@ -140,7 +140,7 @@ dans leur ordre sans trier la bibliothèque : (`is_trashed`, `date_taken`) pour 
 | Table | Contenu |
 |---|---|
 | `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `place_key` (ses noms normalisés, traductions comprises), `country` |
-| `media_label` | (media, étiquette ML Kit canonique, confiance) |
+| `media_label` | (media, étiquette ML Kit canonique, confiance) ; index (`label`, `confidence`, `media_id`), version 7 |
 | `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée |
 | `media_embedding` | empreinte TinyCLIP de chaque photo (512 flottants, norme 1) |
 | `favorite` | médias favoris |
@@ -168,7 +168,9 @@ et la corbeille, non.
 Toutes les grilles (timeline, album, favoris, résultats de recherche…) sont décrites
 par un objet sérialisable `MediaQuery` (filtres de type, dossier, album virtuel,
 favoris, étiquettes, période, lieu, texte, tri). Un `MediaQueryBuilder` le traduit
-en SQL ; Room fournit la `PagingSource`.
+en SQL ; `MediaPagingSource` en lit les pages (`LIMIT`/`OFFSET`, clé = position, comme
+`LimitOffsetPagingSource` de Room) et compte le total par `MediaQueryBuilder.count` (l'index
+seul pour la timeline), invalidée par l'`InvalidationTracker` de Room.
 
 Bénéfice clé : la visionneuse reçoit **la même** `MediaQuery` que la grille d'où
 l'on vient, calcule la position de départ par un `COUNT(*)` et ouvre une
@@ -190,7 +192,7 @@ rechargent ni ses pages, ni son nombre, ni son histogramme.
    suppressions par la liste des `_ID` ; sinon comparaison complète
    (`id` + `date_modified`).
 3. Écritures par lots (1 000 lignes ajoutées ou modifiées, 500 suppressions) dans des
-   transactions ; Room invalide les `PagingSource` → l'UI se met à jour seule.
+   transactions ; l'`InvalidationTracker` de Room invalide les `PagingSource` → l'UI se met à jour seule.
 4. Date de tri : `DATE_TAKEN`, sinon la date retenue dans `media_date`, sinon `DATE_MODIFIED`.
 
 Médias écrits par l'application (sortie du coffre, corbeille d'Android 10, copie, édition en
@@ -291,9 +293,11 @@ par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).
 exécute les `AnalysisStep` fournies par multiliaison (texte, visages, empreintes).
 Chacune tient son avancement dans sa table (version et `date_modified` analysés) :
 elle reprend où elle s'était arrêtée et recalcule après une évolution ou une édition.
-Chaque étape expose aussi son avancement (`observeProgress`, mêmes critères que sa file) :
-`AnalysisScheduler.status` le combine à celui de l'analyse principale pour l'onglet
-Recherche et les réglages. « Analyser maintenant » (`runNow`) lance un passage marqué
+Chaque étape expose aussi son avancement (`progress`, mêmes critères que sa file, et les tables
+dont il dépend) : `AnalysisScheduler.status` le combine à celui de l'analyse principale pour
+l'onglet Recherche et les réglages. Chaque lecture parcourt toute la bibliothèque : tant qu'il est
+affiché, un compteur est relu au plus toutes les 3 s (`sampledQuery`), aussitôt quand le worker
+vide une file ou finit son passage (`AnalysisMilestones`). « Analyser maintenant » (`runNow`) lance un passage marqué
 manuel, qui ignore « en charge uniquement » jusqu'à la fin (ses continuations aussi).
 Un échec global (modèle indisponible, étiquetage en échec sur tout un lot) est noté par
 `AnalysisIssues` jusqu'au prochain lot réussi et affiché sous l'analyse concernée, avec
@@ -663,7 +667,10 @@ application ouvre les photos et proposer de choisir Focale.
   50 000, même tout au bout (mesures : [PERFORMANCE.md](PERFORMANCE.md)).
 - Pincement : 2 à 7 colonnes (décalées sur tablette), ancrage sur l'élément visé.
 - Défilement rapide : poignée + bulle de date calculée depuis un histogramme
-  mensuel (`GROUP BY` mois) — exact et sans charger les pages.
+  mensuel — exact et sans charger les pages : mois bornés en Kotlin dans le fuseau courant
+  (`DateGrouping.bounds`, heure d'été comprise, mêmes périodes que les en-têtes), comptés par
+  plages de dates dans l'index. La position dans la grille au retour de la visionneuse compte
+  de même les périodes non vides avant le média.
 - Sélection : appui long puis glissement (calcul de l'élément sous le doigt +
   défilement automatique en bord d'écran), retour haptique à chaque ajout.
 

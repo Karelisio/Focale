@@ -14,6 +14,7 @@ import app.focale.core.model.MediaItem
 import app.focale.core.settings.SettingsRepository
 import app.focale.data.toModel
 import app.focale.ml.AnalysisKind
+import app.focale.ml.AnalysisMilestones
 import app.focale.ml.AnalysisStep
 import app.focale.ml.ImageAnalyzer
 import app.focale.ml.OfflineGeocoder
@@ -42,6 +43,7 @@ class AnalysisWorker @AssistedInject constructor(
     private val scheduler: AnalysisScheduler,
     private val issues: AnalysisIssues,
     private val steps: Set<@JvmSuppressWildcards AnalysisStep>,
+    private val milestones: AnalysisMilestones,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -60,7 +62,11 @@ class AnalysisWorker @AssistedInject constructor(
             dao.refreshPlaceKeys(translations::searchKey)
             while (!isStopped) {
                 val batch = queue.next(BATCH_SIZE)
-                if (batch.isEmpty()) break
+                if (batch.isEmpty()) {
+                    // File vidée : les compteurs affichés le montrent sans attendre leur intervalle.
+                    milestones.reach()
+                    break
+                }
 
                 val analyses = ArrayList<MediaAnalysisEntity>(batch.size)
                 val labels = ArrayList<MediaLabelEntity>()
@@ -123,6 +129,7 @@ class AnalysisWorker @AssistedInject constructor(
                     val items = last?.let { step.pendingAfter(it, STEP_BATCH_SIZE) } ?: step.pending(STEP_BATCH_SIZE)
                     if (items.isEmpty()) {
                         issues.clear(step.kind)
+                        milestones.reach()
                         break
                     }
                     last = items.last()
@@ -155,6 +162,8 @@ class AnalysisWorker @AssistedInject constructor(
         } finally {
             geocoder.release()
             steps.forEach { it.release() }
+            // Fin du passage (temps écoulé, arrêt, échec) : derniers nombres affichés aussitôt.
+            milestones.reach()
         }
     }
 

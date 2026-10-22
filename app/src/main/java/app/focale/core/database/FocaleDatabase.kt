@@ -29,7 +29,7 @@ import androidx.room.RoomDatabase
         VaultAlbumEntity::class,
         MediaDateEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class FocaleDatabase : RoomDatabase() {

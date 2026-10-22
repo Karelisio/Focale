@@ -11,7 +11,6 @@ import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.database.MediaTextEntity
 import app.focale.core.database.StepCounts
 import app.focale.ml.AnalysisKind
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -64,14 +63,14 @@ class AnalysisProgressTest {
             ),
         )
         // Photos 1 à 5 (captures et GIF compris) ; vidéo et corbeille exclues.
-        assertEquals(StepCounts(total = 5, done = 2), database.textDao().observeProgress(version = 1).first())
+        assertEquals(StepCounts(total = 5, done = 2), database.textDao().progress(version = 1))
         assertEquals(3, database.textDao().pending(version = 1, limit = 100).size)
     }
 
     @Test
     fun `les visages écartent captures d'écran et GIF, comme leur file`() = runBlocking {
         database.faceDao().upsertScans(listOf(FaceScanEntity(1, analyzedModified = 1_000L, version = 1, faceCount = 2)))
-        assertEquals(StepCounts(total = 3, done = 1), database.faceDao().observeProgress(version = 1).first())
+        assertEquals(StepCounts(total = 3, done = 1), database.faceDao().progress(version = 1))
         assertEquals(2, database.faceDao().pending(version = 1, limit = 100).size)
     }
 
@@ -83,7 +82,7 @@ class AnalysisProgressTest {
                 MediaEmbeddingEntity(2, analyzedModified = 1_000L, version = 1, vector = null),
             ),
         )
-        assertEquals(StepCounts(total = 5, done = 1), database.embeddingDao().observeProgress(version = 2).first())
+        assertEquals(StepCounts(total = 5, done = 1), database.embeddingDao().progress(version = 2))
         assertEquals(4, database.embeddingDao().pending(version = 2, limit = 100).size)
     }
 

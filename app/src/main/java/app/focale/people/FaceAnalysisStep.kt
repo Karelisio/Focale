@@ -13,7 +13,6 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -60,7 +59,9 @@ class FaceAnalysisStep @Inject constructor(
 
     override val kind: AnalysisKind = AnalysisKind.FACES
 
-    override fun observeProgress(): Flow<StepCounts> = dao.observeProgress(VERSION)
+    override suspend fun progress(): StepCounts = dao.progress(VERSION)
+
+    override val progressTables = arrayOf("media", "face_scan")
 
     private var clusterer: FaceClusterer? = null
     private var loadedGeneration = -1L

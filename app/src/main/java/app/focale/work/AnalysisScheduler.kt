@@ -10,18 +10,22 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import androidx.room.InvalidationTracker
 import app.focale.core.database.AnalysisDao
 import app.focale.core.database.MediaDao
+import app.focale.core.database.sampledQuery
 import app.focale.core.di.ApplicationScope
 import app.focale.core.mediastore.MediaSyncManager
 import app.focale.core.settings.SettingsRepository
 import app.focale.ml.AnalysisKind
+import app.focale.ml.AnalysisMilestones
 import app.focale.ml.AnalysisStep
 import app.focale.ml.ImageAnalyzer
 import dagger.Lazy
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -96,6 +100,8 @@ class AnalysisScheduler @Inject constructor(
     private val steps: Lazy<Set<@JvmSuppressWildcards AnalysisStep>>,
     private val issues: AnalysisIssues,
     @ApplicationScope private val scope: CoroutineScope,
+    private val invalidationTracker: InvalidationTracker,
+    private val milestones: AnalysisMilestones,
 ) {
 
     fun start() {
@@ -133,9 +139,17 @@ class AnalysisScheduler @Inject constructor(
         }
     }
 
+    /**
+     * Compteur d'avancement : chaque lecture parcourt toute la bibliothèque, et chaque lot de
+     * l'analyse en change les tables. Relu au plus toutes les [PROGRESS_INTERVAL] tant qu'il est
+     * affiché, aussitôt à la fin d'une file ([AnalysisMilestones]) : la fin s'affiche sans délai.
+     */
+    private fun <T> progress(tables: Array<String>, read: suspend () -> T): Flow<T> =
+        sampledQuery(invalidationTracker.createFlow(*tables), PROGRESS_INTERVAL, milestones.events, query = read)
+
     private val mainProgress: Flow<AnalysisProgress> = combine(
         mediaDao.observeTotalCount(),
-        analysisDao.observePendingCount(ImageAnalyzer.VERSION),
+        progress(arrayOf("media", "media_analysis")) { analysisDao.pendingCount(ImageAnalyzer.VERSION) },
     ) { total, pending -> AnalysisProgress(analyzed = (total - pending).coerceAtLeast(0), total = total) }
 
     private val phase: Flow<AnalysisPhase> = workManager.get().getWorkInfosForUniqueWorkFlow(NAME)
@@ -152,7 +166,7 @@ class AnalysisScheduler @Inject constructor(
     val status: Flow<AnalysisStatus> = flow {
         // Étapes obtenues à la première observation : rien n'est construit au démarrage.
         val stepFlows = steps.get().sortedBy { it.order }
-            .map { step -> step.observeProgress().map { StepProgress(step.kind, it.done, it.total) } }
+            .map { step -> progress(step.progressTables) { step.progress() }.map { StepProgress(step.kind, it.done, it.total) } }
         val stepsProgress = if (stepFlows.isEmpty()) flowOf(emptyList()) else combine(stepFlows) { it.toList() }
         emitAll(
             combine(
@@ -201,5 +215,8 @@ class AnalysisScheduler @Inject constructor(
     private companion object {
         const val NAME = "media-analysis"
         const val PERIODIC_NAME = "media-analysis-nightly"
+
+        /** Intervalle minimal entre deux lectures d'un compteur d'avancement affiché. */
+        val PROGRESS_INTERVAL = 3.seconds
     }
 }

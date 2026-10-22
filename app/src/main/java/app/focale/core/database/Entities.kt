@@ -82,6 +82,12 @@ data class DateBucketRow(
     val count: Int,
 )
 
+/** Dates extrêmes des médias d'une requête ([MediaQueryBuilder.dateRange]), nulles sans média. */
+data class DateRangeRow(
+    val first: Long?,
+    val last: Long?,
+)
+
 /** Album dossier agrégé depuis l'index. */
 data class BucketRow(
     @ColumnInfo(name = "bucket_id") val bucketId: Long,
@@ -152,11 +158,15 @@ data class MediaAnalysisEntity(
     val country: String?,
 )
 
-/** Étiquette ML Kit (libellé anglais canonique) attachée à un média. */
+/**
+ * Étiquette ML Kit (libellé anglais canonique) attachée à un média. Index (`label`, `confidence`,
+ * `media_id`) : recherche par étiquette et comptage des étiquettes par l'index seul, photo la
+ * plus sûre de chaque étiquette en tête de la sienne (docs/PERFORMANCE.md).
+ */
 @Entity(
     tableName = "media_label",
     primaryKeys = ["media_id", "label"],
-    indices = [Index("label")],
+    indices = [Index("label", "confidence", "media_id")],
 )
 data class MediaLabelEntity(
     @ColumnInfo(name = "media_id") val mediaId: Long,

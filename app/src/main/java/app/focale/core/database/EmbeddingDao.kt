@@ -3,7 +3,6 @@ package app.focale.core.database
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
-import kotlinx.coroutines.flow.Flow
 
 /** Empreinte valide d'une photo, telle que chargée pour la recherche. */
 class StoredEmbedding(
@@ -41,9 +40,9 @@ interface EmbeddingDao {
     suspend fun pendingAfter(version: Int, dateTaken: Long, id: Long, limit: Int): List<MediaEntity>
 
     /**
-     * Avancement en direct : photos concernées par [pending] et photos déjà traitées. Parcours
-     * dans l'ordre des identifiants (« + » écarte les index triés par date) : voir
-     * `AnalysisDao.observePendingCount`.
+     * Avancement, relu au plus toutes les quelques secondes : photos concernées par [pending] et
+     * photos déjà traitées. Parcours dans l'ordre des identifiants (« + » écarte les index triés
+     * par date) : voir `AnalysisDao.pendingCount`.
      */
     @Query(
         """
@@ -53,7 +52,7 @@ interface EmbeddingDao {
         WHERE +m.is_trashed = 0 AND +m.media_type = ${MediaQueryBuilder.MEDIA_TYPE_IMAGE}
         """,
     )
-    fun observeProgress(version: Int): Flow<StepCounts>
+    suspend fun progress(version: Int): StepCounts
 
     @Upsert
     suspend fun upsert(embeddings: List<MediaEmbeddingEntity>)

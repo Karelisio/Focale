@@ -45,7 +45,17 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+    /**
+     * Version 7 : index des étiquettes (`label`, `confidence`, `media_id`), qui sert seul la
+     * recherche par étiquette, le comptage des étiquettes et la couverture de chacune.
+     */
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            CHANGES_V7.forEach(db::execSQL)
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 
     private val CREATE_V2 = listOf(
         "CREATE TABLE IF NOT EXISTS `media_text` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `text` TEXT NOT NULL, `text_key` TEXT NOT NULL, PRIMARY KEY(`media_id`))",
@@ -88,5 +98,11 @@ object DatabaseMigrations {
         "CREATE INDEX IF NOT EXISTS `index_media_is_trashed_date_taken` ON `media` (`is_trashed`, `date_taken`)",
         "CREATE INDEX IF NOT EXISTS `index_media_bucket_id_is_trashed_date_taken` ON `media` (`bucket_id`, `is_trashed`, `date_taken`)",
         "CREATE INDEX IF NOT EXISTS `index_media_media_type_is_trashed_date_taken` ON `media` (`media_type`, `is_trashed`, `date_taken`)",
+    )
+
+    private val CHANGES_V7 = listOf(
+        // Étiquettes de l'onglet Recherche par l'index seul (docs/PERFORMANCE.md).
+        "DROP INDEX IF EXISTS `index_media_label_label`",
+        "CREATE INDEX IF NOT EXISTS `index_media_label_label_confidence_media_id` ON `media_label` (`label`, `confidence`, `media_id`)",
     )
 }

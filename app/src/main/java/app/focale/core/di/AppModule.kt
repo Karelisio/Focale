@@ -6,6 +6,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import androidx.room.InvalidationTracker
 import androidx.room.Room
 import androidx.work.WorkManager
 import app.focale.core.database.AlbumDao
@@ -96,6 +97,10 @@ object AppModule {
         Room.databaseBuilder(context, FocaleDatabase::class.java, FocaleDatabase.NAME)
             .addMigrations(*DatabaseMigrations.ALL)
             .build()
+
+    /** Changements des tables : pages des grilles, histogrammes et compteurs échantillonnés. */
+    @Provides
+    fun invalidationTracker(database: FocaleDatabase): InvalidationTracker = database.invalidationTracker
 
     @Provides
     fun mediaDao(database: FocaleDatabase): MediaDao = database.mediaDao()

@@ -56,4 +56,26 @@ class DateGroupingTest {
             DateGrouping.periodKey(ms(2023, 7, 1), GroupLevel.MONTH, zone),
         )
     }
+
+    @Test
+    fun `bornes des périodes au minuit local, jours de changement d'heure compris`() {
+        // Passage à l'heure d'été le 26 mars 2023 (23 h), à l'heure d'hiver le 29 octobre (25 h).
+        val days = DateGrouping.bounds(ms(2023, 3, 25), ms(2023, 3, 27), GroupLevel.DAY, zone)
+        assertEquals(listOf(ms(2023, 3, 25, 0), ms(2023, 3, 26, 0), ms(2023, 3, 27, 0), ms(2023, 3, 28, 0)), days)
+        assertEquals(listOf(24L, 23L, 24L), days.zipWithNext { a, b -> (b - a) / 3_600_000 })
+        val autumn = DateGrouping.bounds(ms(2023, 10, 29), ms(2023, 10, 29), GroupLevel.DAY, zone)
+        assertEquals(25L, (autumn[1] - autumn[0]) / 3_600_000)
+        // Mois et années : du premier jour de la période du premier média à la fin de celle du dernier.
+        assertEquals(
+            listOf(ms(2023, 1, 1, 0), ms(2023, 2, 1, 0), ms(2023, 3, 1, 0)),
+            DateGrouping.bounds(ms(2023, 1, 31, hour = 23), ms(2023, 2, 1, hour = 0), GroupLevel.MONTH, zone),
+        )
+        assertEquals(listOf(ms(2022, 1, 1, 0), ms(2023, 1, 1, 0), ms(2024, 1, 1, 0)), DateGrouping.bounds(ms(2022, 6, 1), ms(2023, 6, 1), GroupLevel.YEAR, zone))
+        // Chaque média tombe dans la période de son en-tête.
+        for (time in listOf(ms(2023, 3, 26, hour = 0), ms(2023, 3, 26, hour = 3), ms(2023, 3, 26, hour = 23))) {
+            val start = DateGrouping.periodStart(time, GroupLevel.DAY, zone)
+            assertEquals(ms(2023, 3, 26, 0), start)
+            assertEquals(ms(2023, 3, 27, 0), DateGrouping.periodEnd(time, GroupLevel.DAY, zone))
+        }
+    }
 }

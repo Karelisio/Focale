@@ -5,7 +5,9 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.focale.core.model.MediaQuery
 import app.focale.core.model.SearchTerm
+import app.focale.data.MediaRepository
 import app.focale.ml.ImageAnalyzer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -40,9 +42,10 @@ class MediaObservationTest {
     @Test
     fun `un lot d'analyse recharge la recherche mais pas la timeline ni un dossier`() = runBlocking<Unit> {
         val dao = database.mediaDao()
-        val timeline = dao.pagingSourceOfMedia(MediaQueryBuilder.select(MediaQuery.Timeline)).loaded()
-        val folder = dao.pagingSourceOfMedia(MediaQueryBuilder.select(MediaQuery(bucketId = 42L))).loaded()
-        val search = dao.pagingSourceWithAnalysis(MediaQueryBuilder.select(MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog")))))).loaded()
+        val repository = MediaRepository(dao, Dispatchers.IO, database.invalidationTracker)
+        val timeline = repository.pagingSource(MediaQuery.Timeline).loaded()
+        val folder = repository.pagingSource(MediaQuery(bucketId = 42L)).loaded()
+        val search = repository.pagingSource(MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"))))).loaded()
 
         database.analysisDao().save(listOf(analysis(1)), listOf(MediaLabelEntity(1, "Dog", 0.9f)))
         awaitInvalid(search)
@@ -61,7 +64,7 @@ class MediaObservationTest {
         load(PagingSource.LoadParams.Refresh(key = null, loadSize = 30, placeholdersEnabled = true))
     }
 
-    /** Room invalide les PagingSource en différé, après la transaction. */
+    /** Les PagingSource sont invalidées en différé, après la transaction (InvalidationTracker). */
     private suspend fun awaitInvalid(source: PagingSource<Int, MediaEntity>) = withTimeout(5_000) {
         while (!source.invalid) delay(10)
     }

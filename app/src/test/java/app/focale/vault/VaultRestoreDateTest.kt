@@ -112,7 +112,7 @@ class VaultRestoreDateTest {
             storage = storage,
             operations = operations,
             syncManager = sync,
-            media = MediaRepository(database.mediaDao(), Dispatchers.IO),
+            media = MediaRepository(database.mediaDao(), Dispatchers.IO, database.invalidationTracker),
             widgets = WidgetRefresher(context, scope),
             io = Dispatchers.IO,
         )

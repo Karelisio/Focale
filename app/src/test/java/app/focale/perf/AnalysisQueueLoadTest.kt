@@ -5,7 +5,9 @@ import androidx.test.core.app.ApplicationProvider
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaEntity
 import app.focale.core.database.MediaQueryBuilder
+import app.focale.core.database.sampledQuery
 import app.focale.data.toModel
+import app.focale.ml.AnalysisMilestones
 import app.focale.ml.AnalysisStep
 import app.focale.ml.ImageAnalyzer
 import app.focale.ml.semantic.ClipModels
@@ -17,9 +19,16 @@ import app.focale.people.FaceAnalyzer
 import app.focale.people.PeopleEditions
 import app.focale.work.AnalysisQueue
 import app.focale.work.AnalysisWorker
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -71,7 +80,7 @@ class AnalysisQueueLoadTest {
                 val restart = report.samples(repeat = 3) { dao.pending(ImageAnalyzer.VERSION, AnalysisWorker.BATCH_SIZE) }
                 report.check("premier lot d'un passage à $percent %", restart, budgetMs = RESTART_BUDGET_MS)
                 val counter = report.samples(repeat = 3) {
-                    assertEquals(expected.size - processed.size, dao.observePendingCount(ImageAnalyzer.VERSION).first())
+                    assertEquals(expected.size - processed.size, dao.pendingCount(ImageAnalyzer.VERSION))
                 }
                 report.check("compteur observé à $percent %", counter, budgetMs = COUNTER_BUDGET_MS)
             }
@@ -84,7 +93,7 @@ class AnalysisQueueLoadTest {
         }
         // Les plus récents d'abord, chacun une fois : l'ordre de la timeline.
         assertEquals(expected.map { it.id }, processed)
-        assertEquals(0, dao.observePendingCount(ImageAnalyzer.VERSION).first())
+        assertEquals(0, dao.pendingCount(ImageAnalyzer.VERSION))
 
         val batches = selection.size - 1
         val tenth = batches / 10
@@ -119,20 +128,20 @@ class AnalysisQueueLoadTest {
                 step = TextRecognitionStep(database.textDao(), FakeTextReader(emptyMap())),
                 order = photos.sortedWith(compareByDescending<MediaEntity> { it.isScreenshot }.thenByDescending { it.dateTaken }.thenByDescending { it.id }),
                 mark = { ids -> "INSERT INTO media_text (media_id, analyzed_modified, version, text, text_key) SELECT id, date_modified, ${TextRecognitionStep.VERSION}, '', '' FROM media WHERE id IN ($ids)" },
-                progress = { database.textDao().observeProgress(TextRecognitionStep.VERSION).first().done },
+                progress = { database.textDao().progress(TextRecognitionStep.VERSION).done },
             ),
             // Ni captures ni GIF (FaceDao.pending).
             StepUnderTest(
                 step = FaceAnalysisStep(database.faceDao(), FaceAnalyzer(context, context.contentResolver, io), PeopleEditions()),
                 order = photos.filter { !it.isScreenshot && !it.isGif },
                 mark = { ids -> "INSERT INTO face_scan (media_id, analyzed_modified, version, face_count) SELECT id, date_modified, ${FaceAnalysisStep.VERSION}, 0 FROM media WHERE id IN ($ids)" },
-                progress = { database.faceDao().observeProgress(FaceAnalysisStep.VERSION).first().done },
+                progress = { database.faceDao().progress(FaceAnalysisStep.VERSION).done },
             ),
             StepUnderTest(
                 step = EmbeddingStep(context, context.contentResolver, database.embeddingDao(), io, Dispatchers.Default),
                 order = photos,
                 mark = { ids -> "INSERT INTO media_embedding (media_id, analyzed_modified, version, vector) SELECT id, date_modified, ${ClipModels.VERSION}, NULL FROM media WHERE id IN ($ids)" },
-                progress = { database.embeddingDao().observeProgress(ClipModels.VERSION).first().done },
+                progress = { database.embeddingDao().progress(ClipModels.VERSION).done },
             ),
         )
         for ((step, order, mark, progress) in steps) {
@@ -165,6 +174,54 @@ class AnalysisQueueLoadTest {
         }
     }
 
+    @Test
+    fun `compteur affiché pendant l'analyse, relu au plus toutes les 3 s et la fin aussitôt`() = runBlocking<Unit> {
+        val dao = database.analysisDao()
+        val labels = library.labels.groupBy { it.mediaId }
+        val results = library.analyses.associateBy { it.mediaId }
+        val order = library.timelineOrder
+        var done = 0
+        val queries = HashMap<String, Int>()
+        // Avant : relu à chaque lot (comme le Flow de Room) ; après : échantillonné (AnalysisScheduler).
+        for ((name, interval) in listOf("à chaque lot (avant)" to Duration.ZERO, "échantillonné à 3 s" to 3.seconds)) {
+            val milestones = AnalysisMilestones()
+            val latest = MutableStateFlow(-1)
+            var reads = 0
+            var readTime = 0.0
+            val counter = launch(Dispatchers.IO) {
+                sampledQuery(database.invalidationTracker.createFlow("media", "media_analysis"), interval, milestones.events) {
+                    val start = System.nanoTime()
+                    dao.pendingCount(ImageAnalyzer.VERSION).also {
+                        reads++
+                        readTime += (System.nanoTime() - start) / 1e6
+                    }
+                }.collect { latest.value = it }
+            }
+            withTimeout(10_000) { latest.first { it >= 0 } }
+            // Un lot toutes les 50 ms pendant 2 s : bien plus vite qu'un téléphone (1 à 4 s par lot).
+            repeat(SAMPLED_BATCHES) {
+                val batch = order.subList(done, done + AnalysisWorker.BATCH_SIZE)
+                done += batch.size
+                val analyses = batch.map { results.getValue(it.id) }
+                dao.save(analyses, analyses.flatMap { labels[it.mediaId].orEmpty() })
+                delay(50)
+            }
+            // Fin de la file : le compteur affiché la montre sans attendre son intervalle.
+            milestones.reach()
+            val end = System.nanoTime()
+            withTimeout(10_000) { latest.first { it == order.size - done } }
+            val shown = (System.nanoTime() - end) / 1e6
+            counter.cancelAndJoin()
+            queries[name] = reads
+            report.note("compteur affiché, $name : lectures pour $SAMPLED_BATCHES lots", reads.toDouble(), unit = "lectures")
+            report.note("compteur affiché, $name : temps de lecture", readTime)
+            report.check("compteur affiché, $name : fin affichée après", shown, budgetMs = END_BUDGET_MS)
+        }
+        // 2 s de lots : la première lecture, puis au plus celle de la fin.
+        assertTrue("$queries", queries.getValue("échantillonné à 3 s") <= 3)
+        assertTrue("$queries", queries.getValue("à chaque lot (avant)") >= SAMPLED_BATCHES / 4)
+    }
+
     /** Étape mesurée : file de ses médias dans l'ordre de traitement, et SQL qui les marque traités. */
     private data class StepUnderTest(
         val step: AnalysisStep,
@@ -181,5 +238,11 @@ class AnalysisQueueLoadTest {
         const val SAVE_BUDGET_MS = 15.0
         const val REFRESH_BUDGET_MS = 500.0
         const val REWRITE_BUDGET_MS = 2_000.0
+
+        /** Lots écrits pendant la mesure du compteur échantillonné, un toutes les 50 ms. */
+        const val SAMPLED_BATCHES = 40
+
+        /** Fin de file affichée : une lecture du compteur (≈ 20 ms), bien avant l'intervalle de 3 s. */
+        const val END_BUDGET_MS = 500.0
     }
 }
