@@ -41,7 +41,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Authentification | androidx.biometric (biométrie forte ou identifiants de l'appareil) + code PIN (PBKDF2) |
 | Widget | Glance (`GlanceTheme` = couleurs dynamiques du système) |
 | Diffusion | API `Presentation` / `DisplayManager` (écran externe) ; DLNA/UPnP écrit dans l'application (SSDP, SOAP, serveur HTTP local), sans SDK Google Cast |
-| CI | GitHub Actions : tests unitaires, lint, APK debug + release, test de fumée de l'APK release sur émulateur |
+| CI | GitHub Actions : tests unitaires, lint, APK debug + release, test de fumée de l'APK release sur émulateur (mise à jour, langue, impression, écran externe, sauvegarde, analyse) |
 
 ---
 
@@ -320,9 +320,35 @@ vérifie les APK release avec `tools/release/check_constructors.py`, puis avec
 ML Kit dans le manifeste (leur retrait se fait par leur nom, qu'une mise à jour peut changer),
 ni permission réseau (`INTERNET`, état du réseau et du Wi-Fi, multicast, réseau local) ni service
 de diffusion DLNA dans la variante strict. Le job `smoke` exécute
-ensuite l'APK release universel sur un émulateur (API 34, `google_apis`) : deux images de
-test (texte, visage), puis attente que la base contienne étiquettes, texte « facture » et
-visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend.
+ensuite l'APK release universel sur un émulateur (API 34, `google_apis`, clavier matériel,
+`tools/release/smoke_test.sh`) ; la publication d'une version en dépend. L'interface y est
+pilotée par `smoke_ui.py` (arbre d'accessibilité de `uiautomator dump`, appuis par `input`,
+textes anglais de l'émulateur), la base et les réglages lus par `smoke_db.py` (adb root) :
+- mise à jour : la dernière version GitHub que l'APK peut remplacer (`version_precedente.sh` :
+  même certificat, code de version inférieur ou égal, pas construite par le commit testé ;
+  `FOCALE_PREVIOUS_TAG` en impose une, pour éprouver une migration plus ancienne) analyse les
+  deux images de test (texte, visage) ; un favori, un album (visionneuse, menu « Add to album »)
+  et « Pure black » sont créés dans l'interface ; `adb install -r` de l'APK testé, puis
+  démarrage sans plantage (tampon `crash` de logcat), « Nouveautés » refermées, base à la
+  version et à l'empreinte (`room_master_table`) du dernier schéma de `app/schemas`, mêmes
+  favoris, albums et réglage. Sans version utilisable (fork sans secrets de signature…),
+  avertissement ;
+- langue : `cmd locale set-app-locales` en, fr, en ; l'onglet Recherche change de libellé ;
+- impression : « Print » de la visionneuse, « Save as PDF » du spouleur, PDF enregistré par le
+  sélecteur de documents (à défaut de ce service, ouverture du dialogue seulement) ;
+- écran externe : `overlay_display_devices` 1920x1080/320, visionneuse ouverte (action
+  `OPEN_MEDIA` du widget) ; une fenêtre de Focale doit être affichée hors de l'écran 0
+  (`dumpsys window`) ; la photo du visage, demandée par-dessus, doit remplacer celle du texte
+  (nom de fichier de la photo affichée) ; l'écran est retiré sans plantage ;
+- sauvegarde des données : « Back up now », mot de passe, sélecteur de documents
+  (Téléchargements) ; `pm clear` ; nouvelle analyse attendue jusqu'à étiquettes, texte
+  « facture » et visages ; « Restore » du fichier, résumé, bilan ; favori, album et réglage
+  revenus. Piloter l'interface et le sélecteur du système éprouve l'APK release lui-même (R8,
+  sérialisation, accès aux documents), ce qu'un test instrumenté sur l'APK de debug ne ferait
+  pas.
+
+Chaque étape échoue avec un message propre ; captures d'écran et journal complet de logcat
+sont publiés en artefact quand le job échoue.
 
 ### 6.6 Coffre-fort
 - Import : flux MediaStore → `StreamingAead` (AES-256-GCM-HKDF, segments de 1 Mo)
@@ -711,7 +737,9 @@ visionneuse sur les médias de son dossier ; sinon, visionneuse simple de l'URI 
 partage, « Ouvrir avec »), lue grâce à la permission accordée par l'intention. Lancée pour cette
 ouverture, l'activité en fait sa première destination, sans timeline dessous, et se referme au
 retour pour rendre la main à l'application appelante ; reçue par `onNewIntent`, l'ouverture
-s'empile sur l'écran courant. `REVIEW_SECURE` n'est pas déclarée : l'activité unique, qui donne
+s'empile sur l'écran courant (`openOnTop`), sauf sur un écran du même type, remplacé : la
+visionneuse ne lit sa photo dans sa route qu'à la création de son ViewModel, que
+`launchSingleTop` aurait gardé avec l'ancienne photo. `REVIEW_SECURE` n'est pas déclarée : l'activité unique, qui donne
 accès à toute la galerie, ne doit pas s'afficher sur l'écran verrouillé. Réglages → Fichiers
 résout `ACTION_VIEW` d'un JPEG (`MATCH_DEFAULT_ONLY`, `<queries>` du manifeste) pour dire quelle
 application ouvre les photos et proposer de choisir Focale.
