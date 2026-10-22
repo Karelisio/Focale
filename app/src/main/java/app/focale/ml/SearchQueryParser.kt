@@ -5,12 +5,17 @@ import app.focale.core.model.MediaQuery
 import app.focale.core.model.SearchTerm
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.chrono.IsoChronology
+import java.time.format.DateTimeFormatterBuilder
+import java.time.format.FormatStyle
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Traduit une recherche en langage naturel (français ou anglais) en [MediaQuery].
  *
- * - dates : « 2023 », « juillet », « juillet 2022 », « 14/07/2021 », « 2021-07-14 »,
- *   « aujourd'hui », « hier » ;
+ * - dates : « 2023 », « juillet », « juillet 2022 », « 14/07/2021 » (« 07/14/2021 » en anglais
+ *   des États-Unis : ordre de la langue de l'application), « 2021-07-14 », « aujourd'hui », « hier » ;
  * - types : « vidéos », « captures », « gif », « photos », « favoris » ;
  * - autres mots : étiquettes ML Kit (dictionnaire FR/EN), lieux, pays, noms de
  *   fichiers, noms des personnes ; chaque mot doit correspondre (ET), par l'une de ces
@@ -54,13 +59,18 @@ object SearchQueryParser {
     private val isoDate = Regex("""^(\d{4})-(\d{1,2})-(\d{1,2})$""")
     private val year = Regex("""^(19|20)\d{2}$""")
 
-    /** @param people personnes nommées (identifiant → nom), reconnues par leur nom. */
+    /**
+     * @param people personnes nommées (identifiant → nom), reconnues par leur nom.
+     * @param locale langue de l'application : ordre du jour et du mois des dates numériques
+     *   (« 07/14/2021 » en anglais des États-Unis), noms de pays dans cette langue.
+     */
     fun parse(
         text: String,
         today: LocalDate = LocalDate.now(),
         zone: ZoneId = ZoneId.systemDefault(),
         people: Map<Long, String> = emptyMap(),
-    ): MediaQuery = analyze(text, today, zone, people).first
+        locale: Locale = Locale.ROOT,
+    ): MediaQuery = analyze(text, today, zone, people, locale).first
 
     /**
      * Mots libres de la requête, dans l'ordre et mots vides compris (« chien sur la plage »),
@@ -71,9 +81,34 @@ object SearchQueryParser {
         today: LocalDate = LocalDate.now(),
         zone: ZoneId = ZoneId.systemDefault(),
         people: Map<Long, String> = emptyMap(),
-    ): List<String> = analyze(text, today, zone, people).second
+        locale: Locale = Locale.ROOT,
+    ): List<String> = analyze(text, today, zone, people, locale).second
 
-    private fun analyze(text: String, today: LocalDate, zone: ZoneId, people: Map<Long, String>): Pair<MediaQuery, List<String>> {
+    /** Ordre des dates courtes de chaque langue déjà rencontrée (vrai : le mois d'abord). */
+    private val monthFirstByLocale = ConcurrentHashMap<String, Boolean>()
+
+    /**
+     * Vrai si les dates courtes de [locale] commencent par le mois (« 7/14/21 » aux États-Unis) ;
+     * faux pour le jour d'abord (français, anglais britannique) ou l'année (ISO, langue neutre).
+     */
+    internal fun monthFirst(locale: Locale): Boolean = monthFirstByLocale.getOrPut(locale.toLanguageTag()) {
+        val pattern = runCatching {
+            DateTimeFormatterBuilder.getLocalizedDateTimePattern(FormatStyle.SHORT, null, IsoChronology.INSTANCE, locale)
+        }.getOrDefault("")
+        // Lettres du motif hors texte littéral (« 'de' »).
+        pattern.replace(Regex("'[^']*'"), "").firstOrNull { it == 'd' || it == 'M' || it == 'y' } == 'M'
+    }
+
+    /**
+     * Date numérique « a/b/aaaa » : jour puis mois, ou mois puis jour si [monthFirst] ; dans
+     * l'autre ordre si celui-ci n'en donne pas (« 14/07/2021 » saisi en anglais des États-Unis).
+     */
+    private fun numericDay(a: Int, b: Int, year: Int, monthFirst: Boolean): LocalDate? {
+        fun date(day: Int, month: Int) = runCatching { LocalDate.of(year, month, day) }.getOrNull()
+        return if (monthFirst) date(b, a) ?: date(a, b) else date(a, b) ?: date(b, a)
+    }
+
+    private fun analyze(text: String, today: LocalDate, zone: ZoneId, people: Map<Long, String>, locale: Locale): Pair<MediaQuery, List<String>> {
         var query = MediaQuery()
         var rawDates = text.trim().lowercase()
         // Les dates numériques sont reconnues avant la normalisation (qui supprime « / »).
@@ -82,9 +117,9 @@ object SearchQueryParser {
             val numeric = numericDate.matchEntire(raw)
             val iso = isoDate.matchEntire(raw)
             val day = when {
-                numeric != null -> runCatching {
-                    LocalDate.of(numeric.groupValues[3].toInt(), numeric.groupValues[2].toInt(), numeric.groupValues[1].toInt())
-                }.getOrNull()
+                numeric != null -> numeric.groupValues.let { (_, a, b, year) ->
+                    numericDay(a.toInt(), b.toInt(), year.toInt(), monthFirst(locale))
+                }
                 iso != null -> runCatching {
                     LocalDate.of(iso.groupValues[1].toInt(), iso.groupValues[2].toInt(), iso.groupValues[3].toInt())
                 }.getOrNull()
@@ -142,7 +177,7 @@ object SearchQueryParser {
             SearchTerm(
                 labels = LabelDictionary.match(word).sorted(),
                 place = word.takeIf { it.length >= 2 },
-                countries = CountryResolver.resolve(word),
+                countries = CountryResolver.resolve(word, locale),
                 text = word,
                 personIds = matchPeople(word, people),
             )

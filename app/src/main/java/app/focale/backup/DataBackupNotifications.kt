@@ -15,6 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.ForegroundInfo
 import app.focale.R
+import app.focale.core.locale.AppLocales
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,17 +23,22 @@ import javax.inject.Singleton
 /**
  * Notifications de la sauvegarde automatique des données, sur leur propre canal : sauvegarde en
  * cours (service au premier plan) et échec, avec sa cause seulement ; un toucher ouvre Focale.
+ * Textes et canal dans la langue de Focale, même préparés par la tâche de fond.
  */
 @Singleton
 class DataBackupNotifications @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val locales: AppLocales,
 ) : AutoBackupNotifier {
 
     private val manager = NotificationManagerCompat.from(context)
 
+    /** Contexte des textes : celui de l'application, dans la langue de Focale ([AppLocales.localized]). */
+    private val strings: Context get() = locales.localized(context)
+
     override fun autoBackupForeground(): ForegroundInfo {
         val notification = builder()
-            .setContentTitle(context.getString(R.string.data_auto_backup_running))
+            .setContentTitle(strings.getString(R.string.data_auto_backup_running))
             .setProgress(0, 0, true)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -44,9 +50,9 @@ class DataBackupNotifications @Inject constructor(
 
     override fun autoBackupFailed(error: AutoBackupError) {
         if (!allowed()) return
-        val text = context.getString(error.dataMessage)
+        val text = strings.getString(error.dataMessage)
         val notification = builder()
-            .setContentTitle(context.getString(R.string.data_auto_backup_failed_title))
+            .setContentTitle(strings.getString(R.string.data_auto_backup_failed_title))
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true)
@@ -76,7 +82,7 @@ class DataBackupNotifications @Inject constructor(
             .setPublicVersion(
                 NotificationCompat.Builder(context, CHANNEL)
                     .setSmallIcon(R.drawable.ic_notification)
-                    .setContentTitle(context.getString(R.string.app_name))
+                    .setContentTitle(strings.getString(R.string.app_name))
                     .build(),
             )
     }
@@ -87,12 +93,20 @@ class DataBackupNotifications @Inject constructor(
         return PendingIntent.getActivity(context, OPEN_REQUEST, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
+    /** Canal renommé dans la langue de Focale s'il existe déjà (nom affiché dans les réglages d'Android). */
+    fun refreshChannel() {
+        val system = context.getSystemService(NotificationManager::class.java) ?: return
+        if (system.getNotificationChannel(CHANNEL) != null) ensureChannel()
+    }
+
     private fun ensureChannel() {
         val system = context.getSystemService(NotificationManager::class.java) ?: return
-        if (system.getNotificationChannel(CHANNEL) != null) return
+        val strings = this.strings
+        // Créé, ou renommé si la langue a changé : seuls son nom et sa description changent alors.
+        if (system.getNotificationChannel(CHANNEL)?.name == strings.getString(R.string.data_auto_backup_channel)) return
         system.createNotificationChannel(
-            NotificationChannel(CHANNEL, context.getString(R.string.data_auto_backup_channel), NotificationManager.IMPORTANCE_LOW).apply {
-                description = context.getString(R.string.data_auto_backup_channel_description)
+            NotificationChannel(CHANNEL, strings.getString(R.string.data_auto_backup_channel), NotificationManager.IMPORTANCE_LOW).apply {
+                description = strings.getString(R.string.data_auto_backup_channel_description)
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             },

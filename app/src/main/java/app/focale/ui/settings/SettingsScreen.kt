@@ -1,9 +1,6 @@
 package app.focale.ui.settings
 
-import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -14,7 +11,6 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayCircle
@@ -93,7 +89,7 @@ fun SettingsScreen(
             item { VideoSection(settings, viewModel) }
             settingsExtraSections(settings, viewModel)
             item { DataBackupSection(autoBackup, backupActions) }
-            item { LanguageSection() }
+            item { AppLanguageSection(viewModel) }
             item { UpdatesSection(settings, viewModel) }
             item { Spacer(Modifier.height(32.dp)) }
         }
@@ -230,23 +226,15 @@ private fun VideoSection(settings: AppSettings, viewModel: SettingsViewModel) {
 }
 
 @Composable
-private fun LanguageSection() {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-    val context = LocalContext.current
-    SettingsGroup(stringResource(R.string.settings_language)) {
-        item { shapes ->
-            SettingsAction(
-                title = stringResource(R.string.settings_language_app),
-                subtitle = stringResource(R.string.settings_language_summary),
-                icon = Icons.Outlined.Language,
-                shapes = shapes,
-                onClick = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APP_LOCALE_SETTINGS, Uri.fromParts("package", context.packageName, null))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                },
-            )
-        }
-    }
+private fun AppLanguageSection(viewModel: SettingsViewModel) {
+    // Lue à la création de l'écran : l'activité est recréée quand la langue change, ici ou dans
+    // les réglages d'Android ; le choix s'affiche aussitôt, avant la recréation.
+    var language by remember { mutableStateOf(viewModel.language()) }
+    LanguageSection(
+        language = language,
+        onSelect = { choice ->
+            language = choice
+            viewModel.setLanguage(choice)
+        },
+    )
 }

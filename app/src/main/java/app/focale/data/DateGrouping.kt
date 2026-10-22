@@ -41,15 +41,46 @@ object DateGrouping {
     }
 
     /** Début (ms) de la période contenant [epochMs]. */
-    fun periodStart(epochMs: Long, level: GroupLevel, zone: ZoneId): Long {
+    fun periodStart(epochMs: Long, level: GroupLevel, zone: ZoneId): Long = millis(firstDay(epochMs, level, zone), zone)
+
+    /** Fin (ms, exclue) de la période contenant [epochMs] : le début de la suivante. */
+    fun periodEnd(epochMs: Long, level: GroupLevel, zone: ZoneId): Long = millis(next(firstDay(epochMs, level, zone), level), zone)
+
+    /**
+     * Bornes des périodes de [level] qui couvrent [first]..[last] (ms) dans le fuseau [zone] : le
+     * début de chacune puis la fin de la dernière, croissants. Chaque période commence à minuit
+     * local de son premier jour : un jour de changement d'heure dure 23 ou 25 heures, et ses
+     * médias restent sous son en-tête. Sert à compter les médias par plages de dates dans l'index
+     * (`MediaQueryBuilder.histogram`), avec les mêmes périodes que les en-têtes.
+     */
+    fun bounds(first: Long, last: Long, level: GroupLevel, zone: ZoneId): List<Long> {
+        val bounds = ArrayList<Long>()
+        var day = firstDay(first, level, zone)
+        while (true) {
+            val start = millis(day, zone)
+            bounds += start
+            if (start > last) return bounds
+            day = next(day, level)
+        }
+    }
+
+    private fun firstDay(epochMs: Long, level: GroupLevel, zone: ZoneId): LocalDate {
         val date = localDate(epochMs, zone)
-        val start = when (level) {
+        return when (level) {
             GroupLevel.DAY -> date
             GroupLevel.MONTH -> date.withDayOfMonth(1)
             GroupLevel.YEAR -> date.withDayOfYear(1)
         }
-        return start.atStartOfDay(zone).toInstant().toEpochMilli()
     }
+
+    private fun next(day: LocalDate, level: GroupLevel): LocalDate = when (level) {
+        GroupLevel.DAY -> day.plusDays(1)
+        GroupLevel.MONTH -> day.plusMonths(1)
+        GroupLevel.YEAR -> day.plusYears(1)
+    }
+
+    /** Début du jour [day] dans [zone] (minuit, ou la première heure qui existe ce jour-là). */
+    private fun millis(day: LocalDate, zone: ZoneId): Long = day.atStartOfDay(zone).toInstant().toEpochMilli()
 
     private fun localDate(epochMs: Long, zone: ZoneId): LocalDate =
         Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()

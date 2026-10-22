@@ -12,6 +12,7 @@ import app.focale.MainActivity
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaEntity
 import app.focale.core.database.VaultAlbumEntity
+import app.focale.core.locale.AppLocales
 import app.focale.core.mediastore.MediaStoreSource
 import app.focale.core.mediastore.MediaSyncManager
 import app.focale.core.permissions.MediaAccessManager
@@ -67,7 +68,7 @@ class VaultNewMediaAlertsTest {
             context, database, database.mediaDao(), MediaStoreSource(context.contentResolver), MediaAccessManager(context), state, scope,
             Dispatchers.IO,
         )
-        alerts = VaultNewMediaAlerts(database.vaultDao(), sync, settings, VaultNotifications(context), state)
+        alerts = VaultNewMediaAlerts(database.vaultDao(), sync, settings, VaultNotifications(context, AppLocales(context)), state)
         albumId = database.vaultDao().insertAlbum(
             VaultAlbumEntity(
                 name = "Perso",

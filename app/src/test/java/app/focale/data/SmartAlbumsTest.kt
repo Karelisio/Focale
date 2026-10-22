@@ -49,7 +49,7 @@ class SmartAlbumsTest {
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         database = Room.inMemoryDatabaseBuilder(context, FocaleDatabase::class.java).allowMainThreadQueries().build()
-        val media = MediaRepository(database.mediaDao(), Dispatchers.IO)
+        val media = MediaRepository(database.mediaDao(), Dispatchers.IO, database.invalidationTracker)
         repository = SmartAlbumRepository(database.mediaDao(), media, Dispatchers.IO)
         runBlocking { library() }
     }

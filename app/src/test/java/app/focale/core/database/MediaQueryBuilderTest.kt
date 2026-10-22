@@ -1,6 +1,5 @@
 package app.focale.core.database
 
-import app.focale.core.model.GroupLevel
 import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaQuery
 import app.focale.core.model.MediaSort
@@ -140,10 +139,24 @@ class MediaQueryBuilderTest {
     }
 
     @Test
-    fun `l'histogramme groupe par période locale`() {
-        val sql = MediaQueryBuilder.histogram(MediaQuery(), GroupLevel.MONTH).sql
-        assertTrue(sql.contains("strftime('%Y-%m', m.date_taken / 1000, 'unixepoch', 'localtime')"))
-        assertTrue(sql.contains("GROUP BY"))
+    fun `l'histogramme compte chaque période par sa plage de dates, bornes calculées en Kotlin`() {
+        val sql = MediaQueryBuilder.histogram(MediaQuery(), listOf(0L, 100L, 250L)).sql
+        assertTrue(sql, sql.contains("VALUES (0,100),(100,250)"))
+        assertTrue(sql, sql.contains("m.date_taken >= p.column1 AND m.date_taken < p.column2"))
+        assertFalse(sql, sql.contains("strftime"))
+        val periods = MediaQueryBuilder.periodsWithMedia(MediaQuery(), listOf(0L, 100L)).sql
+        assertTrue(periods, periods.contains("WHERE EXISTS (SELECT 1 FROM media m WHERE m.is_trashed = 0 AND m.date_taken >= p.column1"))
+    }
+
+    @Test
+    fun `le nombre de résultats d'une recherche part de ses critères`() {
+        // Timeline : par l'index de la corbeille et des dates ; recherche : sans lui (« + »).
+        assertTrue(MediaQueryBuilder.count(MediaQuery()).sql.contains("WHERE m.is_trashed = 0"))
+        val search = MediaQueryBuilder.count(MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"))))).sql
+        assertTrue(search, search.contains("WHERE +m.is_trashed = 0 AND"))
+        // Les pages de la recherche gardent l'ordre de l'index des dates.
+        assertTrue(MediaQueryBuilder.select(MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"))))).sql.contains("WHERE m.is_trashed = 0"))
+        assertTrue(MediaQueryBuilder.select(MediaQuery(), limit = 120, offset = 360).sql.endsWith("LIMIT 120 OFFSET 360"))
     }
 
     @Test

@@ -103,7 +103,7 @@ fun MediaInfoContent(
         )
         InfoCard(
             icon = Icons.Outlined.PhotoSizeSelectLarge,
-            title = Formatters.resolution(item.displayWidth, item.displayHeight),
+            title = Formatters.resolution(item.displayWidth, item.displayHeight, locale),
             subtitle = buildList {
                 add(Formatters.fileSize(context, item.size))
                 add(item.mimeType)

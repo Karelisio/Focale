@@ -2,24 +2,31 @@ package app.focale.data
 
 import android.util.Log
 import androidx.compose.runtime.Immutable
+import androidx.room.InvalidationTracker
 import app.focale.core.database.AnalysisDao
 import app.focale.core.database.EmbeddingDao
 import app.focale.core.database.SearchHistoryDao
 import app.focale.core.database.SearchHistoryEntity
+import app.focale.core.database.sampledQuery
 import app.focale.core.di.IoDispatcher
+import app.focale.core.locale.AppLocales
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
+import app.focale.ml.AnalysisMilestones
 import app.focale.ml.CountryResolver
 import app.focale.ml.PlaceName
 import app.focale.ml.PlaceNames
 import app.focale.ml.SearchQueryParser
 import app.focale.ml.semantic.QueryTranslator
 import app.focale.ml.semantic.SemanticSearch
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -48,12 +55,18 @@ class SearchRepository @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val placeNames: PlaceNames,
     private val semanticSearch: SemanticSearch,
+    private val locales: AppLocales,
+    private val invalidationTracker: InvalidationTracker,
+    private val milestones: AnalysisMilestones,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
+    /** Langue d'analyse des requêtes : celle de Focale, pas celle du système. */
+    val locale: Locale get() = locales.locale
+
     /** @param people personnes nommées (identifiant → nom), cherchées par leur nom. */
     fun parse(text: String, people: Map<Long, String> = emptyMap()): MediaQuery =
-        SearchQueryParser.parse(text, people = people)
+        SearchQueryParser.parse(text, people = people, locale = locale)
 
     /**
      * [parse] complétée par la recherche par le sens : les photos les plus proches du texte
@@ -68,7 +81,7 @@ class SearchRepository @Inject constructor(
         return try {
             // Hors du thread principal : le premier appel construit le dictionnaire de traduction.
             val (constraints, prompt) = withContext(io) {
-                val words = SearchQueryParser.freeWords(text, people = people)
+                val words = SearchQueryParser.freeWords(text, people = people, locale = locale)
                 val constraints = words.filterTo(mutableSetOf()) { isPlaceConstraint(it) }
                 constraints to QueryTranslator.prompt(words.filterNot { it in constraints })
             }
@@ -101,20 +114,30 @@ class SearchRepository @Inject constructor(
 
     private suspend fun isPlaceConstraint(word: String): Boolean {
         if (word.length < 3 || QueryTranslator.isKnownWord(word)) return false
-        return CountryResolver.resolve(word).isNotEmpty() || embeddingDao.isPlaceWord(word)
+        return CountryResolver.resolve(word, locale).isNotEmpty() || embeddingDao.isPlaceWord(word)
     }
 
+    /**
+     * Étiquettes les plus présentes (onglet Recherche) et leur couverture. La requête lit toutes les
+     * étiquettes, que l'analyse réécrit à chaque lot pendant des heures : relue au plus toutes les
+     * [STATS_INTERVAL] (aussitôt à la fin d'une file, [AnalysisMilestones]), couvertures relues
+     * seulement quand le résultat change.
+     */
     fun observeThings(limit: Int = 60): Flow<List<ThingSuggestion>> =
-        analysisDao.observeLabelStats(limit).mapLatest { stats ->
+        sampledStats("media", "media_label") { analysisDao.labelStats(limit) }.mapLatest { stats ->
             val covers = mediaRepository.getByIds(stats.map { it.coverId }).associateBy { it.id }
             stats.map { ThingSuggestion(it.label, it.count, covers[it.coverId]) }
         }.flowOn(io)
 
+    /** Lieux les plus photographiés et leur photo la plus récente, relus comme [observeThings]. */
     fun observePlaces(limit: Int = 40): Flow<List<PlaceSuggestion>> =
-        analysisDao.observePlaceStats(limit).mapLatest { stats ->
+        sampledStats("media", "media_analysis") { analysisDao.placeStats(limit) }.mapLatest { stats ->
             val covers = mediaRepository.getByIds(stats.map { it.coverId }).associateBy { it.id }
             stats.map { PlaceSuggestion(it.place, it.country, it.count, covers[it.coverId], placeNames.of(it.place, it.country)) }
         }.flowOn(io)
+
+    private fun <T> sampledStats(vararg tables: String, read: suspend () -> T): Flow<T> =
+        sampledQuery(invalidationTracker.createFlow(*tables), STATS_INTERVAL, milestones.events, query = read).distinctUntilChanged()
 
     /** Recherches récentes : texte seul, ou clé d'une recherche avec pastilles ([SearchFilters.historyKey]). */
     fun observeRecent(limit: Int = 8): Flow<List<String>> =
@@ -137,5 +160,8 @@ class SearchRepository @Inject constructor(
 
     private companion object {
         const val TAG = "SearchRepository"
+
+        /** Intervalle minimal entre deux lectures des étiquettes et des lieux affichés. */
+        val STATS_INTERVAL = 5.seconds
     }
 }

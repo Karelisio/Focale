@@ -8,10 +8,12 @@ import app.focale.core.database.PersonEntity
 import app.focale.core.database.PersonListRow
 import app.focale.core.database.PersonRow
 import app.focale.core.di.IoDispatcher
+import app.focale.core.locale.AppLocales
 import app.focale.core.mediastore.MediaStoreSource
 import app.focale.core.settings.PeopleSort
 import app.focale.data.MediaRepository
 import java.text.Collator
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
@@ -49,6 +51,7 @@ class PeopleRepository @Inject constructor(
     private val dao: FaceDao,
     private val editions: PeopleEditions,
     @IoDispatcher private val io: CoroutineDispatcher,
+    private val locales: AppLocales,
 ) {
 
     /** Personnes visibles, les plus présentes d'abord ; masquées comprises sur demande. */
@@ -171,7 +174,7 @@ class PeopleRepository @Inject constructor(
                 val covers = rows.mapNotNull { it.coverFaceId }.chunked(MediaRepository.MAX_SQL_ARGS)
                     .flatMap { dao.thumbs(it) }
                     .associateBy { it.id }
-                sortPeople(rows, sort).map { row ->
+                sortPeople(rows, sort, locales.locale).map { row ->
                     Person(row.id, row.name, row.hidden, row.photoCount, row.coverFaceId?.let(covers::get)?.toThumbnail(), row.pinned)
                 }
             }
@@ -218,13 +221,14 @@ class PeopleRepository @Inject constructor(
 
 /**
  * Ordre de la liste : épinglées d'abord, puis [sort] ; à égalité, les plus présentes. Par
- * nom : ni casse ni accents (langue de l'appareil), personnes sans nom à la fin.
+ * nom : ni casse ni accents, dans l'ordre alphabétique de [locale] (langue de l'application),
+ * personnes sans nom à la fin.
  */
-internal fun sortPeople(rows: List<PersonListRow>, sort: PeopleSort): List<PersonListRow> {
+internal fun sortPeople(rows: List<PersonListRow>, sort: PeopleSort, locale: Locale): List<PersonListRow> {
     val order: Comparator<PersonListRow> = when (sort) {
         PeopleSort.PHOTOS -> compareByDescending { it.photoCount }
         PeopleSort.NAME -> {
-            val collator = Collator.getInstance().apply { strength = Collator.PRIMARY }
+            val collator = Collator.getInstance(locale).apply { strength = Collator.PRIMARY }
             compareBy(nullsLast(collator)) { it.name }
         }
         PeopleSort.RECENT -> compareByDescending { it.latestTaken }

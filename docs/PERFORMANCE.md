@@ -14,15 +14,16 @@ le principe « Fluide avec 50 000+ médias » de [ARCHITECTURE.md](ARCHITECTURE.
 ```
 
 Les tests de charge (`app/src/test/java/app/focale/perf/`) font partie de la suite ordinaire,
-CI comprise : environ 55 s sur la machine de mesure (§ 3), dont 15 à 20 s pour les files de
-l'analyse, 18 à 20 s pour le défilement et 11 s pour la sauvegarde des données, sur près de
-120 s pour toute la suite unitaire. Aucune propriété Gradle n'est donc nécessaire.
+CI comprise : environ 60 s sur la machine de mesure (§ 3), dont 20 à 25 s pour les files de
+l'analyse (compteur affiché pendant 40 lots compris), 18 à 20 s pour le défilement et 11 s pour
+la sauvegarde des données, sur près de 130 s pour toute la suite unitaire. Aucune propriété
+Gradle n'est donc nécessaire.
 
 | Classe | Ce qu'elle mesure |
 |---|---|
 | `MediaSyncLoadTest` | `MediaSyncManager` depuis un faux MediaStore (`FakeMediaStore`, fournisseur Robolectric de l'autorité `media`) : synchronisation complète, puis incrémentale (300 modifiés, 150 ajoutés, 50 supprimés), puis sans changement |
-| `TimelineScrollLoadTest` | pages Paging de la timeline (continu et sauts, `initialKey`), en-têtes (`insertSeparators`), histogramme de la bulle, position dans la visionneuse et dans la grille, dossiers, compteurs, recherche par étiquette et par texte, onglet Recherche |
-| `AnalysisQueueLoadTest` | sélection et enregistrement des 2 078 lots de l'analyse principale, sélection des lots des étapes (texte, visages, empreintes) et compteurs d'avancement, au fil de l'avancement |
+| `TimelineScrollLoadTest` | pages Paging de la timeline (continu et sauts, `initialKey`, nombre total de chaque source), en-têtes (`insertSeparators`), histogramme de la bulle et position dans la grille (comparés aux en-têtes), position dans la visionneuse, dossiers, compteurs, recherche par étiquette, par texte, par une étiquette ou une personne seule, onglet Recherche (étiquettes vérifiées) |
+| `AnalysisQueueLoadTest` | sélection et enregistrement des 2 078 lots de l'analyse principale, sélection des lots des étapes (texte, visages, empreintes) et compteurs d'avancement, au fil de l'avancement ; compteur affiché pendant 40 lots écrits en 2 s, relu à chaque lot ou échantillonné (§ 5.6) |
 | `AnalysisComputeLoadTest` | calculs par photo exécutables sur la JVM : dHash et netteté, géocodage, alignement et SFace, prétraitement et TinyCLIP, recherche par le sens, regroupement des visages |
 | `DataBackupLoadTest` | sauvegarde des données de toute la bibliothèque (20 000 visages et leurs empreintes, albums, historique), vérification de l'archive, restauration sur un autre téléphone (autres `_ID`, dossiers en partie déplacés) : durées et mémoire retenue |
 | `core/database/QueryPlanTest` | `EXPLAIN QUERY PLAN` des requêtes chaudes, sur le SQL réellement émis par Room (§ 6) |
@@ -72,7 +73,8 @@ le sens est mesurée en mémoire (§ 4.4).
   (jusqu'à × 2). Chaque valeur ci-dessous est la médiane des répétitions d'un passage, puis la
   médiane de plusieurs passages : 2 « avant » (anciens index et anciennes files), 5 « après »,
   dont 2 sur le code fusionné avec les lieux traduits, le redressement et la sauvegarde
-  automatique du coffre (3 pour les compteurs d'avancement, modifiés en dernier).
+  automatique du coffre (3 pour les compteurs d'avancement, modifiés en dernier). Corrections
+  des § 5.5 à 5.9 (version 7) : 2 passages sur la 1.9.0 (« 1.9.0 » ci-dessous), 3 après.
 - Les temps sont ceux d'une JVM de bureau, pas d'un téléphone : voir les limites (§ 8).
 
 ---
@@ -99,21 +101,22 @@ pas mesuré.
 |---|---|---|
 | Page suivante (120 médias), médiane des 413 pages de la timeline | 95 ms | **2,9 ms** |
 | 20 dernières pages (décalage proche de 50 000) | 91 ms | **3,3 ms** |
-| Chargement initial (360 médias + nombre total) | 121 ms | 73 ms |
-| Saut de la barre de défilement (nouvelle `PagingSource`, 360 médias + nombre total) | 172 ms | 59 ms |
-| … dont le `COUNT(*)` de `LimitOffsetPagingSource` | 71 ms | 57 ms |
-| Saut tout au bout / filtre Photos | 188 / 180 ms | 56 / 60 ms |
+| Chargement initial (360 médias + nombre total) | 121 ms | **7,7 ms** (1.9.0 : 55 à 57) |
+| Saut de la barre de défilement (nouvelle `PagingSource`, 360 médias + nombre total) | 172 ms | **6,2 ms** (1.9.0 : 61 à 66) |
+| … dont le nombre total : `COUNT(*)` de la requête triée (Room) → par l'index (§ 5.5) | 71 ms | **1,8 ms** (Room : 50 à 81) |
+| Saut tout au bout / filtre Photos | 188 / 180 ms | **9,1 / 7,4 ms** (1.9.0 : 53 à 54 / 52 à 57) |
 | Liste des dossiers (onglet Albums, couvertures comprises) | 2 854 ms | **92 ms** |
-| Dossier de 36 604 médias, saut au bout / petit dossier | 133 / 18 ms | 47 / 0,8 ms |
+| Dossier de 36 604 médias, saut au bout / petit dossier | 133 / 18 ms | 8,8 / 0,9 ms (1.9.0 : 43 à 48 / 0,8 à 1,0) |
 | Compteur de la timeline / du filtre Vidéos | 2,2 / 9,4 ms | 2,1 / 0,6 ms |
-| Histogramme mensuel (bulle de date) | 124 ms | 103 ms |
+| Histogramme mensuel (bulle de date, § 5.7) | 124 ms | **4,5 ms** (1.9.0 : 91 à 101) |
 | Position d'un média (ouverture de la visionneuse) | 11 ms | 3,6 ms |
-| Position dans la grille avec en-têtes de jour (retour de la visionneuse) | 180 ms | 144 ms |
+| Position dans la grille avec en-têtes de jour (retour de la visionneuse, § 5.7) ; média le plus ancien | 180 ms | **11 ms** ; 21 ms (1.9.0 : 134 à 149) |
 | En-têtes de jour (`insertSeparators`) sur 50 000 médias | 25 à 50 ms | (inchangé) |
 | Conversion de 50 000 `MediaEntity` en `MediaItem` | ≈ 50 ms | (inchangé) |
-| Recherche « chien » (races comprises, 5 004 résultats) : nombre / première page | 75 / 170 ms | 105 / 182 ms |
-| Recherche « facture » (nom de fichier ou texte reconnu) : nombre / première page | 68 / 162 ms | 109 / 141 ms |
-| Onglet Recherche : étiquettes les plus présentes / lieux | 376 / 96 ms | 354 / 39 ms |
+| Recherche « chien » (races comprises, 5 004 résultats) : nombre / première page (§ 5.9) | 75 / 170 ms | 71 / 124 ms (1.9.0 : 96 à 107 / 164 à 200) |
+| Recherche « facture » (nom de fichier ou texte reconnu) : nombre / première page | 68 / 162 ms | 67 / 100 ms (1.9.0 : 108 à 139 / 146 à 149) |
+| Étiquette seule (ouverte depuis l'onglet Recherche) / personne : nombre, `Flow` compris | — | 24 / 12 ms (SQL seul : 24 → 11 ms) |
+| Onglet Recherche : étiquettes les plus présentes / lieux (§ 5.8) | 376 / 96 ms | **125** / 31 ms (1.9.0 : 364 à 426 / 28 à 39), au plus une fois par 5 s |
 
 En-têtes et conversion des pages s'exécutent sur le fil principal (transformations de
 `PagingData` collectées dans `viewModelScope`) : 0,1 ms environ par page de 120 médias.
@@ -128,7 +131,9 @@ Analyse principale, 2 078 lots de 24 (`AnalysisWorker.BATCH_SIZE`) sur toute la 
 | Sélection des 2 078 lots | ≈ 42 s (estimé, 2 078 × 20 ms) | **1,5 s** (mesuré) |
 | Enregistrement d'un lot (analyse et étiquettes) | (inchangé) | 2,1 ms (4,8 s pour les 2 078) |
 | Premier lot d'un passage (sans curseur), à 0 / 49 / 94 % | 23 / 19 / 17 ms | 2,6 / 31 / 87 ms |
-| Compteur observé (`observePendingCount`), à 0 / 49 / 94 % | 9 / 19 / 25 ms | 13 / 17 / 15 ms |
+| Compteur d'avancement (`pendingCount`), une lecture, à 0 / 49 / 94 % | 9 / 19 / 25 ms | 13 / 17 / 15 ms |
+| Compteur affiché pendant 40 lots écrits en 2 s (§ 5.6) : lectures, temps de lecture | 41 lectures, 595 à 661 ms (1.9.0, une par lot) | **2 lectures, 25 à 35 ms** |
+| … fin de la file affichée après | 3 ms | 14 à 23 ms (une lecture, sans attendre les 3 s) |
 
 Étapes complémentaires, lots de 16 (`STEP_BATCH_SIZE`) :
 
@@ -137,6 +142,9 @@ Analyse principale, 2 078 lots de 24 (`AnalysisWorker.BATCH_SIZE`) sur toute la 
 | Texte (2 961 lots) | 0,9 à 1,3 ms | 56 à 139 ms | 3,3 s | 17 à 54 ms |
 | Visages (2 695 lots) | 0,7 à 0,8 ms | 1 à 140 ms | 2,0 s | 12 à 61 ms |
 | Empreintes (2 961 lots) | 0,7 ms | 0,8 à 171 ms | 2,1 s | 13 à 75 ms |
+
+L'« avancement observé » est le coût d'une lecture ; affiché, chacun est désormais lu au plus
+toutes les 3 s au lieu d'une fois par lot de son étape (§ 5.6).
 
 Début de chaque passage : `AnalysisDao.refreshPlaceKeys` recalcule les clés de recherche des
 lieux (noms traduits) ; rien n'est réécrit d'ordinaire (12 ms pour les 15 300 médias
@@ -239,7 +247,8 @@ L'index `date_taken` seul est gardé. Les requêtes qui lisent toute la table av
 (compteurs d'avancement) seraient devenues plus lentes en suivant l'index trié par date, qui lit
 les lignes au hasard : elles le contournent (`+m.is_trashed`) pour parcourir `media` et la table
 de l'étape dans l'ordre des identifiants. Effet de bord accepté : le nombre de résultats d'une
-recherche, qui parcourt aussi toute la timeline, passe de 70 à 105 ms (même raison).
+recherche, qui parcourt aussi toute la timeline, passe de 70 à 105 ms (même raison ; corrigé au
+§ 5.9).
 
 ### 5.2 Files de l'analyse : coût quadratique
 
@@ -263,7 +272,8 @@ les heures de la première analyse, chaque lot (toutes les quelques secondes) re
 pages, leur nombre total et leur histogramme (≈ 0,3 s de requêtes par lot sur la JVM de bureau
 avec les anciens index, encore 0,16 s avec les nouveaux).
 Correction : une requête qui ne lit que `media` (`MediaQueryBuilder.readsOnlyMedia`) est observée
-sur cette seule table (`MediaDao.pagingSourceOfMedia`, `observeCountOfMedia`…).
+sur cette seule table (`MediaDao.observeCountOfMedia`…, pages et histogramme par les tables de
+`MediaRepository.Observed`).
 Test : `MediaObservationTest`.
 
 ### 5.4 Sauvegarde des données : chaque tranche relisait la bibliothèque
@@ -280,6 +290,79 @@ Correction : `+m.is_trashed` écarte l'index et chaque tranche se lit par la cl�
 choisie des albums, cherchée album par album pour chaque média, est une liste lue une fois
 (`IN`). Sauvegarde : 7,8 s → 2,0 s ; restauration : 3,0 s → 2,3 s. Test : `QueryPlanTest`.
 
+### 5.5 Nombre total de chaque `PagingSource` : la requête triée relue ligne à ligne
+
+`LimitOffsetPagingSource` (Room) compte `SELECT COUNT(*) FROM (requête triée)` à chaque ouverture
+de source, donc à chaque saut de la barre de défilement et à chaque invalidation : une
+sous-requête lue ligne entière, 50 à 80 ms sur 50 000 médias, quand le compteur de la timeline
+passe par l'index seul en 2 ms.
+Correction : `MediaPagingSource` reprend son fonctionnement (clé = position, `LIMIT`/`OFFSET`
+dans l'ordre de la grille, placeholders, sauts, clé de rafraîchissement centrée, invalidation au
+premier changement des tables de la requête par l'`InvalidationTracker` de Room, observé avant
+le premier comptage) et compte par `MediaQueryBuilder.count`. Chargement initial et saut :
+55 à 66 ms → 6 à 8 ms ; tout au bout : 53 → 9 ms. `room-paging` n'est plus une dépendance.
+Tests : `QueryPlanTest` (nombre total par l'index seul, plus de `SELECT COUNT(*) FROM (`),
+`MediaObservationTest` (tables observées), `TimelineScrollLoadTest` (pages, sauts, budgets).
+
+### 5.6 Compteurs d'avancement relus à chaque lot
+
+Chaque compteur d'avancement lit toute la bibliothèque (13 à 75 ms) ; tant qu'il était affiché
+(onglet Recherche, réglages), Room le relisait à chaque lot de son étape, soit, pendant les
+heures de la première analyse, une lecture toutes les quelques secondes par compteur.
+Correction : `sampledQuery` relit une requête au plus une fois par intervalle (3 s,
+`AnalysisScheduler`) : première valeur sans attendre, changements survenus pendant l'attente lus
+par la lecture qui la termine, aucun perdu ; quand le worker vide une file ou finit son passage
+(`AnalysisMilestones`), la lecture suit aussitôt, attente comprise : la fin s'affiche sans délai.
+Pendant 40 lots écrits en 2 s (un téléphone en écrit un toutes les 1 à 4 s) : 41 lectures et
+600 ms de requêtes → 2 lectures et 30 ms, fin affichée 15 à 25 ms après la dernière écriture.
+Tests : `SampledQueryTest` (temps virtuel), `AnalysisQueueLoadTest` (nombre de lectures, fin).
+
+### 5.7 Position dans la grille et histogramme : une date locale par média
+
+L'histogramme (bulle de date) regroupait par `strftime('%Y-%m', …, 'localtime')`, la position
+dans la grille au retour de la visionneuse comptait les jours distincts (`COUNT(DISTINCT
+strftime(…))`) avant le média : une conversion en heure locale (tables de fuseau de la
+bibliothèque C) pour chaque média lu, 91 à 101 ms et 134 à 149 ms.
+Correction : les bornes des périodes (jours, mois, années) sont calculées en Kotlin dans le
+fuseau courant (`DateGrouping.bounds` : minuit local du premier jour de chacune, jours de 23 et
+25 heures compris), celles-là mêmes des en-têtes de la grille ; SQLite compte chaque période par
+sa plage de `date_taken` dans l'index de la requête (`MediaQueryBuilder.histogram`, une table de
+valeurs, 500 périodes par requête) ou vérifie qu'elle n'est pas vide (`periodsWithMedia`, pour
+les seules périodes entre le média et le début de la grille). Histogramme : 4,5 ms ;
+position : 11 ms, 21 ms au plus pour le plus ancien des 50 000 (3 500 jours sondés). Le résultat
+ne dépend plus du fuseau de SQLite, qui pouvait différer de celui de la JVM.
+Tests : `MediaPeriodsTest` (histogramme et position égaux à ceux de la grille, autour de minuit
+et des changements d'heure, dans les deux ordres), `DateGroupingTest`, `QueryPlanTest`.
+
+### 5.8 Étiquettes de l'onglet Recherche : tout regroupé, à chaque lot
+
+La requête des étiquettes les plus présentes partait des médias (index de la corbeille), puis
+regroupait les 157 000 lignes d'étiquettes dans un arbre temporaire ; la couverture de chaque
+étiquette, cherchée pour toutes (et non les 60 affichées), triait toutes ses photos : 364 à
+426 ms, relancés à chaque lot de l'analyse tant que l'onglet était affiché.
+Correction (version 7 de la base, `DatabaseMigrations.MIGRATION_6_7`) : l'index (`label`,
+`confidence`, `media_id`) remplace celui de `label` seul. Le comptage parcourt cet index dans
+l'ordre des étiquettes, sans arbre temporaire, chaque ligne gardée si son média est hors de la
+corbeille (liste de leurs identifiants ; « + » empêche SQLite de partir des médias) ; la
+couverture n'est cherchée que pour les 60 retenues, première de l'index par confiance
+décroissante. 364 à 426 ms → 96 à 131 ms. Étiquettes et lieux de l'onglet sont relus au plus
+toutes les 5 s (`sampledQuery`, aussitôt à la fin d'une file), et rien ne change à l'écran
+quand le résultat est le même. La recherche par étiquette lit le même index, sans ouvrir la table.
+Tests : `QueryPlanTest`, `DatabaseMigrationsTest` (6 → 7 depuis `6.json`),
+`TimelineScrollLoadTest` (résultat comparé à un comptage en Kotlin).
+
+### 5.9 Nombre de résultats d'une recherche : toute la timeline, dans l'ordre des dates
+
+Sans statistiques, SQLite croit l'égalité `is_trashed = 0` sélective : pour compter une
+recherche, il parcourait toute la timeline par cet index, trié par date, donc ses lignes au
+hasard, en évaluant chaque critère. Correction : avec un critère d'une autre table, le compte
+écarte cet index (`+m.is_trashed`, `MediaQueryBuilder.count`) ; SQLite part alors des médias du
+critère par la clé primaire (étiquette seule, personne, favoris : 24 → 11 ms, 13 → 1 ms), ou,
+quand une alternative l'exige (nom de fichier, dans chaque mot saisi), lit `media` dans l'ordre
+des identifiants : « chien » 96 à 107 → 71 ms, « facture » 108 à 139 → 67 ms. La première page,
+qui comptait aussi, passe de 146 à 200 ms à 100 à 124 ms. Les pages gardent l'index des dates.
+Tests : `QueryPlanTest`, `MediaQueryBuilderTest`.
+
 ---
 
 ## 6. Plans d'exécution surveillés
@@ -288,16 +371,22 @@ choisie des albums, cherchée album par album pour chaque média, est une liste 
 `EXPLAIN QUERY PLAN`. Sans statistiques, le plan ne dépend pas des données : la base de test est
 presque vide. Assertions :
 
-- timeline, dossiers masqués, filtres Photos et Vidéos : page à un décalage de 45 000 et
-  `COUNT(*)` de la `PagingSource` par leur index composé, sans `TEMP B-TREE` ;
+- timeline, dossiers masqués, filtres Photos et Vidéos : page à un décalage de 45 000 par leur
+  index composé, sans `TEMP B-TREE` ; nombre total de `MediaPagingSource` par l'index seul, jamais
+  `SELECT COUNT(*) FROM (requête triée)` ;
 - grille d'un dossier par l'index des dossiers ; couverture de chaque dossier par ce même index
   seul (sous-requête corrélée sans tri) ;
-- compteurs de la timeline et des filtres, histogramme, position : index seul (`COVERING INDEX`) ;
+- compteurs de la timeline et des filtres, position : index seul (`COVERING INDEX`) ;
+- histogramme et en-têtes avant un média : dates extrêmes puis chaque période par sa plage de
+  dates dans l'index seul (`date_taken>? AND date_taken<?`), sans `strftime` ni tri ;
 - files de l'analyse : index de la timeline ou des types, sans tri ; reprise par une borne sur la
   date (`date_taken<?`) ;
 - compteurs d'avancement : `media` dans l'ordre des identifiants, table de l'étape par sa clé ;
-- recherche par étiquette et couverture de chaque étiquette : index `label`, jamais de parcours
-  complet de `media_label` ;
+- recherche par étiquette : index (`label`, `confidence`, `media_id`) seul, jamais de parcours
+  complet de `media_label` ; nombre de résultats depuis les médias du critère (clé primaire), ou
+  `media` dans l'ordre des identifiants avec un nom de fichier ;
+- étiquettes de l'onglet Recherche : comptage dans l'ordre de cet index, sans regroupement
+  temporaire ; couverture par ce même index, sans trier toutes les photos d'une étiquette ;
 - sauvegarde des données : chaque tranche par la clé primaire de sa table (`rowid>?`), le contenu
   des albums par sa clé composée (`(album_id,media_id)>(?,?)`), sans `TEMP B-TREE`.
 
@@ -308,21 +397,22 @@ protège le SQL de Focale, pas le choix de chaque version.
 
 ## 7. Coûts restants et pistes
 
-- **Nombre total de `LimitOffsetPagingSource`** (57 ms, à chaque ouverture de source : saut,
-  invalidation) : Room compte `SELECT COUNT(*) FROM (requête triée)`, sous-requête lue ligne
-  entière ; le compteur de la timeline, par l'index seul, prend 2 ms. Une `PagingSource` maison
-  qui compterait par `MediaQueryBuilder.count` ramènerait un saut à une dizaine de millisecondes.
-- **Compteurs d'avancement** : chacun relit toute la bibliothèque à chaque lot de son étape, tant
-  que l'avancement est affiché (onglet Recherche, réglages). Échantillonner les invalidations
-  (un compte toutes les quelques secondes au plus) supprimerait ce coût.
-- **Position dans la grille** (144 ms, au retour de la visionneuse si le média n'est pas visible)
-  et **histogramme** (103 ms, seulement quand `media` change) : `strftime(…, 'localtime')` sur
-  chaque ligne.
-- **Étiquettes de l'onglet Recherche** (354 ms, relancées à chaque lot de l'analyse quand l'onglet
-  est affiché) : la couverture de chaque étiquette trie toutes ses photos ; un index
-  (`label`, `confidence`) et un regroupement limité aux étiquettes affichées l'éviteraient.
-- **Nombre de résultats d'une recherche** (≈ 105 ms) : parcours de toute la timeline ; partir des
-  médias de l'étiquette (5 000 au lieu de 50 000) serait plus court.
+Les cinq pistes de la 1.9.0 sont traitées (§ 5.5 à 5.9). Restent :
+
+- **Étiquettes de l'onglet Recherche** (≈ 100 à 130 ms, au plus une fois par 5 s pendant
+  l'analyse) : le comptage vérifie encore, pour chacune des 157 000 lignes, que son média est hors
+  de la corbeille et présent (l'accès partiel d'Android 14 garde les étiquettes des médias non
+  sélectionnés). Un compte tenu à jour par étiquette supprimerait ce parcours, au prix d'une
+  écriture de plus par lot.
+- **Recherche par mot** : chaque mot cherche aussi dans le nom de fichier (`LIKE '%…%'`), ce qui
+  oblige à lire toute la table `media` (≈ 65 ms pour le nombre, 100 à 125 ms pour la première
+  page, qui parcourt l'index des dates jusqu'à 360 résultats). Un index plein texte (FTS) des noms
+  de fichier et du texte reconnu le permettrait sans parcours.
+- **Mois de toutes les années** (« juillet ») : `strftime('%m', …, 'localtime')` pour chaque média ;
+  comme au § 5.7, une plage de dates par année, bornée en Kotlin, le remplacerait.
+- **Position dans la grille du média le plus ancien** : une recherche dans l'index par jour, vide
+  ou non, jusqu'au début de la grille (21 ms pour 3 650 jours) ; à l'échelle de 30 ans de photos,
+  sonder d'abord les mois écarterait les jours vides.
 
 ---
 

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Langue de l'application (réglages) -->
+    <string name="settings_language">Language</string>
+    <string name="settings_language_app">App language</string>
+    <string name="settings_language_summary">Also used for dates, places and notifications</string>
+    <string name="settings_language_summary_system">Also used for dates, places and notifications. Same choice as in Android’s settings.</string>
+    <string name="settings_language_system">System</string>
+    <!-- Chaque langue dans la sienne, quelle que soit celle de l'application -->
+    <string name="settings_language_french" translatable="false">Français</string>
+    <string name="settings_language_english" translatable="false">English</string>
+</resources>

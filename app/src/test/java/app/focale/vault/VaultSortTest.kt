@@ -30,10 +30,11 @@ class VaultSortTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var defaultLocale: Locale
 
+    /** Langue du système autre que celle de l'application : le tri suit celle de l'application. */
     @Before
     fun setUp() {
         defaultLocale = Locale.getDefault()
-        Locale.setDefault(Locale.FRANCE)
+        Locale.setDefault(Locale.forLanguageTag("sv-SE"))
     }
 
     @After
@@ -67,13 +68,22 @@ class VaultSortTest {
             album(2, "écoles", count = 40, created = 100),
             album(3, "Papiers", count = 12, created = 200),
         )
-        fun sorted(sort: VaultAlbumSort) = albums.sortedWith(sort.comparator()).map { it.id }
+        fun sorted(sort: VaultAlbumSort) = albums.sortedWith(sort.comparator(Locale.FRENCH)).map { it.id }
 
         assertEquals(listOf(1L, 3L, 2L), sorted(VaultAlbumSort()))
         assertEquals(listOf(2L, 3L, 1L), sorted(VaultAlbumSort(VaultAlbumOrder.NAME, ascending = true)))
         // À égalité de nombre, par nom.
         assertEquals(listOf(2L, 3L, 1L), sorted(VaultAlbumSort(VaultAlbumOrder.COUNT)))
         assertEquals(listOf(3L, 1L, 2L), sorted(VaultAlbumSort(VaultAlbumOrder.COUNT, ascending = true)))
+    }
+
+    @Test
+    fun `ordre alphabétique de la langue de l'application, pas de celle du système`() {
+        val albums = listOf(album(1, "Zurich", count = 1, created = 0), album(2, "Åland", count = 1, created = 0))
+        // Système en suédois (« Å » après « Z ») ; Focale en français : « Å » se range avec « A ».
+        val byName = VaultAlbumSort(VaultAlbumOrder.NAME, ascending = true)
+        assertEquals(listOf(2L, 1L), albums.sortedWith(byName.comparator(Locale.FRENCH)).map { it.id })
+        assertEquals(listOf(1L, 2L), albums.sortedWith(byName.comparator(Locale.getDefault())).map { it.id })
     }
 
     @Test
@@ -88,7 +98,7 @@ class VaultSortTest {
         assertEquals(VaultAlbumSort(VaultAlbumOrder.COUNT, ascending = false), read.vaultAlbumSort)
     }
 
-    private fun sorted(sort: VaultSort) = items.sortedWith(sort.comparator()).map { it.id }
+    private fun sorted(sort: VaultSort) = items.sortedWith(sort.comparator(Locale.FRENCH)).map { it.id }
 
     private fun item(id: Long, name: String, taken: Long, added: Long, size: Long) = VaultItem(
         id = id, displayName = name, mimeType = "image/jpeg", isVideo = false, originalPath = "DCIM/Camera/",

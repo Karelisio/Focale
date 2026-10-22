@@ -18,6 +18,7 @@ import app.focale.MainActivity
 import app.focale.R
 import app.focale.backup.AutoBackupError
 import app.focale.backup.AutoBackupNotifier
+import app.focale.core.locale.AppLocales
 import app.focale.data.OperationResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -26,24 +27,29 @@ import javax.inject.Singleton
 /**
  * Notifications du coffre-fort. Elles ne nomment ni les albums ni les médias du coffre et ne
  * montrent aucune image : seulement ce qui se passe et des nombres. Sur l'écran verrouillé,
- * leur contenu reste masqué.
+ * leur contenu reste masqué. Textes et canaux dans la langue de Focale, même préparés par une
+ * tâche de fond ([AppLocales.localized]).
  */
 @Singleton
 class VaultNotifications @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val locales: AppLocales,
 ) : AutoBackupNotifier {
     private val manager = NotificationManagerCompat.from(context)
+
+    /** Contexte des textes : celui de l'application, dans la langue de Focale. */
+    private val strings: Context get() = locales.localized(context)
 
     /** Notification de l'import en cours, qui fait de la tâche un service au premier plan. */
     fun importForeground(progress: VaultImportState.Running): ForegroundInfo {
         ensureChannels()
         val text = when {
-            progress.total == 0 -> context.getString(R.string.vault_import_preparing)
-            progress.confirming -> context.getString(R.string.vault_import_confirm)
-            else -> context.getString(R.string.vault_progress, progress.done, progress.total)
+            progress.total == 0 -> strings.getString(R.string.vault_import_preparing)
+            progress.confirming -> strings.getString(R.string.vault_import_confirm)
+            else -> strings.getString(R.string.vault_progress, progress.done, progress.total)
         }
         val notification = builder(CHANNEL_IMPORT)
-            .setContentTitle(context.getString(R.string.vault_import_title))
+            .setContentTitle(strings.getString(R.string.vault_import_title))
             .setContentText(text)
             .setProgress(progress.total, progress.done, progress.total == 0)
             .setOngoing(true)
@@ -56,16 +62,16 @@ class VaultNotifications @Inject constructor(
     /** Bilan d'un import terminé alors que Focale n'était pas à l'écran. */
     fun importFinished(result: OperationResult) {
         val text = when (result) {
-            is OperationResult.Success -> context.resources.getQuantityString(R.plurals.message_moved_to_vault, result.count, result.count)
+            is OperationResult.Success -> strings.resources.getQuantityString(R.plurals.message_moved_to_vault, result.count, result.count)
             is OperationResult.Partial ->
-                context.getString(R.string.message_partial, result.succeeded, result.succeeded + result.failed)
+                strings.getString(R.string.message_partial, result.succeeded, result.succeeded + result.failed)
             OperationResult.Cancelled -> return
-            is OperationResult.Failure -> context.getString(R.string.message_operation_failed)
+            is OperationResult.Failure -> strings.getString(R.string.message_operation_failed)
         }
         notify(
             RESULT_ID,
             builder(CHANNEL_IMPORT)
-                .setContentTitle(context.getString(R.string.vault_import_title))
+                .setContentTitle(strings.getString(R.string.vault_import_title))
                 .setContentText(text)
                 .setAutoCancel(true)
                 .build(),
@@ -80,9 +86,9 @@ class VaultNotifications @Inject constructor(
     fun newMedia(albumId: Long, folder: String, photos: Int, videos: Int, alert: Boolean) {
         val count = photos + videos
         val text = when {
-            videos == 0 -> context.resources.getQuantityString(R.plurals.vault_notify_new_photos, count, count, folder)
-            photos == 0 -> context.resources.getQuantityString(R.plurals.vault_notify_new_videos, count, count, folder)
-            else -> context.resources.getQuantityString(R.plurals.vault_notify_new_items, count, count, folder)
+            videos == 0 -> strings.resources.getQuantityString(R.plurals.vault_notify_new_photos, count, count, folder)
+            photos == 0 -> strings.resources.getQuantityString(R.plurals.vault_notify_new_videos, count, count, folder)
+            else -> strings.resources.getQuantityString(R.plurals.vault_notify_new_items, count, count, folder)
         }
         val add = PendingIntent.getActivity(
             context,
@@ -96,7 +102,7 @@ class VaultNotifications @Inject constructor(
         notify(
             newMediaId(albumId),
             builder(CHANNEL_NEW_MEDIA)
-                .setContentTitle(context.getString(R.string.vault_title))
+                .setContentTitle(strings.getString(R.string.vault_title))
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(openVault())
@@ -106,11 +112,11 @@ class VaultNotifications @Inject constructor(
                 .setPublicVersion(
                     NotificationCompat.Builder(context, CHANNEL_NEW_MEDIA)
                         .setSmallIcon(R.drawable.ic_notification)
-                        .setContentTitle(context.getString(R.string.vault_title))
-                        .setContentText(context.getString(R.string.vault_notify_public))
+                        .setContentTitle(strings.getString(R.string.vault_title))
+                        .setContentText(strings.getString(R.string.vault_notify_public))
                         .build(),
                 )
-                .addAction(0, context.getString(R.string.vault_notify_add), add)
+                .addAction(0, strings.getString(R.string.vault_notify_add), add)
                 .build(),
         )
     }
@@ -122,7 +128,7 @@ class VaultNotifications @Inject constructor(
     /** Sauvegarde automatique en cours, quand elle peut passer au premier plan : discrète, sans détail. */
     override fun autoBackupForeground(): ForegroundInfo {
         val notification = builder(CHANNEL_BACKUP)
-            .setContentTitle(context.getString(R.string.vault_auto_backup_running))
+            .setContentTitle(strings.getString(R.string.vault_auto_backup_running))
             .setProgress(0, 0, true)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -134,11 +140,11 @@ class VaultNotifications @Inject constructor(
 
     /** Échec d'une sauvegarde automatique : sa cause seulement ; un toucher ouvre le coffre. */
     override fun autoBackupFailed(error: AutoBackupError) {
-        val text = context.getString(error.vaultMessage)
+        val text = strings.getString(error.vaultMessage)
         notify(
             AUTO_BACKUP_FAILED_ID,
             builder(CHANNEL_BACKUP)
-                .setContentTitle(context.getString(R.string.vault_auto_backup_failed_title))
+                .setContentTitle(strings.getString(R.string.vault_auto_backup_failed_title))
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(openVault())
@@ -187,7 +193,7 @@ class VaultNotifications @Inject constructor(
             .setPublicVersion(
                 NotificationCompat.Builder(context, channel)
                     .setSmallIcon(R.drawable.ic_notification)
-                    .setContentTitle(context.getString(R.string.app_name))
+                    .setContentTitle(strings.getString(R.string.app_name))
                     .build(),
             )
     }
@@ -198,30 +204,42 @@ class VaultNotifications @Inject constructor(
         return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
+    /**
+     * Canaux renommés dans la langue de Focale, s'ils existent déjà : leurs noms s'affichent dans
+     * les réglages d'Android, en dehors de toute notification.
+     */
+    fun refreshChannels() {
+        val system = context.getSystemService(NotificationManager::class.java) ?: return
+        if (system.notificationChannels.any { it.id in CHANNELS }) ensureChannels()
+    }
+
     private fun ensureChannels() {
         val system = context.getSystemService(NotificationManager::class.java) ?: return
-        // Le dernier canal ajouté manque : les autres sont recréés à l'identique, sans effet.
-        if (system.getNotificationChannel(CHANNEL_BACKUP) != null) return
+        val strings = this.strings
+        // Le dernier canal ajouté existe, dans la langue de Focale : rien à faire. Sinon, tous sont
+        // créés, ou renommés (createNotificationChannels ne change que le nom et la description
+        // d'un canal existant, jamais les choix de l'utilisateur).
+        if (system.getNotificationChannel(CHANNEL_BACKUP)?.name == strings.getString(R.string.vault_auto_backup_channel)) return
         system.createNotificationChannels(
             listOf(
-                NotificationChannel(CHANNEL_IMPORT, context.getString(R.string.vault_import_channel), NotificationManager.IMPORTANCE_LOW).apply {
+                NotificationChannel(CHANNEL_IMPORT, strings.getString(R.string.vault_import_channel), NotificationManager.IMPORTANCE_LOW).apply {
                     setShowBadge(false)
                     lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 },
                 NotificationChannel(
                     CHANNEL_NEW_MEDIA,
-                    context.getString(R.string.vault_notify_channel),
+                    strings.getString(R.string.vault_notify_channel),
                     NotificationManager.IMPORTANCE_DEFAULT,
                 ).apply {
-                    description = context.getString(R.string.vault_notify_channel_description)
+                    description = strings.getString(R.string.vault_notify_channel_description)
                     lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 },
                 NotificationChannel(
                     CHANNEL_BACKUP,
-                    context.getString(R.string.vault_auto_backup_channel),
+                    strings.getString(R.string.vault_auto_backup_channel),
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
-                    description = context.getString(R.string.vault_auto_backup_channel_description)
+                    description = strings.getString(R.string.vault_auto_backup_channel_description)
                     setShowBadge(false)
                     lockscreenVisibility = Notification.VISIBILITY_PRIVATE
                 },
@@ -233,6 +251,7 @@ class VaultNotifications @Inject constructor(
         const val CHANNEL_IMPORT = "vault_import"
         const val CHANNEL_NEW_MEDIA = "vault_new_media"
         const val CHANNEL_BACKUP = "vault_backup"
+        private val CHANNELS = setOf(CHANNEL_IMPORT, CHANNEL_NEW_MEDIA, CHANNEL_BACKUP)
         const val IMPORT_ID = 3_001
         const val RESULT_ID = 3_002
         private const val OPEN_VAULT_REQUEST = 3_003

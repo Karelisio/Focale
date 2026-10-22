@@ -1,7 +1,7 @@
 package app.focale.core.util
 
+import java.util.Locale
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FormattersTest {
@@ -15,9 +15,10 @@ class FormattersTest {
     }
 
     @Test
-    fun `résolution et mégapixels`() {
-        assertEquals("—", Formatters.resolution(0, 100))
-        assertEquals("640 × 480", Formatters.resolution(640, 480))
-        assertTrue(Formatters.resolution(4000, 3000).startsWith("4000 × 3000 · 12"))
+    fun `résolution et mégapixels dans la langue de l'application`() {
+        assertEquals("—", Formatters.resolution(0, 100, Locale.FRENCH))
+        assertEquals("640 × 480", Formatters.resolution(640, 480, Locale.FRENCH))
+        assertEquals("4000 × 3000 · 12,0 Mpx", Formatters.resolution(4000, 3000, Locale.FRANCE))
+        assertEquals("4000 × 3000 · 12.0 Mpx", Formatters.resolution(4000, 3000, Locale.UK))
     }
 }

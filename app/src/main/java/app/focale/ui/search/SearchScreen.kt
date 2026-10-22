@@ -259,7 +259,7 @@ fun SearchScreen(viewModel: SearchViewModel = hiltViewModel()) {
 
     ExpandedFullScreenSearchBar(state = searchBarState, inputField = inputField) {
         val text by remember { snapshotFlow { textFieldState.text.toString() } }.collectAsState(initial = "")
-        val suggestions = remember(text, named, places) { SearchChipDetector.detect(text, named, places) }
+        val suggestions = remember(text, named, places, locale) { SearchChipDetector.detect(text, named, places, locale = locale) }
         SearchSuggestions(
             text = text,
             searching = searching,

@@ -42,6 +42,7 @@ import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import app.focale.MainActivity
 import app.focale.R
+import app.focale.core.locale.AppLocales
 import app.focale.ui.theme.FocaleSeed
 import app.focale.ui.theme.seededColorScheme
 import com.materialkolor.PaletteStyle
@@ -61,18 +62,21 @@ class MemoryWidget : GlanceAppWidget() {
     @InstallIn(SingletonComponent::class)
     interface Dependencies {
         fun photoPicker(): WidgetPhotoPicker
+        fun appLocales(): AppLocales
     }
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val picker = EntryPointAccessors.fromApplication(context.applicationContext, Dependencies::class.java).photoPicker()
-        val photo = runCatching { picker.pick() }.getOrNull()
+        val dependencies = EntryPointAccessors.fromApplication(context.applicationContext, Dependencies::class.java)
+        val photo = runCatching { dependencies.photoPicker().pick() }.getOrNull()
         val bitmap = photo?.let { runCatching { loadBitmap(context, it) }.getOrNull() }
+        // Mis à jour par une tâche de fond, avec le contexte de l'application : textes dans la langue de Focale.
+        val text = dependencies.appLocales().localized(context)
         provideContent {
             GlanceTheme(colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) GlanceTheme.colors else fallbackColors) {
                 if (photo != null && bitmap != null) {
                     PhotoContent(context, photo, bitmap)
                 } else {
-                    EmptyContent(context)
+                    EmptyContent(context, text)
                 }
             }
         }
@@ -143,7 +147,7 @@ private fun PhotoContent(context: Context, photo: WidgetPhoto, bitmap: Bitmap) {
 }
 
 @Composable
-private fun EmptyContent(context: Context) {
+private fun EmptyContent(context: Context, text: Context) {
     val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
         ?: Intent(context, MainActivity::class.java)
     Column(
@@ -165,7 +169,7 @@ private fun EmptyContent(context: Context) {
         )
         Spacer(GlanceModifier.height(4.dp))
         Text(
-            text = context.getString(R.string.widget_empty),
+            text = text.getString(R.string.widget_empty),
             style = TextStyle(
                 color = GlanceTheme.colors.onSecondaryContainer,
                 fontSize = 13.sp,

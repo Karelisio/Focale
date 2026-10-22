@@ -1,7 +1,6 @@
 package app.focale.core.database
 
 import androidx.sqlite.db.SimpleSQLiteQuery
-import app.focale.core.model.GroupLevel
 import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaQuery
 import app.focale.core.model.MediaSort
@@ -20,11 +19,11 @@ import app.focale.ml.PlaceTranslations
  */
 object MediaQueryBuilder {
 
-    /** Sélection complète, triée, utilisable comme PagingSource. */
-    fun select(query: MediaQuery, limit: Int? = null): SimpleSQLiteQuery {
+    /** Sélection complète, triée ; [limit] et [offset] : une page ([MediaPagingSource]). */
+    fun select(query: MediaQuery, limit: Int? = null, offset: Int = 0): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
         val where = where(query, args)
-        val limitClause = limit?.let { " LIMIT $it" }.orEmpty()
+        val limitClause = limit?.let { " LIMIT $it" + if (offset > 0) " OFFSET $offset" else "" }.orEmpty()
         return SimpleSQLiteQuery(
             "SELECT m.* FROM media m WHERE $where ORDER BY ${orderBy(query.sort)}$limitClause",
             args.toTypedArray(),
@@ -69,9 +68,18 @@ object MediaQueryBuilder {
         return SimpleSQLiteQuery("SELECT m.id FROM media m WHERE $where ORDER BY ${orderBy(query.sort)}", args.toTypedArray())
     }
 
+    /**
+     * Nombre de médias de [query] (compteurs, nombre total des grilles). Timeline, dossiers et
+     * filtres : par l'index de leur ordre seul. Avec un critère pris dans une autre table
+     * (recherche, personne, album, favoris), « + » écarte l'index de la corbeille, que SQLite croit
+     * sélectif faute de statistiques et qui lui faisait parcourir toute la timeline dans l'ordre
+     * des dates (lignes lues au hasard) : il part alors des médias du critère (`m.id IN (…)`, par la
+     * clé primaire), ou, quand une alternative l'exige (nom de fichier), parcourt `media` dans
+     * l'ordre des identifiants (docs/PERFORMANCE.md).
+     */
     fun count(query: MediaQuery): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
-        val where = where(query, args)
+        val where = where(query, args, trashByIndex = readsOnlyMedia(query))
         return SimpleSQLiteQuery("SELECT COUNT(*) FROM media m WHERE $where", args.toTypedArray())
     }
 
@@ -92,34 +100,54 @@ object MediaQueryBuilder {
     }
 
     /**
-     * Nombre de périodes distinctes (au niveau [level]) strictement antérieures à [anchor]
-     * dans l'ordre chronologique décroissant : sert à convertir un index de média en
-     * index de grille (les en-têtes occupent une case chacun).
+     * Dates extrêmes des médias de [query] (`first`, `last`), chacune par une recherche dans
+     * l'index de son ordre : de quoi borner les périodes de [histogram] et [periodsWithMedia].
      */
-    fun periodsBefore(query: MediaQuery, anchor: MediaEntity, level: GroupLevel): SimpleSQLiteQuery {
+    fun dateRange(query: MediaQuery): SimpleSQLiteQuery {
+        val args = mutableListOf<Any?>()
+        val first = "SELECT MIN(m.date_taken) FROM media m WHERE ${where(query, args)}"
+        val last = "SELECT MAX(m.date_taken) FROM media m WHERE ${where(query, args)}"
+        return SimpleSQLiteQuery("SELECT ($first) AS first, ($last) AS last", args.toTypedArray())
+    }
+
+    /**
+     * Nombre de médias de [query] dans chacune des périodes [bounds] : leurs débuts successifs, puis
+     * la fin de la dernière, calculés en Kotlin dans le fuseau courant (`DateGrouping.bounds`, heure
+     * d'été comprise). Chaque période est une plage de `date_taken`, comptée par l'index de la
+     * requête ; `strftime(…, 'localtime')`, calculé pour chaque média, coûtait 100 ms sur 50 000
+     * (docs/PERFORMANCE.md). Une ligne par période, vide comprise (`period_start`, `count`).
+     */
+    fun histogram(query: MediaQuery, bounds: List<Long>): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
         val where = where(query, args)
-        val period = periodExpression(level)
-        val cmp = if (query.sort.ascending) "<" else ">"
-        args += anchor.dateTaken
         return SimpleSQLiteQuery(
-            "SELECT COUNT(DISTINCT $period) FROM media m WHERE $where AND " +
-                "$period $cmp (SELECT ${period.replace("m.date_taken", "?")})",
+            "SELECT p.column1 AS period_start, (SELECT COUNT(*) FROM media m WHERE $where " +
+                "AND m.date_taken >= p.column1 AND m.date_taken < p.column2) AS count FROM (${periods(bounds)}) p",
             args.toTypedArray(),
         )
     }
 
-    /** Histogramme des périodes (pour la bulle de la barre de défilement rapide). */
-    fun histogram(query: MediaQuery, level: GroupLevel): SimpleSQLiteQuery {
+    /**
+     * Nombre de périodes [bounds] (voir [histogram]) qui contiennent au moins un média de [query] :
+     * les en-têtes de la grille avant un média, sans lire les médias de chaque période.
+     */
+    fun periodsWithMedia(query: MediaQuery, bounds: List<Long>): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
         val where = where(query, args)
-        val period = periodExpression(level)
-        val direction = if (query.sort.ascending) "ASC" else "DESC"
         return SimpleSQLiteQuery(
-            "SELECT MIN(m.date_taken) AS period_start, COUNT(*) AS count FROM media m " +
-                "WHERE $where GROUP BY $period ORDER BY $period $direction",
+            "SELECT COUNT(*) FROM (${periods(bounds)}) p WHERE EXISTS (SELECT 1 FROM media m WHERE $where " +
+                "AND m.date_taken >= p.column1 AND m.date_taken < p.column2)",
             args.toTypedArray(),
         )
+    }
+
+    /**
+     * Périodes [bounds] en table de valeurs (`column1` : début, `column2` : fin exclue) ; bornes
+     * numériques insérées littéralement (limite de paramètres de SQLite), au plus [MAX_PERIODS].
+     */
+    private fun periods(bounds: List<Long>): String {
+        require(bounds.size in 2..MAX_PERIODS + 1)
+        return "VALUES " + bounds.zipWithNext().joinToString(",") { (start, end) -> "($start,$end)" }
     }
 
     /** Albums dossiers avec leur couverture (média le plus récent). */
@@ -147,9 +175,12 @@ object MediaQueryBuilder {
      */
     fun readsOnlyMedia(query: MediaQuery): Boolean = !where(query, mutableListOf()).contains("SELECT")
 
-    /** Clause WHERE commune ; les arguments positionnels sont ajoutés à [args]. */
-    fun where(query: MediaQuery, args: MutableList<Any?>): String {
-        val clauses = mutableListOf("m.is_trashed = 0")
+    /**
+     * Clause WHERE commune ; les arguments positionnels sont ajoutés à [args]. [trashByIndex] faux :
+     * la corbeille est écartée sans proposer ses index à SQLite (« + », voir [count]).
+     */
+    fun where(query: MediaQuery, args: MutableList<Any?>, trashByIndex: Boolean = true): String {
+        val clauses = mutableListOf(if (trashByIndex) "m.is_trashed = 0" else "+m.is_trashed = 0")
         when (query.filter) {
             MediaFilter.ALL -> Unit
             MediaFilter.PHOTOS -> clauses += "m.media_type = $MEDIA_TYPE_IMAGE"
@@ -293,16 +324,6 @@ object MediaQueryBuilder {
         SortField.SIZE -> "m.size" to anchor.size
     }
 
-    /** Expression SQL identifiant la période (jour, mois ou année locale) d'un média. */
-    fun periodExpression(level: GroupLevel): String {
-        val format = when (level) {
-            GroupLevel.DAY -> "%Y-%m-%d"
-            GroupLevel.MONTH -> "%Y-%m"
-            GroupLevel.YEAR -> "%Y"
-        }
-        return "strftime('$format', m.date_taken / 1000, 'unixepoch', 'localtime')"
-    }
-
     /** Motif LIKE « contient », avec échappement des caractères spéciaux. */
     fun likePattern(text: String): String {
         val escaped = text.trim()
@@ -314,4 +335,7 @@ object MediaQueryBuilder {
 
     const val MEDIA_TYPE_IMAGE = 1
     const val MEDIA_TYPE_VIDEO = 3
+
+    /** Périodes par requête de [histogram] et [periodsWithMedia] (500 jours, 41 ans de mois). */
+    const val MAX_PERIODS = 500
 }

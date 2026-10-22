@@ -9,11 +9,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -40,10 +40,12 @@ import kotlinx.coroutines.launch
 
 /**
  * Activité unique, qui ouvre aussi les photos et vidéos des autres applications ([OpenRequest]).
- * Hérite de [FragmentActivity] pour l'invite biométrique du coffre.
+ * Hérite de [AppCompatActivity] (une `FragmentActivity`, pour l'invite biométrique du coffre) :
+ * avant Android 13, AppCompat applique la langue choisie dans Focale à l'activité et la recrée
+ * quand elle change ; depuis, le système s'en charge (voir `AppLocales`).
  */
 @AndroidEntryPoint
-class MainActivity : FragmentActivity() {
+class MainActivity : AppCompatActivity() {
 
     @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var consentRequester: ConsentRequester

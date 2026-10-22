@@ -86,9 +86,9 @@ interface FaceDao {
     suspend fun pendingAfter(version: Int, dateTaken: Long, id: Long, limit: Int): List<MediaEntity>
 
     /**
-     * Avancement en direct : photos concernées par [pending] et photos déjà analysées. Parcours
-     * dans l'ordre des identifiants (« + » écarte les index triés par date) : voir
-     * `AnalysisDao.observePendingCount`.
+     * Avancement, relu au plus toutes les quelques secondes : photos concernées par [pending] et
+     * photos déjà analysées. Parcours dans l'ordre des identifiants (« + » écarte les index triés
+     * par date) : voir `AnalysisDao.pendingCount`.
      */
     @Query(
         """
@@ -99,7 +99,7 @@ interface FaceDao {
           AND m.is_screenshot = 0 AND m.is_gif = 0
         """,
     )
-    fun observeProgress(version: Int): Flow<StepCounts>
+    suspend fun progress(version: Int): StepCounts
 
     @Query("SELECT * FROM face WHERE media_id IN (:mediaIds)")
     suspend fun facesOfMedia(mediaIds: List<Long>): List<FaceEntity>

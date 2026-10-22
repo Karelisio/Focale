@@ -2,7 +2,6 @@ package app.focale.ml
 
 import app.focale.core.database.StepCounts
 import app.focale.core.model.MediaItem
-import kotlinx.coroutines.flow.Flow
 
 /** Nature d'une analyse (principale : [LABELS]), pour l'affichage de l'avancement et des échecs. */
 enum class AnalysisKind { LABELS, TEXT, FACES, SEMANTIC }
@@ -25,8 +24,15 @@ interface AnalysisStep {
     /** Nature de l'étape (libellé de son avancement). */
     val kind: AnalysisKind
 
-    /** Avancement en direct : photos concernées et photos traitées par la version actuelle. */
-    fun observeProgress(): Flow<StepCounts>
+    /**
+     * Avancement : photos concernées et photos traitées par la version actuelle. Lit toute la
+     * bibliothèque : relu au plus toutes les quelques secondes quand [progressTables] changent
+     * (`AnalysisScheduler`).
+     */
+    suspend fun progress(): StepCounts
+
+    /** Tables dont dépend [progress] : `media` et celle des résultats de l'étape. */
+    val progressTables: Array<String>
 
     /** Prochain lot de médias à traiter ; vide quand l'étape est à jour. */
     suspend fun pending(limit: Int): List<MediaItem>

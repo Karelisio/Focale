@@ -28,7 +28,7 @@ cible, les choix techniques structurants et le découpage du développement.
 | Injection | Hilt (+ hilt-work, hilt-navigation-compose) |
 | Asynchrone | Coroutines, Flow |
 | Persistance | Room (index + métadonnées), DataStore Preferences (réglages) |
-| Pagination | Paging 3 (`PagingSource` Room via `@RawQuery`) |
+| Pagination | Paging 3 (`MediaPagingSource` sur des `@RawQuery` Room : positions, placeholders, sauts ; nombre total par l'index) |
 | Images | Coil 3 (miniatures MediaStore, GIF animés, frames vidéo), telephoto (zoom + sous-échantillonnage, glisser pour fermer) |
 | Vidéo | Media3 ExoPlayer + `media3-ui-compose` (contrôles M3 maison) |
 | Couleurs depuis photo | MaterialKolor (quantification + score Material Color Utilities) |
@@ -93,6 +93,7 @@ app/src/main/java/app/focale/
 │   ├── database/               Room : entités, DAO, requêtes brutes
 │   ├── mediastore/             scanner, synchro incrémentale, observer, consentements
 │   ├── settings/               DataStore → AppSettings
+│   ├── locale/                 langue de l'application (AppLocales), changements de langue
 │   ├── image/                  Fetchers Coil (miniatures, fichiers chiffrés)
 │   ├── permissions/            état des permissions (complet / partiel / refusé)
 │   └── util/                   dates, formats, haptique, extensions
@@ -143,7 +144,7 @@ dans leur ordre sans trier la bibliothèque : (`is_trashed`, `date_taken`) pour 
 | Table | Contenu |
 |---|---|
 | `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `place_key` (ses noms normalisés, traductions comprises), `country` |
-| `media_label` | (media, étiquette ML Kit canonique, confiance) |
+| `media_label` | (media, étiquette ML Kit canonique, confiance) ; index (`label`, `confidence`, `media_id`), version 7 |
 | `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée |
 | `media_embedding` | empreinte TinyCLIP de chaque photo (512 flottants, norme 1) |
 | `favorite` | médias favoris |
@@ -171,7 +172,9 @@ et la corbeille, non.
 Toutes les grilles (timeline, album, favoris, résultats de recherche…) sont décrites
 par un objet sérialisable `MediaQuery` (filtres de type, dossier, album virtuel,
 favoris, étiquettes, période, lieu, texte, tri). Un `MediaQueryBuilder` le traduit
-en SQL ; Room fournit la `PagingSource`.
+en SQL ; `MediaPagingSource` en lit les pages (`LIMIT`/`OFFSET`, clé = position, comme
+`LimitOffsetPagingSource` de Room) et compte le total par `MediaQueryBuilder.count` (l'index
+seul pour la timeline), invalidée par l'`InvalidationTracker` de Room.
 
 Bénéfice clé : la visionneuse reçoit **la même** `MediaQuery` que la grille d'où
 l'on vient, calcule la position de départ par un `COUNT(*)` et ouvre une
@@ -193,7 +196,7 @@ rechargent ni ses pages, ni son nombre, ni son histogramme.
    suppressions par la liste des `_ID` ; sinon comparaison complète
    (`id` + `date_modified`).
 3. Écritures par lots (1 000 lignes ajoutées ou modifiées, 500 suppressions) dans des
-   transactions ; Room invalide les `PagingSource` → l'UI se met à jour seule.
+   transactions ; l'`InvalidationTracker` de Room invalide les `PagingSource` → l'UI se met à jour seule.
 4. Date de tri : `DATE_TAKEN`, sinon la date retenue dans `media_date`, sinon `DATE_MODIFIED`.
 
 Médias écrits par l'application (sortie du coffre, corbeille d'Android 10, copie, édition en
@@ -294,9 +297,11 @@ par découpage du hash en 4 bandes de 16 bits (évite le O(n²)).
 exécute les `AnalysisStep` fournies par multiliaison (texte, visages, empreintes).
 Chacune tient son avancement dans sa table (version et `date_modified` analysés) :
 elle reprend où elle s'était arrêtée et recalcule après une évolution ou une édition.
-Chaque étape expose aussi son avancement (`observeProgress`, mêmes critères que sa file) :
-`AnalysisScheduler.status` le combine à celui de l'analyse principale pour l'onglet
-Recherche et les réglages. « Analyser maintenant » (`runNow`) lance un passage marqué
+Chaque étape expose aussi son avancement (`progress`, mêmes critères que sa file, et les tables
+dont il dépend) : `AnalysisScheduler.status` le combine à celui de l'analyse principale pour
+l'onglet Recherche et les réglages. Chaque lecture parcourt toute la bibliothèque : tant qu'il est
+affiché, un compteur est relu au plus toutes les 3 s (`sampledQuery`), aussitôt quand le worker
+vide une file ou finit son passage (`AnalysisMilestones`). « Analyser maintenant » (`runNow`) lance un passage marqué
 manuel, qui ignore « en charge uniquement » jusqu'à la fin (ses continuations aussi).
 Un échec global (modèle indisponible, étiquetage en échec sur tout un lot) est noté par
 `AnalysisIssues` jusqu'au prochain lot réussi et affiché sous l'analyse concernée, avec
@@ -729,7 +734,10 @@ application ouvre les photos et proposer de choisir Focale.
   50 000, même tout au bout (mesures : [PERFORMANCE.md](PERFORMANCE.md)).
 - Pincement : 2 à 7 colonnes (décalées sur tablette), ancrage sur l'élément visé.
 - Défilement rapide : poignée + bulle de date calculée depuis un histogramme
-  mensuel (`GROUP BY` mois) — exact et sans charger les pages.
+  mensuel — exact et sans charger les pages : mois bornés en Kotlin dans le fuseau courant
+  (`DateGrouping.bounds`, heure d'été comprise, mêmes périodes que les en-têtes), comptés par
+  plages de dates dans l'index. La position dans la grille au retour de la visionneuse compte
+  de même les périodes non vides avant le média.
 - Sélection : appui long puis glissement (calcul de l'élément sous le doigt +
   défilement automatique en bord d'écran), retour haptique à chaque ajout.
 
@@ -971,6 +979,38 @@ application ouvre les photos et proposer de choisir Focale.
   (« Portrait (4:5) »), curseurs et fonds nommés ; chaque case est un élément TalkBack placé sur
   l'aperçu, lu avec sa photo (« Case 2 sur 4 : IMG_1234.jpg, 12 mars 2025 »), avec ses actions :
   échanger avec la case précédente ou suivante, agrandir, réduire, recentrer.
+
+### 7.8 Langue
+- Français et anglais ; ressources non qualifiées en anglais (`res/resources.properties` :
+  `unqualifiedResLocale=en`), `values-fr` en français. AGP génère `android:localeConfig`
+  (`generateLocaleConfig`) : Android 13+ propose Focale dans « Langue des applications ». Seules ces
+  deux langues sont gardées des bibliothèques (`localeFilters`) : leurs textes suivent aussi.
+- Réglages → Langue (`LanguageSection`) : Système, Français, English, pour toutes les versions.
+  `AppLocales` est la seule porte : depuis Android 13, `LocaleManager` (le réglage du système, qui
+  le garde) ; avant, `AppCompatDelegate.setApplicationLocales`,
+  appliqué par `MainActivity` (une `AppCompatActivity`, thème `Theme.AppCompat.*.NoActionBar`) et
+  gardé par AppCompat dans un fichier privé (`AppLocalesMetadataHolderService` et
+  `autoStoreLocales` dans le manifeste), relu par `LocaleManagerCompat` et repris par le système au
+  passage à Android 13. Le choix garde la région du téléphone quand il parle cette langue
+  (« fr-CA », « en-GB »). Ni l'un ni l'autre n'est une clé de `SettingsRepository` : la
+  sauvegarde des données ne reprend pas la langue.
+- Changement sans redémarrage : l'activité est recréée (par le système, ou par AppCompat), l'état
+  des écrans conservé (navigation, `rememberSaveable`, ViewModels). `LocaleChangeReceiver`
+  (`LOCALE_CHANGED`, annoncé aussi pour un choix fait dans les réglages d'Android 13+, même Focale
+  fermée) et le choix dans Focale préviennent les `LocaleChangeListener` (`LocaleRefresh`) : canaux
+  de notification renommés, widget redessiné.
+- Hors des activités, le contexte de l'application reste dans la langue du système avant Android
+  13 : notifications et canaux (créés par les tâches de fond), widget et ses légendes passent par
+  `AppLocales.localized`, et `AppLocales.locale` remplace `Locale.getDefault()` pour la langue de
+  l'interface : dates et nombres (`Formatters`, résolution des photos), noms des lieux
+  (`PlaceName.display`) et des pays, étiquettes (`LabelDictionary.displayName`), ordre
+  alphabétique (personnes, coffre), analyse de la saisie (`SearchQueryParser` : ordre du jour et du
+  mois des dates numériques, « 07/14/2021 » en anglais des États-Unis, l'autre ordre s'il est le
+  seul valable ; noms de pays dans la langue de l'application, `SearchChipDetector`). Les écrans
+  lisent la langue de leur configuration (`LocalConfiguration`, ressources de l'activité).
+- Limites : le journal des nouveautés (CHANGELOG.md) n'existe qu'en français ; un titre déjà passé
+  en argument de navigation (souvenir, étiquette ouverte depuis la recherche) et une notification
+  déjà affichée gardent leur langue.
 
 ---
 

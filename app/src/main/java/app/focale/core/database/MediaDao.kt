@@ -1,6 +1,5 @@
 package app.focale.core.database
 
-import androidx.paging.PagingSource
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Query
@@ -22,13 +21,11 @@ data class SummaryRow(
  * Les requêtes dynamiques (filtres, recherche, tri) sont construites par
  * [MediaQueryBuilder] et exécutées via `@RawQuery` ; les tables observées couvrent
  * toutes celles qui peuvent apparaître dans une clause WHERE, de sorte que la grille
- * se rafraîchit dès qu'un favori, un album ou une étiquette change.
+ * se rafraîchit dès qu'un favori, un album ou une étiquette change. Les pages des grilles
+ * ([MediaPagingSource]) et leur histogramme suivent les mêmes tables (`MediaRepository`).
  */
 @Dao
 interface MediaDao {
-
-    @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class])
-    fun pagingSource(query: SupportSQLiteQuery): PagingSource<Int, MediaEntity>
 
     @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class])
     fun observeList(query: SupportSQLiteQuery): Flow<List<MediaEntity>>
@@ -42,11 +39,16 @@ interface MediaDao {
     @RawQuery
     suspend fun count(query: SupportSQLiteQuery): Int
 
-    @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class])
-    fun observeCount(query: SupportSQLiteQuery): Flow<Int>
+    /** Dates extrêmes ([MediaQueryBuilder.dateRange]). */
+    @RawQuery
+    suspend fun dateRange(query: SupportSQLiteQuery): DateRangeRow?
+
+    /** Médias par période ([MediaQueryBuilder.histogram]). */
+    @RawQuery
+    suspend fun histogram(query: SupportSQLiteQuery): List<DateBucketRow>
 
     @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class])
-    fun observeHistogram(query: SupportSQLiteQuery): Flow<List<DateBucketRow>>
+    fun observeCount(query: SupportSQLiteQuery): Flow<Int>
 
     @RawQuery(observedEntities = [MediaEntity::class])
     fun observeBuckets(query: SupportSQLiteQuery): Flow<List<BucketRow>>
@@ -56,32 +58,20 @@ interface MediaDao {
     // une grande bibliothèque, ne recharge ni leurs pages, ni leur compteur, ni leur histogramme.
 
     @RawQuery(observedEntities = [MediaEntity::class])
-    fun pagingSourceOfMedia(query: SupportSQLiteQuery): PagingSource<Int, MediaEntity>
-
-    @RawQuery(observedEntities = [MediaEntity::class])
     fun observeListOfMedia(query: SupportSQLiteQuery): Flow<List<MediaEntity>>
 
     @RawQuery(observedEntities = [MediaEntity::class])
     fun observeCountOfMedia(query: SupportSQLiteQuery): Flow<Int>
-
-    @RawQuery(observedEntities = [MediaEntity::class])
-    fun observeHistogramOfMedia(query: SupportSQLiteQuery): Flow<List<DateBucketRow>>
 
     // Recherche et personnes : suivent aussi les étapes d'analyse complémentaires (texte,
     // visages, empreintes), dont les résultats s'affinent pendant que l'analyse avance ou
     // que l'utilisateur réorganise ses personnes. La timeline n'est pas concernée.
 
     @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
-    fun pagingSourceWithAnalysis(query: SupportSQLiteQuery): PagingSource<Int, MediaEntity>
-
-    @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
     fun observeListWithAnalysis(query: SupportSQLiteQuery): Flow<List<MediaEntity>>
 
     @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
     fun observeCountWithAnalysis(query: SupportSQLiteQuery): Flow<Int>
-
-    @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class, MediaTextEntity::class, FaceEntity::class, MediaEmbeddingEntity::class])
-    fun observeHistogramWithAnalysis(query: SupportSQLiteQuery): Flow<List<DateBucketRow>>
 
     /**
      * Résumés de requêtes sur les étiquettes et le texte reconnu (albums automatiques) : seules

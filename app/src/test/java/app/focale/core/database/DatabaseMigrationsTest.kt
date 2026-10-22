@@ -20,7 +20,7 @@ class DatabaseMigrationsTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun `la migration 1 vers 6 conserve les données et produit le schéma attendu par Room`() {
+    fun `la migration 1 vers 7 conserve les données et produit le schéma attendu par Room`() {
         val file = databaseAt(version = 1) { db ->
             db.execSQL("INSERT INTO favorite (media_id, added_at) VALUES (42, 1000)")
             db.execSQL(vaultItem(id = 3))
@@ -138,6 +138,26 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun `la migration 6 vers 7 donne aux étiquettes un index qui suffit à les compter`() {
+        // Base de la 1.9.0 (version 6 publiée), avec l'index simple des étiquettes.
+        val file = databaseAt(version = 6) { db ->
+            db.execSQL("INSERT INTO media_label (media_id, label, confidence) VALUES (7, 'Dog', 0.9), (8, 'Dog', 0.7), (7, 'Beach', 0.8)")
+        }
+        openMigrated(file) { db ->
+            assertEquals(setOf("index_media_label_label_confidence_media_id", "sqlite_autoindex_media_label_1"), db.indexNames("media_label"))
+            assertEquals(listOf("label", "confidence", "media_id"), db.indexColumns("index_media_label_label_confidence_media_id"))
+            assertEquals(3L, db.longOf("SELECT COUNT(*) FROM media_label"))
+            // Recherche par étiquette et photo la plus sûre de chacune par l'index seul.
+            val search = db.plan("SELECT media_id FROM media_label WHERE label IN ('Dog', 'Poodle')")
+            assertTrue(search, "COVERING INDEX index_media_label_label_confidence_media_id" in search)
+            assertEquals(7L, db.longOf("SELECT media_id FROM media_label WHERE label = 'Dog' ORDER BY confidence DESC LIMIT 1"))
+            // Les index des médias de la version 6 restent.
+            assertTrue("index_media_is_trashed_date_taken" in db.indexNames("media"))
+            assertEquals(LATEST, db.version)
+        }
+    }
+
     private fun SupportSQLiteDatabase.indexNames(table: String): Set<String> = query("PRAGMA index_list(`$table`)").use { cursor ->
         buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
     }
@@ -208,6 +228,6 @@ class DatabaseMigrationsTest {
         /** Dossier courant des tests : le module app. */
         val SCHEMAS = File("schemas/app.focale.core.database.FocaleDatabase")
         const val TABLE_NAME = "\${TABLE_NAME}"
-        const val LATEST = 6
+        const val LATEST = 7
     }
 }

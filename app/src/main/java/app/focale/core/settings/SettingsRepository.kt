@@ -191,7 +191,9 @@ class SettingsRepository @Inject constructor(
          * ajoutée aux réglages n'est sauvegardée qu'une fois inscrite ici ; sinon, dans
          * [NOT_BACKED_UP] (vérifié par les tests). L'état propre à l'appareil ou passager n'est pas
          * dans ce DataStore (autorisations, application par défaut : le système ; mises à jour
-         * téléchargées, nouveautés vues, synchronisation : `StateStore`).
+         * téléchargées, nouveautés vues, synchronisation : `StateStore`). La langue de
+         * l'application non plus : le système la garde (AppCompat avant Android 13, `AppLocales`),
+         * et la sauvegarde ne la reprend pas.
          */
         internal val BACKED_UP: List<BackedUp<*>> = listOf(
             choice<ThemeMode>(Keys.THEME),

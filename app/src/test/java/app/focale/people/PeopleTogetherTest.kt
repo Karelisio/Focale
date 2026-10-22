@@ -9,6 +9,7 @@ import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaEntity
 import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.database.PersonEntity
+import app.focale.core.locale.AppLocales
 import app.focale.core.model.MediaQuery
 import app.focale.ml.SearchQueryParser
 import app.focale.ui.people.togetherTitle
@@ -43,7 +44,7 @@ class PeopleTogetherTest {
             .allowMainThreadQueries()
             .build()
         faces = database.faceDao()
-        repository = PeopleRepository(faces, PeopleEditions(), Dispatchers.IO)
+        repository = PeopleRepository(faces, PeopleEditions(), Dispatchers.IO, AppLocales(ApplicationProvider.getApplicationContext()))
         runBlocking {
             // La photo 7 est à la corbeille.
             database.mediaDao().upsert((1L..7L).map { photo(it, trashed = it == 7L) })

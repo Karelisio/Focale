@@ -8,6 +8,7 @@ import app.focale.data.MediaRepository
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.text.Collator
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
@@ -51,7 +52,8 @@ object MergeSuggester {
      * qui a le plus de photos.
      */
     fun suggest(candidates: List<Candidate>, refused: Set<Pair<Long, Long>>, threshold: Float = THRESHOLD): List<MergeSuggestion> {
-        val names = Collator.getInstance().apply { strength = Collator.PRIMARY }
+        // Même nom à la casse et aux accents près, quelle que soit la langue (du système ou de Focale).
+        val names = Collator.getInstance(Locale.ROOT).apply { strength = Collator.PRIMARY }
         val suggestions = ArrayList<MergeSuggestion>()
         for (i in candidates.indices) {
             val a = candidates[i]

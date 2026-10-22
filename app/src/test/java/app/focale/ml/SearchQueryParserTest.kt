@@ -3,6 +3,7 @@ package app.focale.ml
 import app.focale.core.model.MediaFilter
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -55,6 +56,30 @@ class SearchQueryParserTest {
         assertEquals(ms(today.minusDays(1)), yesterday.dateFrom)
         val todayQuery = SearchQueryParser.parse("aujourd'hui", today, zone)
         assertEquals(ms(today), todayQuery.dateFrom)
+    }
+
+    @Test
+    fun `dates numériques dans l'ordre de la langue de l'application`() {
+        fun day(text: String, locale: Locale) = SearchQueryParser.parse(text, today, zone, locale = locale).dateFrom
+        // Jour puis mois en français et en anglais britannique, mois puis jour aux États-Unis.
+        assertEquals(ms(LocalDate.of(2021, 4, 3)), day("03/04/2021", Locale.FRANCE))
+        assertEquals(ms(LocalDate.of(2021, 4, 3)), day("03/04/2021", Locale.UK))
+        assertEquals(ms(LocalDate.of(2021, 3, 4)), day("03/04/2021", Locale.US))
+        assertEquals(ms(LocalDate.of(2021, 3, 4)), day("03/04/2021", Locale.ENGLISH))
+        // Seul l'autre ordre donne une date : il est retenu.
+        assertEquals(ms(LocalDate.of(2021, 7, 14)), day("14/07/2021", Locale.US))
+        assertEquals(ms(LocalDate.of(2021, 7, 14)), day("07/14/2021", Locale.FRANCE))
+        assertTrue(SearchQueryParser.monthFirst(Locale.US))
+        assertTrue(!SearchQueryParser.monthFirst(Locale.FRENCH) && !SearchQueryParser.monthFirst(Locale.ROOT))
+    }
+
+    @Test
+    fun `noms de pays en français, en anglais et dans la langue de l'application`() {
+        assertTrue("DE" in SearchQueryParser.parse("allemagne", today, zone).terms.single().countries)
+        assertTrue("DE" in SearchQueryParser.parse("germany", today, zone).terms.single().countries)
+        // Focale qui suit un téléphone en allemand : « Deutschland » aussi, pas sans.
+        assertTrue("DE" in SearchQueryParser.parse("deutschland", today, zone, locale = Locale.GERMANY).terms.single().countries)
+        assertTrue(SearchQueryParser.parse("deutschland", today, zone, locale = Locale.FRANCE).terms.single().countries.isEmpty())
     }
 
     @Test

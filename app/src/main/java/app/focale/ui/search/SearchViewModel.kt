@@ -177,7 +177,7 @@ class SearchViewModel @Inject constructor(
      * sans ses mots ; s'il n'en reste rien, la recherche ne garde que ses pastilles.
      */
     fun applySuggestion(suggestion: ChipSuggestion, typed: String): String {
-        val rest = SearchChipDetector.remainingText(typed, suggestion, named.value.orEmpty())
+        val rest = SearchChipDetector.remainingText(typed, suggestion, named.value.orEmpty(), repository.locale)
         val next = filters.value + suggestion.chip
         update(if (rest.isEmpty()) next.copy(text = "") else next)
         return rest

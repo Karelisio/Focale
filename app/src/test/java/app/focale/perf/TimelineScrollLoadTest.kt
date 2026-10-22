@@ -14,11 +14,13 @@ import app.focale.core.model.GridItem
 import app.focale.core.model.GroupLevel
 import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaQuery
+import app.focale.core.model.SearchTerm
 import app.focale.data.AlbumRepository
 import app.focale.data.MediaRepository
 import app.focale.data.toGridItems
 import app.focale.data.toModel
 import app.focale.ml.SearchQueryParser
+import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -59,13 +61,13 @@ class TimelineScrollLoadTest {
             database.insertAnalysis(library)
         }
         report.note("remplissage de la base (index, analyse, texte, visages)", fill)
-        repository = MediaRepository(database.mediaDao(), Dispatchers.IO)
+        repository = MediaRepository(database.mediaDao(), Dispatchers.IO, database.invalidationTracker)
     }
 
     @After
     fun tearDown() = database.close()
 
-    private fun timelineSource(query: MediaQuery = MediaQuery.Timeline) = database.mediaDao().pagingSourceOfMedia(MediaQueryBuilder.select(query))
+    private fun timelineSource(query: MediaQuery = MediaQuery.Timeline) = repository.pagingSource(query)
 
     @Test
     fun `pages de la timeline en défilement continu puis par sauts de la barre de défilement`() = runBlocking<Unit> {
@@ -85,12 +87,12 @@ class TimelineScrollLoadTest {
         }
         // Toute la liste, dans l'ordre de la grille, sans trou ni doublon.
         assertEquals(expected.map { it.id }, loaded)
-        report.check("chargement initial (360 médias + COUNT)", initial, budgetMs = 300.0)
+        report.check("chargement initial (360 médias + COUNT)", initial, budgetMs = JUMP_BUDGET_MS)
         report.check("page suivante (120 médias), toute la liste", appends.toDoubleArray(), budgetMs = 15.0, detail = "${appends.size} pages")
         report.check("page suivante, 20 dernières pages", appends.takeLast(20).toDoubleArray(), budgetMs = 25.0)
 
         // Sauts de la barre de défilement rapide : Paging ouvre une nouvelle PagingSource à la
-        // position visée (clé de LimitOffsetPagingSource : position - initialLoadSize / 2).
+        // position visée (clé de MediaPagingSource, comme celle de Room : position - initialLoadSize / 2).
         val targets = (0 until JUMPS).map { ((it + 0.5) / JUMPS * expected.size).toInt() }
         val jumps = report.samples(repeat = JUMPS) { index ->
             val target = targets[if (index < 0) 0 else index]
@@ -99,28 +101,29 @@ class TimelineScrollLoadTest {
             assertEquals(expected[key].id, page.data.first().id)
             assertEquals(key, page.itemsBefore)
         }
-        report.check("saut de la barre de défilement (nouvelle source, 360 médias + COUNT)", jumps, budgetMs = 350.0)
+        report.check("saut de la barre de défilement (nouvelle source, 360 médias + COUNT)", jumps, budgetMs = JUMP_BUDGET_MS)
         val deepest = report.samples(repeat = 3) {
             val key = expected.size - MediaRepository.PAGING_CONFIG.initialLoadSize
             TestPager(MediaRepository.PAGING_CONFIG, timelineSource()).refresh(initialKey = key)
         }
-        report.check("saut tout au bout de la liste", deepest, budgetMs = 300.0)
-        // Dans un saut, le nombre total de LimitOffsetPagingSource (sous-requête triée, lignes
-        // entières) l'emporte sur la page ; le compteur de la timeline passe par l'index seul.
+        report.check("saut tout au bout de la liste", deepest, budgetMs = JUMP_BUDGET_MS)
+        // Le nombre total de chaque nouvelle source passe par l'index seul (MediaPagingSource) ;
+        // celui de LimitOffsetPagingSource (sous-requête triée, lignes entières), mesuré pour
+        // comparaison, l'emportait sur la page dans chaque saut.
         val select = MediaQueryBuilder.select(MediaQuery.Timeline)
         val roomCount = report.samples(repeat = 3) {
             withContext(Dispatchers.IO) { database.query(SimpleSQLiteQuery("SELECT COUNT(*) FROM ( ${select.sql} )")).use { it.moveToFirst() } }
         }
-        report.check("dont COUNT(*) de LimitOffsetPagingSource", roomCount, budgetMs = 300.0)
+        report.check("COUNT(*) de la requête triée (LimitOffsetPagingSource, avant)", roomCount, budgetMs = 300.0)
         val indexCount = report.samples(repeat = 3) { database.mediaDao().count(MediaQueryBuilder.count(MediaQuery.Timeline)) }
-        report.check("COUNT(*) par l'index (compteur de la timeline)", indexCount, budgetMs = 15.0)
+        report.check("COUNT(*) par l'index (MediaPagingSource, compteur de la timeline)", indexCount, budgetMs = 15.0)
 
         // Filtre « Photos » (95 % des médias) : même parcours, tout au bout.
         val photos = MediaQuery(filter = MediaFilter.PHOTOS)
         val photosEnd = report.samples(repeat = 3) {
             TestPager(MediaRepository.PAGING_CONFIG, timelineSource(photos)).refresh(initialKey = 45_000)
         }
-        report.check("saut tout au bout, filtre Photos", photosEnd, budgetMs = 300.0)
+        report.check("saut tout au bout, filtre Photos", photosEnd, budgetMs = JUMP_BUDGET_MS)
     }
 
     @Test
@@ -131,24 +134,30 @@ class TimelineScrollLoadTest {
         report.check("conversion en MediaItem (50 000 médias)", models, budgetMs = 300.0)
 
         // Séparateurs insérés par Paging (insertSeparators), ici sur toute la liste d'un coup.
+        val grids = HashMap<GroupLevel, List<GridItem>>()
         for (level in GroupLevel.entries) {
             var headers = 0
             val separators = report.samples(repeat = 3) {
                 val grid = flowOf(PagingData.from(items)).asSnapshotOf(level)
                 headers = grid.count { it is GridItem.Header }
                 assertEquals(items.size + headers, grid.size)
+                grids[level] = grid
             }
             report.check("en-têtes ${level.name} sur 50 000 médias", separators, budgetMs = 150.0, detail = "$headers en-têtes")
         }
 
-        // Histogramme mensuel de la bulle de date : exact sans charger les pages.
+        // Histogramme mensuel de la bulle de date : exact sans charger les pages, mêmes périodes
+        // que les en-têtes de la grille (fuseau courant).
+        val zone = ZoneId.systemDefault()
+        val monthHeaders = grids.getValue(GroupLevel.MONTH).filterIsInstance<GridItem.Header>().map { it.periodStart }
         var months = 0
-        val histogram = report.samples(repeat = 3) {
-            val buckets = repository.observeHistogram(MediaQuery.Timeline, GroupLevel.MONTH).first()
+        val histogram = report.samples(repeat = 5) {
+            val buckets = repository.observeHistogram(MediaQuery.Timeline, GroupLevel.MONTH, zone).first()
             assertEquals(expected.size, buckets.sumOf { it.count })
+            assertEquals(monthHeaders, buckets.map { it.periodStart })
             months = buckets.size
         }
-        report.check("histogramme mensuel (bulle de date)", histogram, budgetMs = 500.0, detail = "$months mois")
+        report.check("histogramme mensuel (bulle de date)", histogram, budgetMs = HISTOGRAM_BUDGET_MS, detail = "$months mois")
 
         // Retour de la visionneuse : position du média dans la grille (COUNT + en-têtes avant lui).
         val sampleIndexes = (0 until 10).map { (it * 4_957L % expected.size).toInt() }
@@ -157,13 +166,20 @@ class TimelineScrollLoadTest {
             assertEquals(position, repository.positionOf(MediaQuery.Timeline, expected[position].id))
         }
         report.check("position d'un média (visionneuse)", positions, budgetMs = 25.0)
+        // Index exact dans la grille de Paging, en-têtes de jour compris.
+        val dayGrid = grids.getValue(GroupLevel.DAY).withIndex()
+            .mapNotNull { (index, item) -> (item as? GridItem.Media)?.let { it.item.id to index } }.toMap()
         val gridPositions = report.samples(repeat = sampleIndexes.size) { index ->
             val position = sampleIndexes[if (index < 0) 0 else index]
-            val grid = repository.gridPositionOf(MediaQuery.Timeline, expected[position].id, GroupLevel.DAY)!!
-            // En-têtes : au moins celui de son jour, au plus un par média qui le précède.
-            assertTrue(grid in position + 1..2 * position + 1)
+            val id = expected[position].id
+            assertEquals(dayGrid.getValue(id), repository.gridPositionOf(MediaQuery.Timeline, id, GroupLevel.DAY, zone))
         }
-        report.check("position dans la grille avec en-têtes de jour (retour de la visionneuse)", gridPositions, budgetMs = 700.0)
+        report.check("position dans la grille avec en-têtes de jour (retour de la visionneuse)", gridPositions, budgetMs = GRID_POSITION_BUDGET_MS)
+        // Au bout de la timeline (3 500 jours à sonder) : le cas le plus long.
+        val oldest = report.samples(repeat = 3) {
+            assertEquals(dayGrid.getValue(expected.last().id), repository.gridPositionOf(MediaQuery.Timeline, expected.last().id, GroupLevel.DAY, zone))
+        }
+        report.check("position dans la grille, média le plus ancien", oldest, budgetMs = 2 * GRID_POSITION_BUDGET_MS)
     }
 
     @Test
@@ -181,7 +197,7 @@ class TimelineScrollLoadTest {
         val cameraEnd = report.samples(repeat = 3) {
             TestPager(MediaRepository.PAGING_CONFIG, timelineSource(camera)).refresh(initialKey = bySize.first().value - 360)
         }
-        report.check("dossier de ${bySize.first().value} médias, saut au bout", cameraEnd, budgetMs = 250.0)
+        report.check("dossier de ${bySize.first().value} médias, saut au bout", cameraEnd, budgetMs = 100.0)
         val small = MediaQuery(bucketId = bySize[bySize.size / 2].key)
         val smallFolder = report.samples(repeat = 3) { TestPager(MediaRepository.PAGING_CONFIG, timelineSource(small)).refresh() }
         report.check("petit dossier de ${bySize[bySize.size / 2].value} médias, chargement initial", smallFolder, budgetMs = 10.0)
@@ -200,9 +216,9 @@ class TimelineScrollLoadTest {
         val dogIds = library.labels.filter { it.label in dogLabels }.mapTo(HashSet()) { it.mediaId }
         val expectedDogs = expected.count { it.id in dogIds }
         val dogCount = report.samples(repeat = 3) { assertEquals(expectedDogs, repository.observeCount(dog).first()) }
-        report.check("recherche « chien » : nombre de résultats", dogCount, budgetMs = 500.0, detail = "$expectedDogs résultats")
+        report.check("recherche « chien » : nombre de résultats", dogCount, budgetMs = SEARCH_COUNT_BUDGET_MS, detail = "$expectedDogs résultats")
         val dogPage = report.samples(repeat = 3) {
-            val page = TestPager(MediaRepository.PAGING_CONFIG, database.mediaDao().pagingSourceWithAnalysis(MediaQueryBuilder.select(dog))).refresh()
+            val page = TestPager(MediaRepository.PAGING_CONFIG, repository.pagingSource(dog)).refresh()
             assertEquals(expected.filter { it.id in dogIds }.take(360).map { it.id }, (page as LoadResult.Page).data.map { it.id })
         }
         report.check("recherche « chien » : première page", dogPage, budgetMs = 800.0)
@@ -212,16 +228,34 @@ class TimelineScrollLoadTest {
         var invoices = 0
         val textCount = report.samples(repeat = 3) { invoices = repository.observeCount(invoice).first() }
         assertTrue(invoices > 0)
-        report.check("recherche « facture » : nombre de résultats", textCount, budgetMs = 550.0, detail = "$invoices résultats")
+        report.check("recherche « facture » : nombre de résultats", textCount, budgetMs = SEARCH_COUNT_BUDGET_MS, detail = "$invoices résultats")
         val textPage = report.samples(repeat = 3) {
-            TestPager(MediaRepository.PAGING_CONFIG, database.mediaDao().pagingSourceWithAnalysis(MediaQueryBuilder.select(invoice))).refresh()
+            TestPager(MediaRepository.PAGING_CONFIG, repository.pagingSource(invoice)).refresh()
         }
         report.check("recherche « facture » : première page", textPage, budgetMs = 750.0)
 
+        // Critère d'une autre table seul (étiquette ouverte depuis l'onglet Recherche, personne) :
+        // le compte part de ses médias, par la clé primaire.
+        val dogOnly = MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"))))
+        val dogOnlyIds = library.labels.filter { it.label == "Dog" }.mapTo(HashSet()) { it.mediaId }
+        val labelCount = report.samples(repeat = 3) { assertEquals(expected.count { it.id in dogOnlyIds }, repository.observeCount(dogOnly).first()) }
+        report.check("étiquette « Dog » seule : nombre de résultats", labelCount, budgetMs = 110.0)
+        val person = library.persons.first().id
+        val personCount = report.samples(repeat = 3) { repository.observeCount(MediaQuery(personId = person)).first() }
+        report.check("personne : nombre de photos", personCount, budgetMs = 60.0)
+
         // Onglet Recherche : choses (étiquettes) et lieux avec leur couverture.
-        val things = report.samples(repeat = 3) { database.analysisDao().observeLabelStats(60).first() }
-        report.check("onglet Recherche : étiquettes les plus présentes", things, budgetMs = 1_800.0)
-        val places = report.samples(repeat = 3) { database.analysisDao().observePlaceStats(40).first() }
+        val visible = expected.mapTo(HashSet()) { it.id }
+        val expectedThings = library.labels.filter { it.mediaId in visible }.groupingBy { it.label }.eachCount().entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }).take(60).map { it.key to it.value }
+        val things = report.samples(repeat = 3) { database.analysisDao().labelStats(60) }
+        report.check("onglet Recherche : étiquettes les plus présentes", things, budgetMs = THINGS_BUDGET_MS)
+        val stats = database.analysisDao().labelStats(60)
+        assertEquals(expectedThings, stats.map { it.label to it.count })
+        // Couverture : une photo de l'étiquette, hors corbeille.
+        val labeled = library.labels.mapTo(HashSet()) { it.mediaId to it.label }
+        assertTrue(stats.all { (it.coverId to it.label) in labeled && it.coverId in visible })
+        val places = report.samples(repeat = 3) { database.analysisDao().placeStats(40) }
         report.check("onglet Recherche : lieux", places, budgetMs = 200.0)
     }
 
@@ -231,5 +265,13 @@ class TimelineScrollLoadTest {
 
     private companion object {
         const val JUMPS = 12
+
+        // Budgets : environ cinq fois les médianes mesurées (docs/PERFORMANCE.md § 4.2). Un saut à
+        // plus de 60 ms signale le retour du COUNT(*) de la requête triée (55 à 70 ms à lui seul).
+        const val JUMP_BUDGET_MS = 60.0
+        const val HISTOGRAM_BUDGET_MS = 30.0
+        const val GRID_POSITION_BUDGET_MS = 70.0
+        const val SEARCH_COUNT_BUDGET_MS = 350.0
+        const val THINGS_BUDGET_MS = 600.0
     }
 }

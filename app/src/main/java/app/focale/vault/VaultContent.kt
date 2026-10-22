@@ -1,11 +1,13 @@
 package app.focale.vault
 
+import app.focale.core.locale.AppLocales
 import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.VaultAlbumOrder
 import app.focale.core.settings.VaultAlbumSort
 import app.focale.core.settings.VaultItemOrder
 import app.focale.core.settings.VaultSort
 import java.text.Collator
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.map
 class VaultContent @Inject constructor(
     private val repository: VaultRepository,
     private val settings: SettingsRepository,
+    private val locales: AppLocales,
 ) {
     val itemSort: Flow<VaultSort> = settings.settings.map { it.vaultSort }.distinctUntilChanged()
 
@@ -29,10 +32,10 @@ class VaultContent @Inject constructor(
 
     /** Tout le coffre, ou l'album [albumId]. */
     fun items(albumId: Long? = null): Flow<List<VaultItem>> =
-        combine(repository.observeItems(albumId), itemSort) { items, sort -> items.sortedWith(sort.comparator()) }
+        combine(repository.observeItems(albumId), itemSort) { items, sort -> items.sortedWith(sort.comparator(locales.locale)) }
 
     fun albums(): Flow<List<VaultAlbum>> =
-        combine(repository.observeAlbums(), albumSort) { albums, sort -> albums.sortedWith(sort.comparator()) }
+        combine(repository.observeAlbums(), albumSort) { albums, sort -> albums.sortedWith(sort.comparator(locales.locale)) }
 
     suspend fun setItemSort(sort: VaultSort) = settings.setVaultSort(sort)
 
@@ -41,13 +44,13 @@ class VaultContent @Inject constructor(
 
 /**
  * Ordre des éléments ; à égalité, les plus récents d'abord. Par nom : ni casse ni accents,
- * dans la langue de l'appareil.
+ * dans l'ordre alphabétique de [locale] (langue de l'application).
  */
-fun VaultSort.comparator(): Comparator<VaultItem> {
+fun VaultSort.comparator(locale: Locale): Comparator<VaultItem> {
     val field: Comparator<VaultItem> = when (order) {
         VaultItemOrder.DATE_TAKEN -> compareBy { it.dateTaken }
         VaultItemOrder.DATE_ADDED -> compareBy { it.addedAt }
-        VaultItemOrder.NAME -> compareBy(nameCollator()) { it.displayName }
+        VaultItemOrder.NAME -> compareBy(nameCollator(locale)) { it.displayName }
         VaultItemOrder.SIZE -> compareBy { it.size }
     }
     return (if (ascending) field else field.reversed())
@@ -55,9 +58,9 @@ fun VaultSort.comparator(): Comparator<VaultItem> {
         .thenByDescending { it.id }
 }
 
-/** Ordre des albums ; à égalité, par nom. */
-fun VaultAlbumSort.comparator(): Comparator<VaultAlbum> {
-    val collator = nameCollator()
+/** Ordre des albums ; à égalité, par nom (dans l'ordre alphabétique de [locale]). */
+fun VaultAlbumSort.comparator(locale: Locale): Comparator<VaultAlbum> {
+    val collator = nameCollator(locale)
     val field: Comparator<VaultAlbum> = when (order) {
         VaultAlbumOrder.NAME -> compareBy(collator) { it.name }
         VaultAlbumOrder.DATE -> compareBy { it.createdAt }
@@ -68,4 +71,4 @@ fun VaultAlbumSort.comparator(): Comparator<VaultAlbum> {
         .thenBy { it.id }
 }
 
-private fun nameCollator(): Collator = Collator.getInstance().apply { strength = Collator.PRIMARY }
+private fun nameCollator(locale: Locale): Collator = Collator.getInstance(locale).apply { strength = Collator.PRIMARY }

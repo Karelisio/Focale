@@ -146,10 +146,23 @@ android {
     }
 
     androidResources {
-        // Génère locales_config.xml (FR/EN) pour le choix de langue par application (Android 13+).
+        // Génère locales_config.xml (FR/EN) pour le choix de langue par application (Android 13+),
+        // d'après les dossiers de ressources de l'application : values (anglais, resources.properties)
+        // et values-fr.
         generateLocaleConfig = true
+        // Seules ces langues sont gardées des bibliothèques (AppCompat, Compose, ML Kit…) : leurs
+        // textes suivent aussi la langue de Focale, et l'APK s'allège.
+        localeFilters += listOf("en", "fr")
         // Modèles ONNX non compressés dans l'APK : projetés en mémoire au chargement.
         noCompress += "onnx"
+    }
+
+    // Langue choisie dans l'application : un App Bundle éventuel garde le français et l'anglais
+    // dans son APK de base, sans téléchargement à la demande.
+    bundle {
+        language {
+            enableSplit = false
+        }
     }
 
     packaging {
@@ -227,6 +240,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -257,7 +271,6 @@ dependencies {
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
-    implementation(libs.room.paging)
     ksp(libs.room.compiler)
     implementation(libs.paging.runtime)
     implementation(libs.paging.compose)

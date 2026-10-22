@@ -84,7 +84,8 @@ interface AnalysisDao {
     /**
      * Nombre de médias à analyser. Toute la table est lue : « + » écarte l'index de la timeline
      * (trié par date) au profit d'un parcours dans l'ordre des identifiants, qui lit `media` et
-     * `media_analysis` dans le même ordre, bien plus vite (docs/PERFORMANCE.md).
+     * `media_analysis` dans le même ordre, bien plus vite (docs/PERFORMANCE.md). Relu au plus
+     * toutes les quelques secondes pendant l'analyse (`AnalysisScheduler`, `sampledQuery`).
      */
     @Query(
         """
@@ -93,7 +94,7 @@ interface AnalysisDao {
           AND (a.media_id IS NULL OR a.analyzed_modified != m.date_modified OR a.version < :version)
         """,
     )
-    fun observePendingCount(version: Int): Flow<Int>
+    suspend fun pendingCount(version: Int): Int
 
     @Upsert
     suspend fun upsert(analysis: List<MediaAnalysisEntity>)
@@ -118,20 +119,31 @@ interface AnalysisDao {
     @Query("SELECT label FROM media_label WHERE media_id = :mediaId ORDER BY confidence DESC")
     fun observeLabels(mediaId: Long): Flow<List<String>>
 
+    /**
+     * Les [limit] étiquettes les plus présentes hors corbeille (onglet Recherche), avec leur photo
+     * la plus sûre. Comptage dans l'ordre de l'index (`label`, `confidence`, `media_id`), qui
+     * suffit seul : chaque ligne compte si son média est dans la liste des médias hors corbeille
+     * (« + » : SQLite ne part pas des médias, ce qui l'obligeait à regrouper 150 000 lignes dans
+     * un arbre temporaire). Couverture cherchée pour les étiquettes retenues seulement : la
+     * première de l'index par confiance décroissante (docs/PERFORMANCE.md). À égalité, par nom.
+     */
     @Query(
         """
-        SELECT l.label AS label, COUNT(*) AS count,
+        SELECT s.label AS label, s.count AS count,
                (SELECT l2.media_id FROM media_label l2 JOIN media m2 ON m2.id = l2.media_id
-                WHERE l2.label = l.label AND m2.is_trashed = 0
+                WHERE l2.label = s.label AND m2.is_trashed = 0
                 ORDER BY l2.confidence DESC, m2.date_taken DESC LIMIT 1) AS cover_id
-        FROM media_label l JOIN media m ON m.id = l.media_id
-        WHERE m.is_trashed = 0
-        GROUP BY l.label
-        ORDER BY count DESC
-        LIMIT :limit
+        FROM (
+            SELECT l.label AS label, COUNT(*) AS count FROM media_label l
+            WHERE +l.media_id IN (SELECT id FROM media WHERE is_trashed = 0)
+            GROUP BY l.label
+            ORDER BY count DESC, l.label
+            LIMIT :limit
+        ) s
+        ORDER BY s.count DESC, s.label
         """,
     )
-    fun observeLabelStats(limit: Int): Flow<List<LabelStat>>
+    suspend fun labelStats(limit: Int): List<LabelStat>
 
     @Query(
         """
@@ -146,7 +158,7 @@ interface AnalysisDao {
         LIMIT :limit
         """,
     )
-    fun observePlaceStats(limit: Int): Flow<List<PlaceStat>>
+    suspend fun placeStats(limit: Int): List<PlaceStat>
 
     /** Empreintes des photos (détection de doublons). */
     @Query(
