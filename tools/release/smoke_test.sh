@@ -672,7 +672,12 @@ if [ -n "$VISAGE" ]; then
   # Photo du widget demandée par-dessus la visionneuse : elle remplace la photo affichée.
   ouvrir_media "$VISAGE" dessus
   verifier_plantages "photo suivante sur l'écran externe"
-  echo "Visionneuse passée de $TEXTE à $VISAGE (ouverture par-dessus)"
+  for essai in $(seq 10); do
+    ui fenetres "$PAQUET" --externe >/dev/null 2>&1 && break
+    [ "$essai" -lt 10 ] || echec "présentation perdue en passant à $VISAGE"
+    sleep 2
+  done
+  echo "Visionneuse passée de $TEXTE à $VISAGE (ouverture par-dessus), toujours présentée"
 fi
 shell settings delete global overlay_display_devices >/dev/null
 sleep 3
