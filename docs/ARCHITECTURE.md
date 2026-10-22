@@ -598,6 +598,19 @@ application ouvre les photos et proposer de choisir Focale.
   curseur) ignorés, glissements laissés au pager et au glisser pour fermer. Cumul dans un
   demi-ovale translucide du côté touché, hors des barres système et des commandes
   (`ViewerChromeMetrics`) ; mêmes sauts en actions TalkBack sur la surface vidéo.
+- Vitesse de lecture (`VideoSpeedButton`) : bouton « 1× », « 1,5× »… à l'autre bout du
+  curseur que le son, teinté hors de 1× ; menu Material 3 Expressive de 0,25× à 2× par
+  quarts (`VideoSpeeds`, logique pure ; virgule décimale en français) au-dessus du bouton,
+  ou, en paysage, calé sur son bas sans couvrir la barre d'outils, défilant jusqu'à la
+  vitesse en cours. `Player.setPlaybackSpeed` : Media3 ne change que le tempo, la hauteur
+  du son reste celle de la vidéo. Vitesse retenue par l'écran de la visionneuse
+  (`rememberVideoSpeed`, comme l'affichage des commandes) : la même pour les vidéos
+  suivantes, gardée après une rotation ou une recréation de l'activité, oubliée à la sortie
+  (1× à la prochaine ouverture) ; les sauts restent de 10 s de vidéo. Progression jamais
+  plus étroite que la barre d'outils de la galerie : sous une barre plus courte (fichier
+  d'une autre application, coffre), le curseur garde sa place. TalkBack : « Vitesse de
+  lecture : 1,5× », relu à chaque choix ; options en cases d'option, celle en cours cochée,
+  sous le titre du menu.
 - Rotation à deux doigts : geste observé à la passe initiale sans rien consommer (zoom,
   balayage, double appui restent à telephoto), rotations parasites d'un pincement ignorées
   sous 15° (`RotationMath`). Au relâchement, ressort vers le quart de tour le plus proche,

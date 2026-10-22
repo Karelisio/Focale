@@ -134,6 +134,8 @@ private fun StandaloneViewer(
     onOpenWith: () -> Unit,
 ) {
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
+    // Vitesse de la vidéo, gardée après une rotation, 1× à chaque ouverture.
+    var videoSpeed by rememberVideoSpeed()
     var zoomed by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     // Largeur de la barre d'outils : la progression d'une vidéo s'aligne dessus.
@@ -162,6 +164,8 @@ private fun StandaloneViewer(
                     startMuted = settings.muteVideosByDefault,
                     controlsVisible = chromeVisible,
                     onTap = toggleChrome,
+                    playbackSpeed = videoSpeed,
+                    onPlaybackSpeedChange = { videoSpeed = it },
                     mediaItem = { ExoMediaItem.fromUri(media.uri) },
                     poster = { ExternalPreview(media.uri) },
                     controlsWidth = toolbarWidth,

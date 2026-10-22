@@ -22,7 +22,7 @@ internal object ViewerChromeMetrics {
     /** Écart entre la ligne de progression d'une vidéo et la barre d'outils. */
     val ControlsGap: Dp = 4.dp
 
-    /** Progression d'une vidéo : libellés de temps (une ligne) puis curseur et bouton son (cible tactile de 48 dp). */
+    /** Progression d'une vidéo : libellés de temps (une ligne) puis curseur, entre les boutons de vitesse et de son (cibles tactiles de 48 dp). */
     val ProgressHeight: Dp = 64.dp
 
     /** Hauteur occupée en bas par les commandes d'une vidéo, barre d'outils comprise (barre de navigation en plus). */

@@ -30,4 +30,9 @@
         <item quantity="one">Rewind %d second</item>
         <item quantity="other">Rewind %d seconds</item>
     </plurals>
+
+    <!-- Lecture vidéo : vitesse (bouton des commandes, menu des vitesses et nom lu par TalkBack) -->
+    <string name="video_speed_title">Playback speed</string>
+    <string name="video_speed_value">%1$s×</string>
+    <string name="video_speed_button">Playback speed: %1$s</string>
 </resources>

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -69,6 +70,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.max
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.media3.common.C
@@ -78,6 +80,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.state.rememberMuteButtonState
 import androidx.media3.ui.compose.state.rememberPlayPauseButtonState
+import androidx.media3.ui.compose.state.rememberPlaybackSpeedState
 import androidx.media3.ui.compose.state.rememberProgressStateWithTickInterval
 import app.focale.R
 import app.focale.core.image.ThumbnailSizes
@@ -93,6 +96,8 @@ import androidx.media3.common.MediaItem as ExoMediaItem
 /**
  * Page vidéo de la visionneuse pour un média de la galerie.
  *
+ * @param playbackSpeed vitesse de lecture de la visionneuse ([rememberVideoSpeed]), choisie dans
+ *   les commandes ([onPlaybackSpeedChange]).
  * @param controlsWidth largeur de la barre d'outils flottante, sur laquelle s'aligne la
  *   progression (non précisée : toute la largeur disponible, dans la limite des barres).
  */
@@ -104,6 +109,8 @@ fun VideoPage(
     startMuted: Boolean,
     controlsVisible: Boolean,
     onTap: () -> Unit,
+    playbackSpeed: Float,
+    onPlaybackSpeedChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     controlsWidth: Dp = Dp.Unspecified,
 ) {
@@ -114,6 +121,8 @@ fun VideoPage(
         startMuted = startMuted,
         controlsVisible = controlsVisible,
         onTap = onTap,
+        playbackSpeed = playbackSpeed,
+        onPlaybackSpeedChange = onPlaybackSpeedChange,
         mediaItem = { ExoMediaItem.fromUri(item.uri) },
         poster = { VideoPoster(item) },
         modifier = modifier,
@@ -132,7 +141,14 @@ fun VideoPage(
  * avance de 10 s, sur la gauche recule d'autant, et les appuis rapprochés qui suivent
  * s'ajoutent ([videoTapGestures]). TalkBack propose les mêmes sauts en actions.
  *
+ * La vitesse de lecture est celle de la visionneuse, gardée d'une vidéo à l'autre
+ * ([rememberVideoSpeed]) : appliquée au lecteur dès sa création puis à chaque choix dans les
+ * commandes, hauteur du son conservée. Les sauts restent de 10 s de vidéo, quelle que soit la
+ * vitesse.
+ *
  * @param key identité de la vidéo (un nouveau lecteur est créé si elle change).
+ * @param playbackSpeed vitesse de lecture de la visionneuse, choisie dans les commandes
+ *   ([onPlaybackSpeedChange]).
  * @param controlsWidth largeur de la barre d'outils flottante (voir [VideoControlsLayout]).
  * @param contentDescription nom de la vidéo, annoncé par TalkBack avec ses actions de saut.
  * @param playerFactory permet une source de données dédiée (vidéos chiffrées du coffre). Par
@@ -147,6 +163,8 @@ fun VideoPlayerPage(
     startMuted: Boolean,
     controlsVisible: Boolean,
     onTap: () -> Unit,
+    playbackSpeed: Float,
+    onPlaybackSpeedChange: (Float) -> Unit,
     mediaItem: () -> ExoMediaItem,
     poster: @Composable () -> Unit,
     modifier: Modifier = Modifier,
@@ -200,6 +218,9 @@ fun VideoPlayerPage(
         }
         LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { memory.pauseForBackground() }
         LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { memory.backInForeground() }
+        // Vitesse de la visionneuse, au lecteur neuf puis à chaque choix : Media3 n'en change que
+        // le tempo, la hauteur du son reste celle de la vidéo.
+        LaunchedEffect(player, playbackSpeed) { player.setPlaybackSpeed(playbackSpeed) }
 
         ContentFrame(
             player = player,
@@ -223,7 +244,7 @@ fun VideoPlayerPage(
             exit = fadeOut(),
             modifier = Modifier.fillMaxSize(),
         ) {
-            ViewerChromeTheme { VideoControls(player, controlsWidth) }
+            ViewerChromeTheme { VideoControls(player, controlsWidth, playbackSpeed, onPlaybackSpeedChange) }
         }
     }
 }
@@ -334,30 +355,35 @@ private fun PlayGlyph() {
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun VideoControls(player: Player, width: Dp) {
+private fun VideoControls(player: Player, width: Dp, speed: Float, onSpeedChange: (Float) -> Unit) {
     val playPause = rememberPlayPauseButtonState(player)
     val mute = rememberMuteButtonState(player)
+    val playbackSpeed = rememberPlaybackSpeedState(player)
     val progress = rememberProgressStateWithTickInterval(player, tickIntervalMs = 250)
     VideoControlsLayout(
         playing = !playPause.showPlay,
         positionMs = progress.currentPositionMs,
         durationMs = progress.durationMs.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L,
         muted = mute.showMuted,
+        speed = speed,
         onPlayPause = playPause::onClick,
         onSeek = { player.seekTo(it) },
         onToggleMute = mute::onClick,
+        onSpeedChange = onSpeedChange,
         barWidth = width,
         playEnabled = playPause.isEnabled,
         muteEnabled = mute.isEnabled,
+        speedEnabled = playbackSpeed.isEnabled,
     )
 }
 
 /**
  * Commandes d'une vidéo, aux couleurs Material You de l'appareil (à placer dans
  * [ViewerChromeTheme]) : lecture et pause au centre de la vidéo, jamais sur la progression ;
- * juste au-dessus de la barre d'outils flottante, de la même largeur ([barWidth]) et centrée
- * comme elle, une progression compacte : temps écoulé et durée aux extrémités du curseur, puis
- * le curseur et le son. Pas de bandeau : un léger dégradé du thème assure la lisibilité.
+ * juste au-dessus de la barre d'outils flottante, de la même largeur ([barWidth], au moins celle
+ * de la barre de la galerie) et centrée comme elle, une progression compacte : temps écoulé et
+ * durée aux extrémités du curseur, puis le curseur entre la vitesse ([VideoSpeedButton]) et le
+ * son. Pas de bandeau : un léger dégradé du thème assure la lisibilité.
  */
 @Composable
 internal fun VideoControlsLayout(
@@ -365,16 +391,20 @@ internal fun VideoControlsLayout(
     positionMs: Long,
     durationMs: Long,
     muted: Boolean,
+    speed: Float,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onToggleMute: () -> Unit,
+    onSpeedChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     barWidth: Dp = Dp.Unspecified,
     playEnabled: Boolean = true,
     muteEnabled: Boolean = true,
+    speedEnabled: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
     val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val statusTop = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
     val rowBottom = ViewerChromeMetrics.ToolbarHeight + ViewerChromeMetrics.ControlsGap
     CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
         BoxWithConstraints(modifier.fillMaxSize()) {
@@ -415,15 +445,20 @@ internal fun VideoControlsLayout(
                 durationMs = durationMs,
                 muted = muted,
                 muteEnabled = muteEnabled,
+                speed = speed,
+                speedEnabled = speedEnabled,
+                // Menu des vitesses : de sous la barre d'état et la marge des menus jusqu'au bas du bouton.
+                speedMenuHeight = maxHeight - navigationBottom - rowBottom - statusTop - SpeedMenuMargin,
                 onSeek = onSeek,
                 onToggleMute = onToggleMute,
+                onSpeedChange = onSpeedChange,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(bottom = rowBottom)
                     .padding(horizontal = ViewerChromeMetrics.ScreenOffset)
                     .widthIn(max = ViewerChromeMetrics.BarMaxWidth)
-                    .then(if (barWidth.isSpecified) Modifier.width(barWidth) else Modifier.fillMaxWidth())
+                    .then(if (barWidth.isSpecified) Modifier.width(max(barWidth, ProgressMinWidth)) else Modifier.fillMaxWidth())
                     .height(ViewerChromeMetrics.ProgressHeight),
             )
         }
@@ -432,7 +467,7 @@ internal fun VideoControlsLayout(
 
 /**
  * Progression compacte : temps écoulé et durée au-dessus des extrémités du curseur (piste et
- * poignée fines, couleurs du thème), le bouton son au bout du curseur.
+ * poignée fines, couleurs du thème), le bouton de vitesse à un bout du curseur, le son à l'autre.
  */
 @Composable
 private fun VideoProgress(
@@ -440,8 +475,12 @@ private fun VideoProgress(
     durationMs: Long,
     muted: Boolean,
     muteEnabled: Boolean,
+    speed: Float,
+    speedEnabled: Boolean,
+    speedMenuHeight: Dp,
     onSeek: (Long) -> Unit,
     onToggleMute: () -> Unit,
+    onSpeedChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var seekFraction by remember { mutableStateOf<Float?>(null) }
@@ -449,28 +488,35 @@ private fun VideoProgress(
     val enabled = durationMs > 0
     // Chiffres à chasse fixe : le temps qui défile ne fait pas bouger les libellés.
     val timeStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
-    // Contenu aligné sur celui de la barre d'outils, dont il reprend la marge intérieure.
-    Column(modifier.padding(horizontal = ContentInset)) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                // Les temps se posent sur la zone tactile du curseur, au plus près de sa piste.
-                .offset(y = TimeOverlap)
-                .padding(start = TimeInset, end = TimeInset + MuteButtonWidth),
-        ) {
-            Text(
-                text = Formatters.duration(position),
-                style = timeStyle,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = Formatters.duration(durationMs),
-                style = timeStyle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    // Contenu aligné sur celui de la barre d'outils, dont il reprend la marge intérieure ; les
+    // boutons, à la hauteur du curseur.
+    Row(modifier.padding(horizontal = ContentInset), verticalAlignment = Alignment.Bottom) {
+        VideoSpeedButton(
+            speed = speed,
+            onSpeedChange = onSpeedChange,
+            menuMaxHeight = speedMenuHeight,
+            enabled = speedEnabled,
+        )
+        Column(Modifier.weight(1f)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    // Les temps se posent sur la zone tactile du curseur, au plus près de sa piste.
+                    .offset(y = TimeOverlap)
+                    .padding(horizontal = TimeInset),
+            ) {
+                Text(
+                    text = Formatters.duration(position),
+                    style = timeStyle,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = Formatters.duration(durationMs),
+                    style = timeStyle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             VideoSlider(
                 position = position,
                 durationMs = durationMs,
@@ -481,19 +527,19 @@ private fun VideoProgress(
                     seekFraction = null
                 },
                 scrubbing = seekFraction != null,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
-            IconToggleButton(
-                checked = muted,
-                onCheckedChange = { onToggleMute() },
-                enabled = muteEnabled,
-                shapes = IconButtonDefaults.toggleableShapes(),
-            ) {
-                Icon(
-                    imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
-                    contentDescription = stringResource(if (muted) R.string.action_unmute else R.string.action_mute),
-                )
-            }
+        }
+        IconToggleButton(
+            checked = muted,
+            onCheckedChange = { onToggleMute() },
+            enabled = muteEnabled,
+            shapes = IconButtonDefaults.toggleableShapes(),
+        ) {
+            Icon(
+                imageVector = if (muted) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                contentDescription = stringResource(if (muted) R.string.action_unmute else R.string.action_mute),
+            )
         }
     }
 }
@@ -544,8 +590,12 @@ private fun VideoSlider(
     )
 }
 
-/** Bouton son au bout du curseur : cible tactile de 48 dp. */
-private val MuteButtonWidth = 48.dp
+/**
+ * Largeur minimale de la progression, celle de la barre d'outils de la galerie : sous une barre
+ * plus étroite (fichier d'une autre application, coffre), le curseur garde sa place entre les
+ * boutons de vitesse et de son.
+ */
+private val ProgressMinWidth = 256.dp
 
 /** Retrait des temps, pour tomber à l'aplomb des extrémités de la piste. */
 private val TimeInset = 2.dp

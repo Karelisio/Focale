@@ -1,6 +1,5 @@
 package app.focale.ui.viewer
 
-import android.os.Looper
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -25,11 +24,6 @@ import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.unit.dp
-import androidx.media3.common.Player
-import androidx.media3.common.SimpleBasePlayer
-import androidx.media3.common.util.UnstableApi
-import com.google.common.util.concurrent.Futures
-import com.google.common.util.concurrent.ListenableFuture
 import me.saket.telephoto.flick.FlickToDismiss
 import me.saket.telephoto.flick.FlickToDismissState
 import me.saket.telephoto.flick.rememberFlickToDismissState
@@ -72,6 +66,8 @@ class VideoSeekGestureTest {
             startMuted = true,
             controlsVisible = controlsVisible,
             onTap = { taps++ },
+            playbackSpeed = VideoSpeeds.NORMAL,
+            onPlaybackSpeedChange = {},
             mediaItem = { ExoMediaItem.fromUri("file:///clip.mp4") },
             poster = {},
             modifier = Modifier.testTag(VIDEO),
@@ -359,42 +355,4 @@ class VideoSeekGestureTest {
         /** Au-delà de la série et de l'effacement de son cumul. */
         const val SERIES_END = VideoSeekMath.SERIES_TIMEOUT_MS + 500L
     }
-}
-
-/** Lecteur factice : une vidéo prête de [durationMs], sans décodage ; la position ne change qu'aux sauts. */
-@androidx.annotation.OptIn(UnstableApi::class)
-private class FakePlayer(var positionMs: Long, private val durationMs: Long) : SimpleBasePlayer(Looper.getMainLooper()) {
-    /** Demandes de lecture (vrai) ou de pause (faux), dans l'ordre. */
-    val playRequests = mutableListOf<Boolean>()
-
-    override fun getState(): State = State.Builder()
-        .setAvailableCommands(
-            Player.Commands.Builder()
-                .addAll(
-                    Player.COMMAND_PLAY_PAUSE,
-                    Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
-                    Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
-                    Player.COMMAND_GET_TIMELINE,
-                    Player.COMMAND_RELEASE,
-                )
-                .build(),
-        )
-        .setPlaylist(listOf(MediaItemData.Builder("clip").setDurationUs(durationMs * 1_000).setIsSeekable(true).build()))
-        .setCurrentMediaItemIndex(0)
-        .setContentPositionMs(positionMs)
-        .setPlaybackState(Player.STATE_READY)
-        .setPlayWhenReady(playRequests.lastOrNull() ?: false, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
-        .build()
-
-    override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
-        this.positionMs = positionMs
-        return Futures.immediateVoidFuture()
-    }
-
-    override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
-        playRequests += playWhenReady
-        return Futures.immediateVoidFuture()
-    }
-
-    override fun handleRelease(): ListenableFuture<*> = Futures.immediateVoidFuture()
 }

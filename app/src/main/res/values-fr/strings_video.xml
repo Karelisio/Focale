@@ -32,4 +32,9 @@
         <item quantity="many">Reculer de %d secondes</item>
         <item quantity="other">Reculer de %d secondes</item>
     </plurals>
+
+    <!-- Lecture vidéo : vitesse (bouton des commandes, menu des vitesses et nom lu par TalkBack) -->
+    <string name="video_speed_title">Vitesse de lecture</string>
+    <string name="video_speed_value">%1$s×</string>
+    <string name="video_speed_button">Vitesse de lecture : %1$s</string>
 </resources>

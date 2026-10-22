@@ -59,6 +59,7 @@ import app.focale.core.util.Formatters
 import app.focale.ui.theme.PhotoTheme
 import app.focale.ui.viewer.ImmersiveSystemBars
 import app.focale.ui.viewer.VideoPlayerPage
+import app.focale.ui.viewer.rememberVideoSpeed
 import app.focale.vault.VaultImage
 import app.focale.vault.VaultItem
 import coil3.compose.AsyncImage
@@ -91,6 +92,8 @@ private fun VaultViewerContent(viewModel: VaultViewerViewModel, onBack: () -> Un
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
+    // Vitesse des vidéos : la même d'une vidéo à l'autre, 1× à chaque ouverture.
+    var videoSpeed by rememberVideoSpeed()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     // Largeur de la barre d'outils : la progression d'une vidéo s'aligne dessus.
     var toolbarWidth by remember { mutableStateOf(Dp.Unspecified) }
@@ -151,6 +154,8 @@ private fun VaultViewerContent(viewModel: VaultViewerViewModel, onBack: () -> Un
                     startMuted = settings.muteVideosByDefault,
                     controlsVisible = chromeVisible,
                     onTap = { chromeVisible = !chromeVisible },
+                    playbackSpeed = videoSpeed,
+                    onPlaybackSpeedChange = { videoSpeed = it },
                     mediaItem = { viewModel.mediaItemFor(item) },
                     poster = { VaultPoster(item) },
                     controlsWidth = toolbarWidth,

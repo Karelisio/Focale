@@ -157,6 +157,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
 
     val snackbarHostState = remember { SnackbarHostState() }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
+    // Vitesse des vidéos : la même d'une vidéo à l'autre, 1× à chaque ouverture.
+    var videoSpeed by rememberVideoSpeed()
     var showInfo by rememberSaveable { mutableStateOf(false) }
     var zoomed by remember { mutableStateOf(false) }
     // Largeur de la barre d'outils : la progression d'une vidéo s'aligne dessus.
@@ -227,6 +229,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     chromeVisible = chromeVisible,
                     autoplay = settings.autoplayVideos,
                     muted = settings.muteVideosByDefault,
+                    videoSpeed = videoSpeed,
+                    onVideoSpeedChange = { videoSpeed = it },
                     motionPhoto = motionPhoto,
                     motionState = motionState,
                     rotation = rotation,
@@ -389,6 +393,8 @@ private fun ViewerPager(
     chromeVisible: Boolean,
     autoplay: Boolean,
     muted: Boolean,
+    videoSpeed: Float,
+    onVideoSpeedChange: (Float) -> Unit,
     motionPhoto: MotionPhoto?,
     motionState: MotionPhotoState,
     rotation: PhotoRotationState,
@@ -433,6 +439,8 @@ private fun ViewerPager(
                 startMuted = muted,
                 controlsVisible = chromeVisible,
                 onTap = onToggleChrome,
+                playbackSpeed = videoSpeed,
+                onPlaybackSpeedChange = onVideoSpeedChange,
                 controlsWidth = controlsWidth,
             )
             else -> MotionPhotoBox(
