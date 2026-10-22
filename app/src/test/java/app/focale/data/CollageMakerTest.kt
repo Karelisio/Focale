@@ -91,7 +91,7 @@ class CollageMakerTest {
             context, context.contentResolver, ConsentRequester(), sync, database.trashDao(), database.favoriteDao(),
             database.mediaDao(), Dispatchers.IO,
         )
-        media = MediaRepository(database.mediaDao(), Dispatchers.IO)
+        media = MediaRepository(database.mediaDao(), Dispatchers.IO, database.invalidationTracker)
         maker = CollageMaker(context, context.contentResolver, operations, sync, media, Dispatchers.IO)
     }
 
