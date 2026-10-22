@@ -14,6 +14,7 @@ import app.focale.data.MediaOperations
 import app.focale.data.MediaRepository
 import app.focale.data.MediaSharer
 import app.focale.data.OperationResult
+import app.focale.print.PrintSelection
 import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultContent
 import app.focale.vault.VaultDestination
@@ -87,6 +88,9 @@ sealed interface ActionEvent {
     data class Share(val intent: Intent) : ActionEvent
     data class Message(val text: UiText, val undo: (() -> Unit)? = null) : ActionEvent
 
+    /** Photos à imprimer (aperçu d'impression d'Android, ouvert depuis l'activité). */
+    data class Print(val photos: List<MediaItem>) : ActionEvent
+
     /** L'action a abouti : l'écran peut quitter le mode sélection. */
     data object Done : ActionEvent
 
@@ -96,7 +100,7 @@ sealed interface ActionEvent {
 
 /**
  * Actions communes à toutes les grilles et à la visionneuse : partager, favoris,
- * albums, corbeille, copier, déplacer, renommer, coffre-fort.
+ * albums, corbeille, copier, déplacer, renommer, imprimer, coffre-fort.
  *
  * Instance propre à chaque ViewModel (non singleton) : elle s'exécute dans la portée
  * du ViewModel passée à [bind].
@@ -168,6 +172,12 @@ class MediaActions @Inject constructor(
         } finally {
             _progress.value = null
         }
+    }
+
+    /** Imprime les photos de [ids], une par page ; les vidéos sont ignorées (message s'il n'y a qu'elles). */
+    fun print(ids: Collection<Long>) = run {
+        val photos = PrintSelection.photos(media.getByIds(ids))
+        channel.send(if (photos.isEmpty()) ActionEvent.Message(UiText.Res(R.string.print_no_photos)) else ActionEvent.Print(photos))
     }
 
     /** Ajoute aux favoris, ou retire si tous le sont déjà. */

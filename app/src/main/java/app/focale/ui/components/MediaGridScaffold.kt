@@ -154,6 +154,7 @@ fun MediaGridScaffold(
                 onRename = { selection.firstOrNull()?.let(actions::requestRename) },
                 onMoveToVault = { actions.requestMoveToVault(selection) },
                 onSelectAll = onSelectAll,
+                onPrint = { actions.print(selection) },
                 extraActions = extraSelectionActions,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )

@@ -21,6 +21,8 @@ import app.focale.data.PhotoRotator
 import app.focale.edit.SaveMode
 import app.focale.ml.PlaceName
 import app.focale.ml.PlaceNames
+import app.focale.panorama.Panorama
+import app.focale.panorama.PanoramaRepository
 import app.focale.people.PeopleRepository
 import app.focale.people.Person
 import app.focale.ui.actions.MediaActions
@@ -76,6 +78,7 @@ class ViewerViewModel @Inject constructor(
     private val placeNames: PlaceNames,
     private val peopleRepository: PeopleRepository,
     private val motionPhotos: MotionPhotoRepository,
+    private val panoramas: PanoramaRepository,
     private val rotator: PhotoRotator,
     val actions: MediaActions,
 ) : ViewModel() {
@@ -140,6 +143,12 @@ class ViewerViewModel @Inject constructor(
     val motionPhoto: StateFlow<MotionPhoto?> = _current
         .distinctUntilChangedBy { it?.id to it?.dateModified }
         .mapLatest { item -> item?.let { motionPhotos.find(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Vue 360° ou panoramique proposée pour le média courant (en-tête lu à l'ouverture). */
+    val panorama: StateFlow<Panorama?> = _current
+        .distinctUntilChangedBy { it?.id to it?.dateModified }
+        .mapLatest { item -> item?.let { panoramas.find(it) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _details = MutableStateFlow<MediaDetails?>(null)

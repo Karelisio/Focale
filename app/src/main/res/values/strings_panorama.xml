@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Photos 360° et panoramas dans la visionneuse -->
+    <string name="panorama_sphere_button">360°</string>
+    <string name="panorama_flat_button">Panorama view</string>
+    <string name="panorama_sphere_title">360° photo</string>
+    <string name="panorama_flat_title">Panorama view</string>
+    <string name="panorama_motion">Move the phone</string>
+    <string name="panorama_reset">Initial view</string>
+    <string name="panorama_failed">This photo could not be opened in 360°</string>
+    <string name="panorama_sphere_description">360° photo. Drag to look around, pinch to zoom</string>
+</resources>

@@ -22,7 +22,12 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   en HDR (Android 14+), rotation à deux doigts (enregistrée sans perte dans l'orientation
   EXIF des JPEG et WebP, et dans leur orientation XMP que lisent Lightroom et d'autres
   logiciels), panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
-  copiable.
+  copiable. Photos 360° (métadonnées GPano des JPEG, WebP et HEIF, sphères complètes ou
+  partielles) en vue immersive OpenGL : glisser pour regarder autour, pincer pour le champ,
+  « Bouger le téléphone » (capteur de rotation), retour à la vue initiale du fichier ; panoramas
+  (GPano à plat, ou 2,5:1 et plus) en « Vue panoramique », à la hauteur de l'écran, parcourus
+  au doigt ou en tournant sur soi. Impression des photos (aperçu d'Android, une photo par page
+  dans son sens, orientation EXIF respectée).
 - **Application par défaut** : photos et vidéos des autres applications (« Ouvrir avec »,
   revue de l'appareil photo) ouvertes parmi celles de leur dossier, ou seules (messageries,
   téléchargements) ; Réglages → Fichiers indique l'application par défaut et aide à choisir Focale.
@@ -33,7 +38,7 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   edge-to-edge, icône adaptative et thématique (Android 13+).
 - **Organisation** : albums par dossier et albums virtuels, favoris, corbeille
   30 jours, sélection multiple (appui long + glisser), copier / déplacer / renommer /
-  supprimer / partager, tri et filtres (photos, vidéos, captures, GIF), dossiers
+  supprimer / partager / imprimer, tri et filtres (photos, vidéos, captures, GIF), dossiers
   masqués de Photos (WhatsApp, mèmes…) mais toujours dans Albums. Appui long sur un album
   pour ses options sans l'ouvrir : diaporama, renommer, masquer dans Photos, déplacer dans
   le coffre-fort, supprimer (dans le coffre : renommer, sortir du coffre, supprimer).

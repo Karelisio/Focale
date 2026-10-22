@@ -73,10 +73,13 @@ import app.focale.core.image.thumbnail
 import app.focale.core.model.Album
 import app.focale.core.model.FolderTarget
 import app.focale.core.model.MediaItem
+import app.focale.core.util.UiText
+import app.focale.print.PhotoPrinter
 import app.focale.ui.components.rememberNotificationPermission
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.VaultRoute
 import app.focale.ui.navigation.VaultUnlockRoute
+import app.focale.ui.viewer.findActivity
 import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultDestination
 import coil3.compose.AsyncImage
@@ -85,7 +88,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Affiche les dialogues et messages de [MediaActions] : choix d'album ou de dossier,
- * renommage, partage, snackbar avec « Annuler ».
+ * renommage, partage, impression, snackbar avec « Annuler ».
  *
  * @param onAlbumMoved l'album affiché est passé en entier dans le coffre : l'écran se ferme, sur
  *   un message qui lui survit. Sans lui (onglet Albums, rien ne se ferme), message en snackbar.
@@ -134,6 +137,9 @@ fun MediaActionsHost(
                     }
                 }
                 is ActionEvent.Message -> showMessage(event)
+                is ActionEvent.Print -> if (!PhotoPrinter.print(context.findActivity() ?: context, event.photos)) {
+                    showMessage(ActionEvent.Message(UiText.Res(R.string.print_unavailable)))
+                }
             }
         }
     }

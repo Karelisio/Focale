@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Share
@@ -44,7 +45,8 @@ import app.focale.R
 data class ExtraAction(val label: String, val icon: ImageVector, val onClick: () -> Unit)
 
 /**
- * Barre d'actions flottante (Material 3 Expressive) du mode sélection.
+ * Barre d'actions flottante (Material 3 Expressive) du mode sélection. [onPrint] : entrée
+ * « Imprimer » du menu, absente sans lui.
  */
 @Composable
 fun SelectionActionsBar(
@@ -60,6 +62,7 @@ fun SelectionActionsBar(
     onMoveToVault: () -> Unit,
     onSelectAll: () -> Unit,
     modifier: Modifier = Modifier,
+    onPrint: (() -> Unit)? = null,
     extraActions: List<ExtraAction> = emptyList(),
 ) {
     AnimatedVisibility(
@@ -95,6 +98,12 @@ fun SelectionActionsBar(
                         MenuEntry(Icons.Outlined.DriveFileRenameOutline, stringResource(R.string.action_rename)) {
                             menuOpen = false
                             onRename()
+                        }
+                    }
+                    if (onPrint != null) {
+                        MenuEntry(Icons.Outlined.Print, stringResource(R.string.action_print)) {
+                            menuOpen = false
+                            onPrint()
                         }
                     }
                     MenuEntry(Icons.Outlined.Lock, stringResource(R.string.action_move_to_vault)) {

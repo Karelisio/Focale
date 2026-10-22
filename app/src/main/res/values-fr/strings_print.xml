@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Impression des photos (visionneuse, sélection multiple) -->
+    <string name="action_print">Imprimer</string>
+    <string name="print_no_photos">Les vidéos ne peuvent pas être imprimées</string>
+    <string name="print_unavailable">L\'impression n\'est pas disponible sur cet appareil</string>
+    <plurals name="print_job_name">
+        <item quantity="one">Focale – %d photo</item>
+        <item quantity="many">Focale – %d photos</item>
+        <item quantity="other">Focale – %d photos</item>
+    </plurals>
+</resources>

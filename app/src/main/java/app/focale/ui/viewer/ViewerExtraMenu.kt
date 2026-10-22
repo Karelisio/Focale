@@ -3,6 +3,7 @@ package app.focale.ui.viewer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.runtime.Composable
@@ -13,7 +14,7 @@ import app.focale.core.model.MediaItem
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.openSlideshow
 
-/** Entrées de menu ajoutées par d'autres fonctionnalités (texte, diaporama, coffre…). */
+/** Entrées de menu ajoutées par d'autres fonctionnalités (texte, impression, diaporama, coffre…). */
 @Composable
 fun ViewerExtraMenuItems(viewModel: ViewerViewModel, item: MediaItem?, dismiss: () -> Unit, onRotate: (() -> Unit)? = null) {
     if (item == null) return
@@ -31,6 +32,10 @@ fun ViewerExtraMenuItems(viewModel: ViewerViewModel, item: MediaItem?, dismiss: 
             dismiss()
             texts.open(item)
         }
+        PrintMenuItem {
+            dismiss()
+            viewModel.onCurrent { print(it) }
+        }
     }
     ViewerMenuItem(Icons.Outlined.Slideshow, stringResource(R.string.action_slideshow)) {
         dismiss()
@@ -40,6 +45,12 @@ fun ViewerExtraMenuItems(viewModel: ViewerViewModel, item: MediaItem?, dismiss: 
         dismiss()
         viewModel.onCurrent { requestMoveToVault(it) }
     }
+}
+
+/** « Imprimer » : photos de la galerie seulement (ni vidéo, ni coffre). */
+@Composable
+internal fun PrintMenuItem(onPrint: () -> Unit) {
+    ViewerMenuItem(Icons.Outlined.Print, stringResource(R.string.action_print), onPrint)
 }
 
 /** Feuilles ouvertes par ces entrées (texte de la photo…), affichées au-dessus de la visionneuse. */

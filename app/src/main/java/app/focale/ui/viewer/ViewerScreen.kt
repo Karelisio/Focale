@@ -79,6 +79,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -150,6 +151,10 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     val labels by viewModel.labels.collectAsStateWithLifecycle()
     val people by viewModel.people.collectAsStateWithLifecycle()
     val motionPhoto by viewModel.motionPhoto.collectAsStateWithLifecycle()
+    val panorama by viewModel.panorama.collectAsStateWithLifecycle()
+    // Vue 360° ou panoramique ouverte (identifiant du média), gardée à la recréation de l'activité.
+    var panoramaOpen by rememberSaveable { mutableStateOf<Long?>(null) }
+    val immersive = panorama?.takeIf { it.mediaId == panoramaOpen && it.mediaId == current?.id }
     // Nouvel état à chaque média : changer de page arrête la lecture d'une photo animée.
     val motionState = remember(current?.id) { MotionPhotoState() }
     // Rotation de la photo affichée, annulée quand on en change (voir ViewerPager).
@@ -218,7 +223,12 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
             .fillMaxSize()
             .background(background.copy(alpha = (1f - flickState.offsetFraction * 1.5f).coerceIn(0f, 1f))),
     ) {
-        FlickToDismiss(state = flickState, enabled = !zoomed && !showInfo) {
+        // Sous une vue panoramique ouverte, la photo reste en place mais sort de TalkBack.
+        FlickToDismiss(
+            state = flickState,
+            enabled = !zoomed && !showInfo && immersive == null,
+            modifier = if (immersive != null) Modifier.clearAndSetSemantics {} else Modifier,
+        ) {
             val start = initialIndex
             val pagerReady = start != null && items.itemCount > start
             if (start != null && pagerReady) {
@@ -253,7 +263,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
 
         val item = current
         AnimatedVisibility(
-            visible = chromeVisible && item != null,
+            visible = chromeVisible && item != null && immersive == null,
             enter = fadeIn() + slideInVertically { -it / 2 },
             exit = fadeOut() + slideOutVertically { -it / 2 },
             modifier = Modifier.align(Alignment.TopCenter),
@@ -301,7 +311,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
             }
         }
         AnimatedVisibility(
-            visible = chromeVisible && item != null && !rotating,
+            visible = chromeVisible && item != null && !rotating && immersive == null,
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -351,6 +361,33 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                         !rotation.awaitsNewVersion && motionPhoto?.mediaId != item.id
                     ViewerExtraMenuItems(viewModel, item, dismiss, onRotate = item?.takeIf { rotatable }?.let { { rotation.rotateClockwise(it) } })
                 },
+            )
+        }
+        // Photo 360° ou panorama : bouton au-dessus de la barre d'outils, puis vue plein écran.
+        val offered = panorama?.takeIf { item != null && it.mediaId == item.id }
+        AnimatedVisibility(
+            visible = chromeVisible && offered != null && !rotating && immersive == null && !motionState.isPlaying,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            if (offered != null) {
+                PanoramaButton(
+                    kind = offered.kind,
+                    onClick = { panoramaOpen = offered.mediaId },
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(bottom = ViewerChromeMetrics.ToolbarHeight + ViewerChromeMetrics.ScreenOffset),
+                )
+            }
+        }
+        if (immersive != null && item != null) {
+            PanoramaOverlay(
+                item = item,
+                panorama = immersive,
+                chromeVisible = chromeVisible,
+                onToggleChrome = { chromeVisible = !chromeVisible },
+                onClose = { panoramaOpen = null },
             )
         }
 

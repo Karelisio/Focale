@@ -99,6 +99,8 @@ app/src/main/java/app/focale/
 ├── backup/                     sauvegardes par mot de passe : données, format commun au coffre, automatiques
 ├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur, texte
 ├── people/                     visages : détection, alignement, SFace, regroupement
+├── panorama/                   GPano (XMP), choix de la vue, sphère OpenGL ES, capteur de rotation
+├── print/                      impression : mise en page, document PDF du framework d'impression
 ├── work/                       workers
 ├── vault/                      crypto, stockage, verrouillage
 ├── widget/                     widget Glance
@@ -707,6 +709,56 @@ application ouvre les photos et proposer de choisir Focale.
   formats (PNG, dont Android ignore l'orientation EXIF ; HEIF et AVIF) : rendu de
   l'éditeur, en copie ou à la place. Clé mémoire Coil des images pleine taille liée à
   `date_modified`.
+- Photos panoramiques (`panorama/`) : détection à l'ouverture dans la visionneuse
+  (`PanoramaRepository`), sans analyse en arrière-plan ni colonne dans la base. Propriétés
+  GPano lues dans l'en-tête seul (`PanoramaHeaders`) : paquet XMP principal d'un JPEG (APP1)
+  ou d'un WebP (bloc « XMP »), comme l'orientation XMP (`XmpPackets`), ou élément `mime`
+  `application/rdf+xml` d'un HEIF / AVIF (`HeifXmp` : boîtes `meta`, `iinf`, `iloc`, données
+  dans le fichier ou dans `idat`). Lecture SAX tolérante (`XmpPanorama`, attributs ou
+  éléments, préfixe quelconque, ni DTD ni entité externe) ; résultat, absence comprise, gardé
+  en mémoire par média et date de modification (`Panoramas`, LRU de 1 024). Choix de la vue
+  (`PanoramaRules`, logique pure) : sphère si le GPano est équirectangulaire, sans
+  `UsePanoramaViewer="False"`, et couvre au moins 90° de haut (zone tirée de
+  `CroppedArea*` / `FullPano*`, proportions seules ; sans tailles, sphère complète au format
+  2:1) ; à plat pour un autre GPano sur une image plus large que haute (panorama horizontal
+  partiel d'un Pixel, projection cylindrique) ou, sans GPano, à partir de 2,5:1 (couverture
+  estimée à 60° de haut) ; GPano aux proportions différentes de l'image de plus de 5 %
+  (photo recadrée) ignoré. Bouton « 360° » ou « Vue panoramique » au-dessus de la barre
+  d'outils ; la vue s'ouvre par-dessus la visionneuse, intacte dessous (zoom compris), et
+  partage l'affichage de ses commandes ; ouverte, elle survit à la recréation de l'activité.
+- Vue 360° (`SphereViewer`, `SphereRenderer`) : `GLSurfaceView` OpenGL ES 2, rendu à la
+  demande ; maillage de la seule zone couverte (`SphereMesh`, 96 × 48 segments pour la sphère
+  entière, texture étirée d'un coin à l'autre, fond noir ailleurs). Caméra au centre
+  (`SphereCamera`, Kotlin pur, matrices maison `Mat4`) : glisser fait suivre le doigt au
+  centre de l'écran, pincer règle le champ (30 à 100° le long du petit côté, 70° par défaut ou
+  `InitialHorizontalFOVDegrees`), le centre de la vue reste dans une zone partielle ; « Vue
+  initiale » revient au cap `InitialViewHeadingDegrees` lu sur la boussole du fichier (centre
+  du panorama à `PoseHeadingDegrees`, 0 à défaut), sinon au centre de la zone. « Bouger le
+  téléphone » (désactivé par défaut, absent sans capteur) : vecteur de rotation « jeu », à
+  défaut ordinaire (`MotionSensor`), axes de l'écran selon `Display.getRotation()`, cap décalé
+  pour reprendre la vue en cours ; le doigt ne change plus que le cap. Texture : puissances de
+  deux (mipmaps), plafonnées à `GL_MAX_TEXTURE_SIZE` et 8 192, côtés équilibrés, 8, 16 ou
+  32 Mpx selon la mémoire (`SphereTextureSize`) ; décodée hors du fil principal par bandes de
+  128 lignes (`BitmapRegionDecoder` sous-échantillonné, une bande de l'original en mémoire à
+  la fois ; `ImageDecoder` si l'orientation EXIF tourne la photo), envoyée au contexte puis
+  libérée ; texture et contexte disparaissent avec la vue, rechargés si le contexte est perdu.
+  Pas de vue 360° dans le coffre.
+- Vue panoramique (`FlatPanoramaViewer`) : telephoto en `ContentScale.FillHeight`, image à la
+  hauteur de l'écran, centrée, parcourue au doigt avec l'inertie et le sous-échantillonnage de
+  la visionneuse ; « Bouger le téléphone » fait défiler d'un degré du panorama par degré
+  tourné (`HeadingTracker`, `panoramaShift`, couverture GPano ou estimée) ; « Vue initiale »
+  revient au zoom de base et recentre. Hors de cette vue, le zoom de la visionneuse ne change
+  pas.
+- Impression (`print/`) : « Imprimer » dans le menu de la visionneuse (photos) et de la
+  sélection (`MediaActions.print` : vidéos ignorées, message si la sélection n'en contient que),
+  rien pour le coffre (le contenu déchiffré partirait vers le spouleur). `PhotoPrinter` ouvre
+  l'aperçu d'Android (`PrintManager`) ; `PhotoPrintAdapter` écrit un PDF (`PdfDocument`), une
+  page par photo dans le sens de la photo (`PrintLayout` : page à l'italienne pour une photo
+  plus large que haute, photo entière et centrée dans la page moins la plus grande marge
+  minimale de l'imprimante), photo décodée à la résolution de l'imprimante (300 ppp au plus,
+  jamais plus grande que l'original, 24 Mpx au plus) par `ImageDecoder` (orientation EXIF
+  appliquée), désaturée en noir et blanc, libérée avant la suivante ; hors du fil principal,
+  arrêtée à l'annulation, pages demandées seules écrites (`PrintPages`).
 
 ### 7.5 Éditeur
 - `EditState` appliqué dans l'ordre : quarts de tour, miroir, redressement, recadrage,
