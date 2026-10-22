@@ -97,6 +97,7 @@ app/src/main/java/app/focale/
 │   └── util/                   dates, formats, haptique, extensions
 ├── data/                       repositories
 ├── backup/                     sauvegardes par mot de passe : données, format commun au coffre, automatiques
+├── collage/                    collages : dispositions, géométrie, cadrage, orientation, rendu
 ├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur, texte
 ├── people/                     visages : détection, alignement, SFace, regroupement
 ├── work/                       workers
@@ -108,6 +109,7 @@ app/src/main/java/app/focale/
     ├── navigation/             routes typées, NavHost, barre adaptative
     ├── timeline/  viewer/  albums/  search/  more/  favorites/  trash/
     ├── cleanup/   editor/  vault/   map/     slideshow/  memories/  settings/  backup/
+    ├── collage/
 ```
 
 ---
@@ -619,6 +621,7 @@ NavHost racine
 ├── Viewer(query, mediaId)       plein écran, au-dessus des onglets
 ├── ExternalMedia(uri)           média reçu d'une autre application
 ├── Editor(mediaId)
+├── Collage(mediaIds, truncated)
 ├── Slideshow(query, mediaId)
 ├── VaultAlbum(albumId)
 └── VaultViewer(itemId, albumId)
@@ -793,6 +796,65 @@ application ouvre les photos et proposer de choisir Focale.
 - Accessibilité : la carte entière est un seul nœud (nom, nombre, dossier masqué), l'ondulation
   restant sur la couverture ; appui long nommé « Options de l'album » et action personnalisée du
   même nom pour TalkBack (`clickableWithOptions`).
+
+### 7.7 Collages
+- Entrée : « Créer un collage » en tête du menu « Plus » de la barre de sélection
+  (`SelectionActionsBar`, dès deux éléments), donc dans toutes les grilles de `MediaGridScaffold` :
+  timeline, albums et dossiers, favoris, résultats de recherche, personnes. `MediaActions.createCollage`
+  prend la sélection dans l'ordre des choix, écarte les vidéos et garde les neuf premières photos
+  (`CollageSelection`) ; moins de deux photos : message, sélection conservée ; sinon
+  `CollageRoute(mediaIds, truncated)`, écran plein qui signale par une snackbar une sélection tronquée.
+- Dispositions (`CollageLayouts`, logique pure) : 4 à 6 par nombre de photos (2 à 9) — grilles,
+  rangées et colonnes, une grande et des petites, rangées ou colonnes inégales, mosaïques décalées,
+  moulinet (5 photos ; seule disposition qu'aucune découpe d'un bord à l'autre ne produit). Arbre de
+  découpes pondérées : un bord partagé est la même valeur pour les deux cases, le dernier morceau
+  finit sur le bord du parent. Les photos remplissent les cases dans l'ordre de la sélection, la
+  première prenant la grande case.
+- Géométrie (`CollageGeometry`) : chaque case normalisée est placée dans le collage réduit d'un
+  demi-espacement, puis réduite d'un demi-espacement ; les cases sont donc à un espacement l'une de
+  l'autre et du bord, et, agrandies d'un demi-espacement, pavent exactement le collage réduit. Même
+  calcul en pixels flottants (aperçu) et entiers (export : bord partagé arrondi une fois, puis décalé
+  de l'espacement entier, identique partout). Espacement (0 à 5 %) et arrondi (0 à 8 %, au plus la
+  moitié d'une case) en fraction du petit côté : l'aperçu a les proportions de l'export.
+- Cadrage (`CellFraming`, logique pure) : la photo remplit sa case, centrée ; agrandissement de 1 à 4
+  et centre de la partie visible normalisé, gardés par photo (ils la suivent dans un échange, un
+  changement de disposition ou de format) et ramenés dans leurs bornes à chaque usage : jamais de vide
+  dans une case. Glisser : la photo suit le doigt jusqu'à son bord ; pincer : le point sous les doigts
+  y reste.
+- Écran (`CollageScreen`, `CollageCanvas`, `CollagePanels`), aux couleurs de l'application : aperçu à
+  la proportion choisie, aide aux gestes, panneaux Disposition (vignettes à la proportion du
+  collage), Format (pastilles), Bordures (curseurs) et Fond (blanc, noir, couleurs principale,
+  secondaire, tertiaire du schéma courant et leurs teintes atténuées ; couleur résolue au choix, celle
+  qu'exporte le rendu). Une seule couche capte les gestes : un glisser ou un second doigt avant le
+  délai de l'appui long cadre la photo ; un appui long immobile (retour haptique) emmène une vignette
+  de la photo sous le doigt, la case visée est entourée, le relâchement échange les deux photos.
+  Historique (`CollageEditor`, 50 étapes, comme l'éditeur) : un choix ou un échange forme une étape, un
+  geste ou un glissement de curseur une seule ; fermer un collage modifié demande confirmation.
+- Lecture des photos (`CollageMaker`, `CollageRenderer`), la même pour l'aperçu et l'export :
+  `BitmapRegionDecoder` (JPEG, PNG, WebP, HEIF), orientation EXIF appliquée par le rendu
+  (`ImageOrientation`, quarts de tour et miroirs ; ignorée pour PNG, GIF et BMP, comme Android), repli
+  sur `ImageDecoder` réduit à 16 Mpx pour les autres formats. Aperçus de 1 280 px (960 au-delà de
+  quatre photos), deux décodés à la fois : le cadrage réglé à l'écran est celui du collage enregistré.
+- Export : JPEG qualité 95, 4 096 px sur le grand côté (4 096 × 4 096, 3 277 × 4 096, 3 072 × 4 096,
+  2 304 × 4 096, 4 096 × 2 304). Pour chaque case, seule la zone stockée visible (plus 3 pixels décodés
+  de marge pour le filtrage) est lue, réduite par la plus grande puissance de 2 qui garde au moins un
+  pixel décodé par pixel du collage, par bandes de 4 Mpx décodés au plus : en mémoire, le collage
+  (64 Mo) et, le temps d'une case, le fichier compressé de sa photo (que le décodeur copie) et une
+  bande (16 Mo), même pour neuf photos de 50 Mpx. Bornes des zones alignées sur le
+  facteur de réduction (même grille de pixels pour toutes les bandes), chaque bande ne peignant que
+  son cœur arrondi au pixel : aucune couture. Les coins arrondis sont repeints du fond en une fois,
+  hors du rectangle arrondi : leur lissage ne dépend pas des bandes. EXIF : dates de création avec
+  fuseau horaire (MediaStore en tire la date de prise de vue), logiciel, orientation normale.
+- Enregistrement par `MediaOperations.insertAndWrite` dans `Pictures/Focale/`
+  (`Collage_AAAAMMJJ_HHMMSS.jpg` : entrée en attente, écrite puis publiée, comme une copie d'édition ;
+  le fichier appartient à l'application, sans consentement à demander sous Android 10 comme 11+),
+  synchronisation de l'index, puis visionneuse sur le collage parmi les médias de son dossier, à la
+  place de l'écran de collage (le retour ramène à la grille). « Enregistrer et partager » ouvre en plus
+  le partage (`MediaSharer`).
+- Accessibilité : dispositions (« Grille 2 × 2 », « Une grande en haut, 3 en bas »…), formats
+  (« Portrait (4:5) »), curseurs et fonds nommés ; chaque case est un élément TalkBack placé sur
+  l'aperçu, lu avec sa photo (« Case 2 sur 4 : IMG_1234.jpg, 12 mars 2025 »), avec ses actions :
+  échanger avec la case précédente ou suivante, agrandir, réduire, recentrer.
 
 ---
 

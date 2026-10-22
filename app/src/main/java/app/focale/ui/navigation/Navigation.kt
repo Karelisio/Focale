@@ -42,6 +42,22 @@ fun NavHostController.openFromOtherApp(item: MediaItem, closeOnBack: Boolean) {
 }
 
 /**
+ * Collage tout juste enregistré : visionneuse sur lui, parmi les médias de son dossier, à la place
+ * de l'écran de collage (le retour ramène à la grille d'où il a été créé).
+ */
+fun NavHostController.openSavedCollage(item: MediaItem) {
+    ViewerHandoff.put(item)
+    navigate(ViewerRoute(RouteCodec.encode(MediaQuery(bucketId = item.bucketId)), item.id)) {
+        popUpTo<CollageRoute> { inclusive = true }
+    }
+}
+
+/** Ouvre l'écran de collage des photos [ids]. */
+fun NavHostController.openCollage(ids: List<Long>, truncated: Boolean) {
+    navigate(CollageRoute(ids, truncated)) { launchSingleTop = true }
+}
+
+/**
  * Retour d'un écran racine : dépile ; ou, l'activité ayant été lancée pour ouvrir le média d'une
  * autre application ([closeOnBack]), la referme pour revenir à celle-ci (retour système compris).
  */

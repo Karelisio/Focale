@@ -77,6 +77,7 @@ import app.focale.ui.components.rememberNotificationPermission
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.VaultRoute
 import app.focale.ui.navigation.VaultUnlockRoute
+import app.focale.ui.navigation.openCollage
 import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultDestination
 import coil3.compose.AsyncImage
@@ -134,6 +135,7 @@ fun MediaActionsHost(
                     }
                 }
                 is ActionEvent.Message -> showMessage(event)
+                is ActionEvent.OpenCollage -> rootNav.openCollage(event.ids, event.truncated)
             }
         }
     }

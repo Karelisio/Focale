@@ -65,7 +65,12 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   visage ou une plaque (rectangle, ellipse ou pinceau ; flou fort ou mosaïque, irréversibles ;
   « Visages » floute ceux que détecte ML Kit) ; enregistrement en copie ou à la place de
   l'original. Vidéos : coupe du début et de la fin, son coupé, enregistrées en copie (Media3
-  Transformer).
+  Transformer). Collages de 2 à 9 photos depuis la sélection multiple (vidéos ignorées) :
+  plusieurs dispositions par nombre de photos (grilles, une grande et des petites, mosaïques
+  décalées, moulinet), format 1:1, 4:5, 3:4, 9:16 ou 16:9, espacement, coins arrondis, fond blanc,
+  noir ou aux couleurs Material You ; chaque photo se cadre au doigt et s'agrandit en pinçant, un
+  appui long l'échange avec une autre case ; nouveau JPEG de 4 096 px dans `Pictures/Focale`, ouvert
+  dans la visionneuse ou partagé aussitôt.
 - **Coffre-fort** : photos et vidéos chiffrées (Tink, clé dans l'Android Keystore),
   retirées de MediaStore et des autres applications, déverrouillage par code ou
   biométrie, reverrouillage automatique, captures d'écran interdites ; sauvegarde

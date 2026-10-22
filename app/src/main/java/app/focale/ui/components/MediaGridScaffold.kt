@@ -155,6 +155,7 @@ fun MediaGridScaffold(
                 onMoveToVault = { actions.requestMoveToVault(selection) },
                 onSelectAll = onSelectAll,
                 extraActions = extraSelectionActions,
+                onCollage = { actions.createCollage(selection) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

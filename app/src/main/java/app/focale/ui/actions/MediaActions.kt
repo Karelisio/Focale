@@ -3,6 +3,8 @@ package app.focale.ui.actions
 import android.content.Intent
 import androidx.compose.runtime.Immutable
 import app.focale.R
+import app.focale.collage.CollagePick
+import app.focale.collage.CollageSelection
 import app.focale.core.model.Album
 import app.focale.core.model.FolderTarget
 import app.focale.core.model.MediaItem
@@ -92,11 +94,14 @@ sealed interface ActionEvent {
 
     /** Album entier passé dans le coffre : l'écran de l'album se ferme sur ce message. */
     data class AlbumMoved(val text: UiText) : ActionEvent
+
+    /** Collage des photos [ids] à ouvrir ; [truncated] : la sélection en comptait davantage. */
+    data class OpenCollage(val ids: List<Long>, val truncated: Boolean) : ActionEvent
 }
 
 /**
  * Actions communes à toutes les grilles et à la visionneuse : partager, favoris,
- * albums, corbeille, copier, déplacer, renommer, coffre-fort.
+ * albums, corbeille, copier, déplacer, renommer, coffre-fort, collage.
  *
  * Instance propre à chaque ViewModel (non singleton) : elle s'exécute dans la portée
  * du ViewModel passée à [bind].
@@ -332,6 +337,22 @@ class MediaActions @Inject constructor(
             else -> return
         }
         _progress.value = ActionProgress(label, background = true)
+    }
+
+    /**
+     * Collage de la sélection : ses photos dans l'ordre où elles ont été choisies, vidéos ignorées,
+     * les neuf premières au plus ([CollageSelection]). Moins de deux photos : un message, et la
+     * sélection reste en place.
+     */
+    fun createCollage(ids: Collection<Long>) = run {
+        val found = media.getByIds(ids).associateBy { it.id }
+        when (val pick = CollageSelection.pick(ids.mapNotNull(found::get))) {
+            CollagePick.NotEnough -> channel.send(ActionEvent.Message(UiText.Res(R.string.collage_not_enough_photos)))
+            is CollagePick.Ready -> {
+                channel.send(ActionEvent.OpenCollage(pick.ids, pick.truncated))
+                channel.send(ActionEvent.Done)
+            }
+        }
     }
 
     /** Retire des médias d'un album virtuel (les fichiers ne sont pas touchés). */
