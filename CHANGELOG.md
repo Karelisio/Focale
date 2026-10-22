@@ -5,6 +5,27 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.10.0
+
+- Photos 360° et panoramas : « 360° » ouvre une vue immersive où l'on regarde autour de soi
+  au doigt ou en bougeant le téléphone ; « Vue panoramique » fait défiler un panorama à la
+  hauteur de l'écran.
+- Diffusion vers une TV : la photo, la vidéo ou le diaporama en cours s'affichent sur un
+  écran branché (HDMI, USB-C) ou sans fil (Miracast, « Caster l'écran »), le téléphone gardant
+  les commandes. Dans la version standard, envoi aux TV du réseau local (DLNA : Samsung, LG,
+  Sony, Kodi…), sans Google Cast et sans que rien ne sorte du réseau local. Le coffre-fort
+  n'est jamais diffusé.
+- Collages : sélectionnez de 2 à 9 photos puis « Créer un collage » ; plusieurs dispositions,
+  formats, espacement, coins arrondis et fond ; glissez pour cadrer, pincez pour agrandir,
+  appui long pour échanger deux photos.
+- Impression des photos depuis la visionneuse ou une sélection, une photo par page.
+- Langue : Focale peut s'afficher en français ou en anglais quelle que soit la langue du
+  téléphone (Réglages, ou « Langue des applications » depuis Android 13). Dates, lieux,
+  recherche, notifications et widget suivent.
+- Grandes bibliothèques : ouverture des grilles et sauts de la barre de défilement environ
+  8 fois plus rapides, bulle de date et retour de la visionneuse bien plus rapides, et
+  l'analyse sollicite beaucoup moins la base.
+
 ## 1.9.0
 
 - Sauvegarde des données (Réglages) : favoris, albums, personnes et leurs visages, dossiers
