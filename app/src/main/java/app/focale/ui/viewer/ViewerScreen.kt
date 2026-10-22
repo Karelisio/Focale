@@ -58,6 +58,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -100,6 +101,7 @@ import app.focale.core.image.thumbnail
 import app.focale.core.image.version
 import app.focale.core.model.MediaItem
 import app.focale.core.util.Formatters
+import app.focale.data.PhotoRotator
 import app.focale.ml.CountryResolver
 import app.focale.ml.LabelDictionary
 import app.focale.ui.actions.MediaActionsHost
@@ -322,9 +324,14 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
         ) {
             val photo = rotation.item
             if (photo != null) {
+                // Options lues en arrière-plan (en-tête d'un HEIF) : l'enregistrement attend leur réponse.
+                val options by produceState<PhotoRotator.Options?>(null, photo.id, photo.mimeType) {
+                    value = viewModel.rotationOptions(photo)
+                }
                 ViewerChromeTheme {
                     RotationBar(
-                        options = remember(photo.id, photo.mimeType) { viewModel.rotationOptions(photo) },
+                        options = options ?: PhotoRotator.Options(lossless = false, canReplace = false),
+                        ready = options != null,
                         saving = rotation.saving,
                         onSave = { mode ->
                             if (viewModel.saveRotation(photo, rotation.pending, mode)) rotation.beginSave()

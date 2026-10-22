@@ -33,9 +33,11 @@ import app.focale.edit.SaveMode
 
 /**
  * Barre flottante d'une rotation en attente : « Annuler » revient à 0°, « Enregistrer la
- * rotation » écrit le fichier. Sans perte (JPEG, WebP), l'enregistrement est direct ; sinon
- * un menu propose, comme l'éditeur, une copie ou le remplacement de l'original. Couleurs du
- * thème courant : la visionneuse l'habille de [app.focale.ui.theme.ViewerChromeTheme].
+ * rotation » écrit le fichier. Sans perte (JPEG, WebP, la plupart des HEIF et AVIF),
+ * l'enregistrement est direct ; sinon un menu propose, comme l'éditeur, une copie ou le
+ * remplacement de l'original. Tant que [ready] est faux (options encore lues), l'enregistrement
+ * attend. Couleurs du thème courant : la visionneuse l'habille de
+ * [app.focale.ui.theme.ViewerChromeTheme].
  */
 @Composable
 internal fun RotationBar(
@@ -44,6 +46,7 @@ internal fun RotationBar(
     onSave: (SaveMode) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    ready: Boolean = true,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
@@ -61,7 +64,7 @@ internal fun RotationBar(
         Box {
             Button(
                 onClick = { if (options.lossless) onSave(SaveMode.REPLACE) else menuOpen = true },
-                enabled = !saving,
+                enabled = !saving && ready,
                 shapes = ButtonDefaults.shapes(),
                 contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
             ) {

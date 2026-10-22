@@ -194,7 +194,8 @@ class ViewerViewModel @Inject constructor(
         _details.value = null
     }
 
-    fun rotationOptions(item: MediaItem): PhotoRotator.Options = rotator.options(item)
+    /** Rotation sans perte possible ? Lit l'en-tête d'un HEIF ou d'un AVIF. */
+    suspend fun rotationOptions(item: MediaItem): PhotoRotator.Options = rotator.options(item)
 
     /**
      * Enregistre la rotation de [item] : le fichier n'est modifié qu'ici, à la demande de
@@ -203,8 +204,8 @@ class ViewerViewModel @Inject constructor(
      */
     fun saveRotation(item: MediaItem, quarterTurns: Int, mode: SaveMode): Boolean {
         if (rotationJob?.isActive == true) return false
-        val inPlace = rotator.options(item).lossless || mode == SaveMode.REPLACE
         rotationJob = viewModelScope.launch {
+            val inPlace = rotator.options(item).lossless || mode == SaveMode.REPLACE
             val result = when (rotator.save(item, quarterTurns, mode)) {
                 is OperationResult.Success -> RotationResult.Saved(item.id, inPlace)
                 OperationResult.Cancelled -> RotationResult.Declined(item.id)

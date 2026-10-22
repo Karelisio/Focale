@@ -4,5 +4,5 @@
     <string name="rotation_save">Save rotation</string>
     <string name="rotation_saved">Rotation saved</string>
     <string name="rotation_failed">The rotation could not be saved</string>
-    <string name="rotation_reencoded">This format has no usable EXIF orientation: the photo will be re-encoded.</string>
+    <string name="rotation_reencoded">This photo can\'t be rotated losslessly: it will be re-encoded.</string>
 </resources>
