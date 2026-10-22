@@ -89,6 +89,7 @@ class StraightenScreenshotTest {
                                 onUndo = {},
                                 onRedo = {},
                                 onSave = {},
+                                changes = state.changeCount,
                             )
                             Box(
                                 Modifier

@@ -4,8 +4,7 @@
     <string name="editor_text">Text</string>
     <string name="text_add">Add text</string>
     <string name="text_edit_title">Edit text</string>
-    <string name="text_field_label">Text</string>
-    <string name="text_done">OK</string>
+    <string name="text_confirm">Done</string>
     <string name="text_delete">Delete text</string>
     <string name="text_bold">Bold</string>
     <string name="text_size">Text size</string>

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Redo
 import androidx.compose.material.icons.automirrored.rounded.RotateRight
@@ -44,6 +46,7 @@ import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Flip
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -94,10 +97,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toOffset
 import androidx.compose.ui.unit.toSize
 import androidx.core.graphics.withTranslation
@@ -165,6 +170,8 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
 
     val requestClose = { if (viewModel.hasChanges) confirmDiscard = true else onClose() }
     BackHandler(onBack = requestClose)
+    // Pendant une saisie, le retour la valide (le clavier, lui, se ferme d'abord de lui-même).
+    BackHandler(enabled = textDraft != null) { textTool.confirm() }
 
     LaunchedEffect(viewModel) {
         viewModel.eventFlow.collect { event ->
@@ -191,22 +198,16 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
         }
     }
 
-    // Couleur résolue du prochain texte, et réglages montrés : ceux du texte sélectionné s'il y en a un.
-    val textInk = textOptions.ink.color().toArgb()
-    val shownText = state.texts.firstOrNull { it.id == selectedText }
-    val textInkShown = if (shownText == null) textOptions.ink else InkColor.entries.firstOrNull { it.color().toArgb() == shownText.color }
-    val shownBlur = state.blurs.firstOrNull { it.id == selectedBlur }
-    textDraft?.let { draft ->
-        TextInputDialog(
-            draft = draft,
-            onConfirm = { textTool.confirm(it, textInk) },
-            onDelete = {
-                textTool.cancel()
-                draft.id?.let(textTool::delete)
-            },
-            onDismiss = textTool::cancel,
-        )
+    // Textes affichés : celui en cours de saisie suit la frappe et les réglages, hors historique.
+    val texts = textTool.displayed(state.texts, textDraft)
+    val shownState = if (texts === state.texts) state else state.copy(texts = texts)
+    // Réglages montrés : ceux du texte en cours de saisie, sinon du texte sélectionné, sinon du prochain texte.
+    val shownText = textDraft?.preview ?: state.texts.firstOrNull { it.id == selectedText }
+    val textInkShown = when {
+        shownText == null || (textDraft != null && textDraft?.id == null) -> textOptions.ink
+        else -> InkColor.entries.firstOrNull { it.color().toArgb() == shownText.color }
     }
+    val shownBlur = state.blurs.firstOrNull { it.id == selectedBlur }
 
     if (confirmDiscard) {
         AlertDialog(
@@ -226,10 +227,12 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            // Clavier ouvert (saisie d'un texte) : la photo rapetisse, la saisie reste au-dessus du clavier.
+            .imePadding(),
     ) {
         EditorTopBar(
-            canUndo = canUndo,
+            canUndo = canUndo || textDraft != null,
             canRedo = canRedo,
             canSave = viewModel.hasChanges && !saving,
             canReplace = viewModel.canReplace,
@@ -237,6 +240,9 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
             onUndo = viewModel::undo,
             onRedo = viewModel::redo,
             onSave = viewModel::save,
+            // Ce que « Tout annuler » retirerait, texte en cours de saisie compris.
+            changes = state.copy(texts = texts.filter { it.text.isNotBlank() }).changeCount,
+            onReset = viewModel::resetAll,
         )
         Box(
             Modifier
@@ -250,7 +256,7 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
             } else {
                 EditorCanvas(
                     preview = current,
-                    state = state,
+                    state = shownState,
                     tool = tool,
                     showOriginal = showOriginal,
                     ratio = viewModel.cropRatio(),
@@ -271,9 +277,9 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                     when (tool) {
                         EditorTool.TEXT -> TextOverlay(
                             viewport = viewport,
-                            texts = state.texts,
+                            texts = texts,
                             layouts = textLayouts,
-                            selected = selectedText,
+                            selected = textDraft?.preview?.id ?: selectedText,
                             onAdd = textTool::startNew,
                             onEdit = textTool::startEdit,
                             onSelect = textTool::select,
@@ -369,7 +375,17 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                 )
             }
         }
-        EditorToolChoices(tool = tool, onSelect = viewModel::selectTool)
+        val draft = textDraft
+        if (draft != null) {
+            TextInputBar(
+                draft = draft,
+                onValueChange = textTool::type,
+                onConfirm = { textTool.confirm() },
+                onDismiss = textTool::cancel,
+            )
+        } else {
+            EditorToolChoices(tool = tool, onSelect = viewModel::selectTool)
+        }
     }
 }
 
@@ -394,6 +410,11 @@ internal fun EditorToolChoices(tool: EditorTool, onSelect: (EditorTool) -> Unit)
     )
 }
 
+/**
+ * Barre du haut : fermer, titre, « Tout annuler » ([changes] modifications, [onReset] ;
+ * confirmation légère à partir de [RESET_CONFIRMATION] modifications, l'action restant elle-même
+ * annulable), annuler, rétablir, puis enregistrer (copie ou remplacement).
+ */
 @Composable
 internal fun EditorTopBar(
     canUndo: Boolean,
@@ -404,8 +425,23 @@ internal fun EditorTopBar(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onSave: (SaveMode) -> Unit,
+    changes: Int = 0,
+    onReset: () -> Unit = {},
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    var confirmReset by rememberSaveable { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    if (confirmReset && changes > 0) {
+        ResetAllDialog(
+            changes = changes,
+            onConfirm = {
+                confirmReset = false
+                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                onReset()
+            },
+            onDismiss = { confirmReset = false },
+        )
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -416,11 +452,22 @@ internal fun EditorTopBar(
         IconButton(onClick = onClose, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.action_close))
         }
+        // Titre réduit au besoin : quatre boutons et « Enregistrer » tiennent sur 360 dp.
+        val titleStyle = MaterialTheme.typography.titleLargeEmphasized
         Text(
             text = stringResource(R.string.editor_title),
-            style = MaterialTheme.typography.titleLargeEmphasized,
+            style = titleStyle,
+            maxLines = 1,
+            autoSize = TextAutoSize.StepBased(minFontSize = 14.sp, maxFontSize = titleStyle.fontSize),
             modifier = Modifier.weight(1f).padding(start = 4.dp),
         )
+        IconButton(
+            onClick = { if (changes >= RESET_CONFIRMATION) confirmReset = true else onReset() },
+            enabled = changes > 0,
+            shapes = IconButtonDefaults.shapes(),
+        ) {
+            Icon(Icons.Rounded.RestartAlt, contentDescription = stringResource(R.string.editor_reset_all))
+        }
         IconButton(onClick = onUndo, enabled = canUndo, shapes = IconButtonDefaults.shapes()) {
             Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = stringResource(R.string.editor_undo))
         }
@@ -451,6 +498,22 @@ internal fun EditorTopBar(
         }
     }
 }
+
+/** Confirmation de « Tout annuler » : le nombre de modifications retirées, et qu'« Annuler » les rétablit. */
+@Composable
+internal fun ResetAllDialog(changes: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Rounded.RestartAlt, contentDescription = null) },
+        title = { Text(stringResource(R.string.editor_reset_title)) },
+        text = { Text(pluralStringResource(R.plurals.editor_reset_message, changes, changes)) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.editor_reset_all)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.editor_reset_keep)) } },
+    )
+}
+
+/** Modifications à partir desquelles « Tout annuler » demande confirmation ; en deçà, il agit aussitôt. */
+internal const val RESET_CONFIRMATION = 5
 
 /**
  * Géométrie de l'aperçu transmise aux couches des outils Texte et Flouter : image pivotée

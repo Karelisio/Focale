@@ -17,7 +17,9 @@ import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import app.focale.core.settings.AppSettings
 import app.focale.core.settings.ThemeMode
@@ -27,12 +29,15 @@ import app.focale.edit.BlurRenderer
 import app.focale.edit.BlurShape
 import app.focale.edit.BlurStyle
 import app.focale.edit.EditState
+import app.focale.edit.FilterPreset
+import app.focale.edit.NormRect
 import app.focale.edit.TextBackground
 import app.focale.edit.TextItem
 import app.focale.ui.editor.BlurOptions
 import app.focale.ui.editor.BlurOverlay
 import app.focale.ui.editor.BlurPanel
 import app.focale.ui.editor.DrawingOptions
+import app.focale.ui.editor.EditHistory
 import app.focale.ui.editor.EditorCanvas
 import app.focale.ui.editor.EditorPreview
 import app.focale.ui.editor.EditorTool
@@ -40,14 +45,18 @@ import app.focale.ui.editor.EditorToolChoices
 import app.focale.ui.editor.EditorTopBar
 import app.focale.ui.editor.EditorViewport
 import app.focale.ui.editor.InkColor
+import app.focale.ui.editor.TextController
+import app.focale.ui.editor.TextInputBar
 import app.focale.ui.editor.TextOptions
 import app.focale.ui.editor.TextOverlay
 import app.focale.ui.editor.TextPanel
 import app.focale.ui.editor.rememberTextLayoutCache
 import app.focale.ui.theme.FocaleTheme
 import app.focale.ui.theme.PhotoTheme
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,9 +68,11 @@ import org.robolectric.annotation.GraphicsMode
  * Captures de référence de l'éditeur avec les outils Texte (un texte encadré, sélectionné) et
  * Flouter (une zone en mosaïque sur un visage, sélectionnée), l'application en thème clair (en
  * français) puis sombre (en anglais). L'éditeur reste sombre dans les deux cas ([PhotoTheme],
- * `forceDark`) : la capture claire vérifie qu'aucune surface claire n'y entre. Couleurs Focale
- * sans couleurs dynamiques. Régénérer avec `./gradlew recordRoborazziStandardDebug` quand le
- * changement est voulu.
+ * `forceDark`) : la capture claire vérifie qu'aucune surface claire n'y entre. Puis la saisie
+ * d'un texte en direct (le texte tapé sur la photo, la saisie à la place des outils) et la
+ * confirmation de « Tout annuler », avec tout l'écran : elle a sa propre fenêtre. Couleurs
+ * Focale sans couleurs dynamiques. Régénérer avec `./gradlew recordRoborazziStandardDebug` quand
+ * le changement est voulu.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -87,21 +98,38 @@ class EditorToolsScreenshotTest {
     @Test
     fun flouPixelsSombre() = captureBlur(ThemeMode.DARK)
 
-    private fun captureText(theme: ThemeMode) {
+    @Test
+    @Config(qualifiers = "fr-w400dp-h800dp-xxhdpi")
+    fun saisieEnDirectClair() = captureLiveText(ThemeMode.LIGHT)
+
+    @Test
+    @OptIn(ExperimentalRoborazziApi::class)
+    fun toutAnnulerSombre() {
+        // Assez de modifications pour que « Tout annuler » demande confirmation.
+        val state = EditState(texts = listOf(lisbon), filter = FilterPreset.VIVID, brightness = 0.2f, contrast = 0.1f, crop = NormRect(0f, 0.02f, 1f, 0.98f))
+        captureText(ThemeMode.DARK, state, screen = false)
+        compose.onNodeWithContentDescription("Undo all").performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage(roborazziOptions = options)
+    }
+
+    private val lisbon = TextItem(
+        id = 1,
+        text = "Lisbonne\n2026",
+        x = 0.24f,
+        y = 0.25f,
+        color = YELLOW,
+        size = 0.085f,
+        rotation = -6f,
+        background = TextBackground.BOX,
+        bold = true,
+    )
+
+    /** Le texte « Lisbonne 2026 » de [state] sélectionné ; [screen] faux : rien n'est capturé (le test continue). */
+    private fun captureText(theme: ThemeMode, state: EditState = EditState(texts = listOf(lisbon)), screen: Boolean = true) {
         val photo = portrait()
-        val text = TextItem(
-            id = 1,
-            text = "Lisbonne\n2026",
-            x = 0.24f,
-            y = 0.25f,
-            color = YELLOW,
-            size = 0.085f,
-            rotation = -6f,
-            background = TextBackground.BOX,
-            bold = true,
-        )
-        val state = EditState(texts = listOf(text))
-        capture(theme, photo, state, EditorTool.TEXT, overlay = { viewport ->
+        val text = lisbon
+        capture(theme, photo, state, EditorTool.TEXT, screen = screen, overlay = { viewport ->
             TextOverlay(
                 viewport = viewport,
                 texts = state.texts,
@@ -118,6 +146,61 @@ class EditorToolsScreenshotTest {
             TextPanel(
                 options = TextOptions(ink = InkColor.YELLOW, size = text.size, background = text.background, bold = text.bold),
                 ink = InkColor.YELLOW,
+                hasSelection = true,
+                onAdd = {},
+                onInk = {},
+                onBackground = {},
+                onBold = {},
+                onSizeStart = {},
+                onSize = {},
+                onDelete = {},
+            )
+        }
+    }
+
+    /**
+     * Saisie en cours d'un nouveau texte, blanc à contour, gras : il s'affiche sur la photo, cadre
+     * de sélection compris, pendant que la saisie remplace la rangée d'outils.
+     */
+    private fun captureLiveText(theme: ThemeMode) {
+        val photo = portrait()
+        val history = EditHistory()
+        // Identités données par l'historique, comme dans l'éditeur.
+        history.commit(EditState(texts = listOf(lisbon.copy(id = history.newId()))))
+        val tool = TextController(history)
+        tool.setBackground(TextBackground.OUTLINE)
+        tool.setBold(true)
+        tool.setSize(0.07f)
+        tool.startNew(0.5f, 0.82f)
+        tool.type("Belém au coucher du soleil")
+        val draft = tool.draft.value!!
+        val texts = tool.displayed(history.current.texts)
+        val state = history.current.copy(texts = texts)
+        capture(
+            theme,
+            photo,
+            state,
+            EditorTool.TEXT,
+            overlay = { viewport ->
+                TextOverlay(
+                    viewport = viewport,
+                    texts = texts,
+                    layouts = rememberTextLayoutCache(),
+                    selected = draft.preview.id,
+                    onAdd = { _, _ -> },
+                    onEdit = {},
+                    onSelect = {},
+                    onGestureStart = {},
+                    onTransform = { _, _, _, _, _ -> },
+                    onDelete = {},
+                )
+            },
+            // Le champ contient ce qui a été tapé, curseur à la fin.
+            bottom = { TextInputBar(draft = draft.copy(initial = draft.text), onValueChange = {}, onConfirm = {}, onDismiss = {}) },
+        ) {
+            TextPanel(
+                options = TextOptions(ink = InkColor.WHITE, size = draft.preview.size, background = draft.preview.background, bold = true),
+                ink = InkColor.WHITE,
                 hasSelection = true,
                 onAdd = {},
                 onInk = {},
@@ -172,7 +255,9 @@ class EditorToolsScreenshotTest {
         state: EditState,
         tool: EditorTool,
         blurPatches: Map<Long, app.focale.edit.BlurPatch> = emptyMap(),
+        screen: Boolean = true,
         overlay: @Composable (EditorViewport) -> Unit,
+        bottom: @Composable () -> Unit = { EditorToolChoices(tool = tool, onSelect = {}) },
         panel: @Composable () -> Unit,
     ) {
         compose.setContent {
@@ -190,6 +275,7 @@ class EditorToolsScreenshotTest {
                                 onUndo = {},
                                 onRedo = {},
                                 onSave = {},
+                                changes = state.copy(texts = state.texts.filter { it.text.isNotBlank() }).changeCount,
                             )
                             Box(
                                 Modifier
@@ -219,13 +305,13 @@ class EditorToolsScreenshotTest {
                                 )
                             }
                             panel()
-                            EditorToolChoices(tool = tool, onSelect = {})
+                            bottom()
                         }
                     }
                 }
             }
         }
-        compose.onRoot().captureRoboImage(roborazziOptions = options)
+        if (screen) compose.onRoot().captureRoboImage(roborazziOptions = options)
     }
 
     /**

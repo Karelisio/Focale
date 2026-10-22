@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Éditeur : tout annuler d'un coup -->
+    <string name="editor_reset_all">Tout annuler</string>
+    <string name="editor_reset_title">Tout annuler ?</string>
+    <plurals name="editor_reset_message">
+        <item quantity="one">%d modification sera retirée. « Annuler » la rétablit.</item>
+        <item quantity="many">%d modifications seront retirées. « Annuler » les rétablit.</item>
+        <item quantity="other">%d modifications seront retirées. « Annuler » les rétablit.</item>
+    </plurals>
+    <string name="editor_reset_keep">Garder</string>
+</resources>

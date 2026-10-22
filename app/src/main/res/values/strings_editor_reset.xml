@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Éditeur : tout annuler d'un coup -->
+    <string name="editor_reset_all">Undo all</string>
+    <string name="editor_reset_title">Undo all edits?</string>
+    <plurals name="editor_reset_message">
+        <item quantity="one">%d edit will be removed. Undo brings it back.</item>
+        <item quantity="other">%d edits will be removed. Undo brings them back.</item>
+    </plurals>
+    <string name="editor_reset_keep">Keep</string>
+</resources>

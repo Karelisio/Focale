@@ -78,9 +78,11 @@ fun rememberTextLayoutCache(): TextLayoutCache {
  * Couche de l'outil Texte posée sur l'aperçu. Elle capte et consomme tous les gestes : un appui
  * hors des textes en ajoute un à cet endroit, un appui sur un texte l'ouvre en saisie, un glisser
  * le déplace, un pincement à deux doigts l'agrandit et le fait tourner (le texte touché, sinon le
- * texte sélectionné). Le texte sélectionné est entouré d'un cadre. Chaque texte est aussi un
- * élément accessible (TalkBack, clavier) : activer le modifie, une action le supprime, la touche
- * Suppr aussi.
+ * texte sélectionné). Le texte sélectionné est entouré d'un cadre. Pendant une saisie, [texts]
+ * montre le texte en cours ([TextController.displayed]), sélectionné : il se déplace et se
+ * pince comme les autres, et un appui ailleurs valide la saisie ; encore vide, son cadre fait
+ * office de curseur. Chaque texte est aussi un élément accessible (TalkBack, clavier) : activer
+ * le modifie, une action le supprime, la touche Suppr aussi.
  */
 @Composable
 fun TextOverlay(
@@ -226,6 +228,8 @@ private fun TextNodes(
     val deleteLabel = stringResource(R.string.text_action_delete)
     val frame = viewport.frame
     for (item in texts) {
+        // Nouveau texte encore vide : rien à annoncer, le champ de saisie a le focus.
+        if (item.text.isBlank()) continue
         val prepared = layouts[item]
         val corners = TextMath.corners(item, prepared.halfWidth, prepared.halfHeight, frame.width, frame.height)
         var left = Float.MAX_VALUE

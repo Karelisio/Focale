@@ -64,6 +64,23 @@ data class EditState(
     val hasGeometry: Boolean get() = quarterTurns % 4 != 0 || flipHorizontal || straighten != 0f || crop != NormRect.Full
 
     /**
+     * Modifications par rapport à l'original, que « Tout annuler » retire : rotation et miroir,
+     * redressement, recadrage, filtre et chaque réglage comptent pour une, chaque trait, texte et
+     * zone floutée aussi. Nul si et seulement si [isIdentity].
+     */
+    val changeCount: Int
+        get() = listOf(
+            quarterTurns % 4 != 0 || flipHorizontal,
+            straighten != 0f,
+            crop != NormRect.Full,
+            filter != FilterPreset.NONE,
+            brightness != 0f,
+            contrast != 0f,
+            saturation != 0f,
+            warmth != 0f,
+        ).count { it } + strokes.size + texts.size + blurs.size
+
+    /**
      * Quart de tour horaire de l'image affichée. Rotation et miroir ne commutent pas : avec
      * miroir, il correspond à un quart de tour antihoraire de l'original. Recadrage, traits,
      * textes et zones, exprimés dans le repère affiché, tournent avec lui ; le redressement,

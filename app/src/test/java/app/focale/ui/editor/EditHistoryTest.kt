@@ -53,11 +53,11 @@ class EditHistoryTest {
     @Test
     fun `une identité n'est jamais réutilisée, même après annulation`() {
         texts.startNew(0.5f, 0.5f)
-        texts.confirm("Un", INK)
+        texts.confirm("Un")
         val first = history.current.texts.single().id
         history.undo()
         texts.startNew(0.5f, 0.5f)
-        texts.confirm("Deux", INK)
+        texts.confirm("Deux")
         blurs.add(BlurArea.Box(BlurShape.RECTANGLE, 0.5f, 0.5f, 0.1f, 0.1f))
         val ids = history.current.texts.map(TextItem::id) + history.current.blurs.map { it.id } + first
         assertEquals(ids.size, ids.toSet().size)
@@ -66,7 +66,7 @@ class EditHistoryTest {
     @Test
     fun `annuler l'ajout d'un texte oublie sa sélection, et sa saisie ouverte`() {
         texts.startNew(0.2f, 0.3f)
-        texts.confirm("Bonjour", INK)
+        texts.confirm("Bonjour")
         val id = texts.selected.value!!
         texts.startEdit(id)
         history.undo()
@@ -84,7 +84,7 @@ class EditHistoryTest {
         texts.setBold(true)
         texts.setSize(0.12f)
         texts.startNew(0.4f, 0.6f)
-        texts.confirm("  Été 2026 \n", INK)
+        texts.confirm("  Été 2026 \n")
         val item = history.current.texts.single()
         assertEquals("Été 2026", item.text)
         assertEquals(app.focale.edit.TextBackground.BOX, item.background)
@@ -99,7 +99,7 @@ class EditHistoryTest {
     @Test
     fun `un geste de taille au curseur forme une seule étape`() {
         texts.startNew(0.5f, 0.5f)
-        texts.confirm("Bonjour", INK)
+        texts.confirm("Bonjour")
         texts.beginSize()
         listOf(0.08f, 0.1f, 0.2f, 0.25f).forEach(texts::setSize)
         assertEquals(0.25f, history.current.texts.single().size, 1e-6f)
@@ -114,7 +114,7 @@ class EditHistoryTest {
     fun `un texte déplacé reste dans le recadrage`() {
         history.commit(history.current.copy(crop = NormRect(0.25f, 0.25f, 0.75f, 0.75f)))
         texts.startNew(0.5f, 0.5f)
-        texts.confirm("Bonjour", INK)
+        texts.confirm("Bonjour")
         val id = texts.selected.value!!
         texts.beginGesture(id)
         texts.move(id, 0.9f, -0.9f)
@@ -162,7 +162,83 @@ class EditHistoryTest {
         assertTrue(history.current.blurs.isEmpty())
     }
 
+    @Test
+    fun `une saisie suit la frappe et les réglages sans étape, puis en forme une seule`() {
+        texts.setInk(InkColor.RED, INK)
+        texts.startNew(0.3f, 0.4f)
+        listOf("B", "Bo", "Bonjour").forEach(texts::type)
+        texts.setBold(true)
+        texts.setBackground(app.focale.edit.TextBackground.BOX)
+        texts.beginSize()
+        texts.setSize(0.15f)
+        // Le texte en cours de saisie se déplace aussi, sans étape.
+        val id = texts.draft.value!!.preview.id
+        texts.beginGesture(id)
+        texts.move(id, 0.1f, 0f)
+        assertFalse(history.canUndo.value)
+        assertTrue(history.current.texts.isEmpty())
+        val preview = texts.displayed(history.current.texts).single()
+        assertEquals("Bonjour", preview.text)
+        assertTrue(preview.bold)
+        assertEquals(app.focale.edit.TextBackground.BOX, preview.background)
+        assertEquals(0.15f, preview.size, 1e-6f)
+        assertEquals(INK, preview.color)
+        assertEquals(0.4f, preview.x, 1e-6f)
+        assertTrue(texts.confirm())
+        assertEquals(preview, history.current.texts.single())
+        assertEquals(preview.id, texts.selected.value)
+        assertTrue(history.undo())
+        assertTrue(history.current.texts.isEmpty())
+        assertFalse(history.canUndo.value)
+    }
+
+    @Test
+    fun `modifier un texte en direct, l'abandonner laisse l'édition intacte`() {
+        texts.startNew(0.5f, 0.5f)
+        texts.confirm("Bonjour")
+        val id = texts.selected.value!!
+        texts.startEdit(id)
+        texts.type("Salut")
+        texts.setBold(true)
+        assertEquals("Bonjour", history.current.texts.single().text)
+        assertEquals("Salut", texts.displayed(history.current.texts).single().text)
+        texts.cancel()
+        assertEquals("Bonjour", texts.displayed(history.current.texts).single().text)
+        assertFalse(history.current.texts.single().bold)
+        // Validée : une seule étape, contenu et gras ensemble.
+        texts.startEdit(id)
+        texts.type("Salut")
+        texts.setBold(true)
+        assertTrue(texts.confirm())
+        assertEquals("Salut", history.current.texts.single().text)
+        assertTrue(history.current.texts.single().bold)
+        history.undo()
+        assertEquals("Bonjour", history.current.texts.single().text)
+        assertFalse(history.current.texts.single().bold)
+    }
+
+    @Test
+    fun `un appui ailleurs valide la saisie, la corbeille l'abandonne, Ajouter en ouvre une autre`() {
+        texts.startNew(0.2f, 0.2f)
+        texts.type("Un")
+        // Appui sur la photo pendant la saisie : validée, sans nouvelle saisie.
+        texts.startNew(0.8f, 0.8f)
+        assertNull(texts.draft.value)
+        assertEquals("Un", history.current.texts.single().text)
+        texts.startNew(0.8f, 0.8f)
+        texts.type("Deux")
+        texts.deleteSelected()
+        assertNull(texts.draft.value)
+        assertEquals(1, history.current.texts.size)
+        texts.startNew(0.1f, 0.1f)
+        texts.type("Trois")
+        texts.startNewCentered()
+        assertEquals(2, history.current.texts.size)
+        assertEquals("", texts.draft.value?.text)
+        assertEquals(0.5f, texts.draft.value!!.x, 0f)
+    }
+
     private companion object {
-        const val INK = 0xFFFFFFFF.toInt()
+        const val INK = 0xFFE53935.toInt()
     }
 }

@@ -4,8 +4,7 @@
     <string name="editor_text">Texte</string>
     <string name="text_add">Ajouter un texte</string>
     <string name="text_edit_title">Modifier le texte</string>
-    <string name="text_field_label">Texte</string>
-    <string name="text_done">OK</string>
+    <string name="text_confirm">Valider</string>
     <string name="text_delete">Supprimer le texte</string>
     <string name="text_bold">Gras</string>
     <string name="text_size">Taille du texte</string>

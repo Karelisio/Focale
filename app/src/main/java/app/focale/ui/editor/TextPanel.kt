@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,7 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FormatBold
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
@@ -24,8 +27,8 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSliderState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,7 +62,8 @@ import app.focale.ui.theme.FocaleDisplayFamily
 /**
  * Panneau de l'outil Texte : ajout d'un texte au centre, style de fond en boutons connectés,
  * gras, suppression du texte sélectionné, palette du dessin puis taille, avec son aperçu.
- * Les réglages montrés sont ceux du texte sélectionné, sinon ceux du prochain texte.
+ * Les réglages montrés sont ceux du texte en cours de saisie, qu'ils changent en direct, sinon
+ * ceux du texte sélectionné, sinon ceux du prochain texte.
  *
  * @param ink pastille à cocher : null si la couleur du texte sélectionné n'est pas dans la palette.
  */
@@ -175,45 +179,63 @@ private fun backgroundLabel(background: TextBackground): String = stringResource
 )
 
 /**
- * Saisie d'un texte, sur plusieurs lignes : « OK » l'ajoute ou le modifie, « Supprimer »
- * (texte existant) le retire ; un texte vidé est retiré, un nouveau texte vide n'est pas ajouté.
+ * Saisie d'un texte en place, à la place des outils, au-dessus du clavier : la photo reste
+ * visible et le texte s'y affiche à mesure qu'on tape ([onValueChange]), avec ses réglages, que
+ * le panneau Texte change en direct. Le bouton de validation l'ajoute ou le modifie, en une
+ * étape d'historique ; la croix l'abandonne ; la corbeille du panneau le retire. Un texte vidé
+ * est retiré, un nouveau texte vide n'est pas ajouté.
  */
 @Composable
-fun TextInputDialog(draft: TextDraft, onConfirm: (String) -> Unit, onDelete: () -> Unit, onDismiss: () -> Unit) {
-    var value by rememberSaveable(draft, stateSaver = TextFieldValue.Saver) {
+fun TextInputBar(
+    draft: TextDraft,
+    onValueChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Une saisie par texte : le champ garde son curseur pendant que l'aperçu change.
+    var value by rememberSaveable(draft.preview.id, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(draft.initial, TextRange(draft.initial.length)))
     }
     val focus = remember { FocusRequester() }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(if (draft.id == null) R.string.text_add else R.string.text_edit_title)) },
-        text = {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+        ) {
             OutlinedTextField(
                 value = value,
-                onValueChange = { value = it },
-                label = { Text(stringResource(R.string.text_field_label)) },
-                minLines = 2,
-                maxLines = 6,
+                onValueChange = {
+                    value = it
+                    onValueChange(it.text)
+                },
+                placeholder = { Text(stringResource(if (draft.id == null) R.string.text_add else R.string.text_edit_title)) },
+                maxLines = 4,
+                shape = MaterialTheme.shapes.large,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .weight(1f)
                     .focusRequester(focus)
                     .testTag(TEXT_FIELD_TAG),
             )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(value.text) }, enabled = draft.id != null || value.text.isNotBlank()) {
-                Text(stringResource(R.string.text_done))
+            IconButton(onClick = onDismiss, shapes = IconButtonDefaults.shapes()) {
+                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.action_cancel))
             }
-        },
-        dismissButton = {
-            Row {
-                if (draft.id != null) TextButton(onClick = onDelete) { Text(stringResource(R.string.action_delete)) }
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-            }
-        },
-    )
-    LaunchedEffect(Unit) { focus.requestFocus() }
+            FilledIconButton(
+                onClick = onConfirm,
+                enabled = draft.id != null || value.text.isNotBlank(),
+                shapes = IconButtonDefaults.shapes(),
+            ) { Icon(Icons.Rounded.Check, contentDescription = stringResource(R.string.text_confirm)) }
+        }
+    }
+    LaunchedEffect(draft.preview.id) { focus.requestFocus() }
 }
 
 /** Repère du champ de saisie, pour les tests. */

@@ -65,6 +65,7 @@ class TextToolTest {
 
     private val texts: List<TextItem> get() = history.current.texts
 
+    /** Comme l'éditeur : textes affichés avec la saisie en cours, réglages de celle-ci, saisie sous le panneau. */
     private fun show() {
         compose.setContent {
             val state by history.state.collectAsState()
@@ -72,13 +73,14 @@ class TextToolTest {
             val draft by tool.draft.collectAsState()
             val options by tool.options.collectAsState()
             val layouts = rememberTextLayoutCache()
+            val shown = draft?.preview ?: state.texts.firstOrNull { it.id == selected }
             Column(Modifier.width(400.dp)) {
                 Box(Modifier.size(400.dp).testTag(PREVIEW)) {
                     TextOverlay(
                         viewport = viewport,
-                        texts = state.texts,
+                        texts = tool.displayed(state.texts, draft),
                         layouts = layouts,
-                        selected = selected,
+                        selected = draft?.preview?.id ?: selected,
                         onAdd = tool::startNew,
                         onEdit = tool::startEdit,
                         onSelect = tool::select,
@@ -88,9 +90,9 @@ class TextToolTest {
                     )
                 }
                 TextPanel(
-                    options = options,
+                    options = shown?.let { TextOptions(options.ink, it.size, it.background, it.bold) } ?: options,
                     ink = options.ink,
-                    hasSelection = selected != null,
+                    hasSelection = shown != null,
                     onAdd = tool::startNewCentered,
                     onInk = { tool.setInk(it, INK) },
                     onBackground = tool::setBackground,
@@ -99,17 +101,14 @@ class TextToolTest {
                     onSize = tool::setSize,
                     onDelete = tool::deleteSelected,
                 )
-            }
-            draft?.let { current ->
-                TextInputDialog(
-                    draft = current,
-                    onConfirm = { tool.confirm(it, INK) },
-                    onDelete = {
-                        tool.cancel()
-                        current.id?.let(tool::delete)
-                    },
-                    onDismiss = tool::cancel,
-                )
+                draft?.let { current ->
+                    TextInputBar(
+                        draft = current,
+                        onValueChange = tool::type,
+                        onConfirm = { tool.confirm() },
+                        onDismiss = tool::cancel,
+                    )
+                }
             }
         }
     }
@@ -117,15 +116,19 @@ class TextToolTest {
     /** Texte « Bonjour » au centre de l'image, déjà validé (et donc sélectionné). */
     private fun addBonjour() {
         tool.startNew(0.5f, 0.5f)
-        tool.confirm("Bonjour", INK)
+        tool.confirm("Bonjour")
     }
+
+    /** Textes tels qu'affichés sur la photo, saisie en cours comprise. */
+    private val shownTexts: List<TextItem> get() = tool.displayed(history.current.texts)
 
     @Test
     fun `un appui sur la photo ajoute un texte à cet endroit, sur plusieurs lignes`() {
+        tool.setInk(InkColor.RED, INK)
         show()
         compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(160f, 230f)) }
         compose.onNodeWithTag(TEXT_FIELD_TAG).performTextInput("Bonjour\nà tous")
-        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Done").performClick()
         compose.waitForIdle()
         val item = texts.single()
         assertEquals("Bonjour\nà tous", item.text)
@@ -144,12 +147,12 @@ class TextToolTest {
     fun `une saisie annulée ou vide n'ajoute rien, un appui hors de la photo non plus`() {
         show()
         compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(200f, 200f)) }
-        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(200f, 200f)) }
         compose.onNodeWithTag(TEXT_FIELD_TAG).performTextInput("   ")
-        // Rien à ajouter : « OK » reste inactif.
-        compose.onNodeWithText("OK").assertIsNotEnabled()
-        compose.onNodeWithText("Cancel").performClick()
+        // Rien à ajouter : la validation reste inactive.
+        compose.onNodeWithContentDescription("Done").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Cancel").performClick()
         compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(50f, 20f)) }
         compose.waitForIdle()
         assertTrue(texts.isEmpty())
@@ -164,13 +167,13 @@ class TextToolTest {
         val id = texts.single().id
         compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(205f, 203f)) }
         compose.onNodeWithTag(TEXT_FIELD_TAG).performTextReplacement("Salut")
-        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Done").performClick()
         compose.waitForIdle()
         assertEquals("Salut", texts.single().text)
         assertEquals(id, texts.single().id)
         compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(200f, 200f)) }
         compose.onNodeWithTag(TEXT_FIELD_TAG).performTextReplacement("")
-        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Done").performClick()
         compose.waitForIdle()
         assertTrue(texts.isEmpty())
         history.undo()
@@ -180,16 +183,77 @@ class TextToolTest {
     }
 
     @Test
-    fun `Supprimer dans la saisie retire le texte`() {
+    fun `la corbeille pendant la saisie retire le texte`() {
         addBonjour()
         show()
         compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(200f, 200f)) }
-        compose.onNodeWithText("Delete").performClick()
+        compose.onNodeWithContentDescription("Delete text").performClick()
         compose.waitForIdle()
         assertTrue(texts.isEmpty())
         assertNull(tool.draft.value)
         history.undo()
         assertEquals("Bonjour", texts.single().text)
+    }
+
+    @Test
+    fun `le texte s'affiche sur la photo à mesure qu'on tape, réglages compris, et forme une seule étape`() {
+        show()
+        compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(200f, 200f)) }
+        compose.onNodeWithTag(TEXT_FIELD_TAG).performTextInput("Bon")
+        compose.waitForIdle()
+        assertEquals("Bon", shownTexts.single().text)
+        compose.onNodeWithTag(TEXT_FIELD_TAG).performTextInput("jour")
+        // Réglages changés pendant la saisie : appliqués à l'aperçu, le champ garde son contenu.
+        compose.onNodeWithContentDescription("Bold").performClick()
+        compose.onNodeWithContentDescription("Box").performClick()
+        compose.waitForIdle()
+        val preview = shownTexts.single()
+        assertEquals("Bonjour", preview.text)
+        assertTrue(preview.bold)
+        assertEquals(TextBackground.BOX, preview.background)
+        // Le texte affiché est accessible, rien n'est encore dans l'édition ni dans l'historique.
+        compose.onNodeWithContentDescription("Text: “Bonjour”").assertExists()
+        assertTrue(texts.isEmpty())
+        assertFalse(history.canUndo.value)
+        compose.onNodeWithContentDescription("Done").performClick()
+        compose.waitForIdle()
+        assertEquals(preview, texts.single())
+        assertNull(tool.draft.value)
+        // Une seule étape pour toute la saisie.
+        assertTrue(history.undo())
+        assertTrue(texts.isEmpty())
+        assertFalse(history.canUndo.value)
+    }
+
+    @Test
+    fun `modifier un texte en direct, l'abandonner le laisse tel quel, un appui ailleurs valide`() {
+        addBonjour()
+        val steps = 1
+        show()
+        compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(200f, 200f)) }
+        compose.onNodeWithTag(TEXT_FIELD_TAG).performTextReplacement("Salut")
+        compose.waitForIdle()
+        assertEquals("Salut", shownTexts.single().text)
+        assertEquals("Bonjour", texts.single().text)
+        compose.onNodeWithContentDescription("Cancel").performClick()
+        compose.waitForIdle()
+        assertEquals("Bonjour", shownTexts.single().text)
+        // Nouvelle saisie, glissée pendant qu'on tape, puis validée par un appui ailleurs sur la photo.
+        compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(200f, 200f)) }
+        compose.onNodeWithTag(TEXT_FIELD_TAG).performTextReplacement("Salut")
+        compose.onNodeWithTag(PREVIEW).performTouchInput { swipe(Offset(200f, 200f), Offset(250f, 260f), durationMillis = 300) }
+        compose.waitForIdle()
+        assertEquals(0.75f, shownTexts.single().x, 1e-3f)
+        assertEquals(0.5f, texts.single().x, 0f)
+        compose.onNodeWithTag(PREVIEW).performTouchInput { click(Offset(130f, 80f)) }
+        compose.waitForIdle()
+        assertNull(tool.draft.value)
+        assertEquals("Salut", texts.single().text)
+        assertEquals(0.75f, texts.single().x, 1e-3f)
+        var undone = 0
+        while (history.undo()) undone++
+        assertEquals(steps + 1, undone)
+        assertTrue(texts.isEmpty())
     }
 
     @Test
@@ -272,7 +336,7 @@ class TextToolTest {
         compose.waitForIdle()
         assertEquals(texts.single().id, tool.draft.value?.id)
         compose.onNodeWithTag(TEXT_FIELD_TAG).performTextReplacement("Bonsoir")
-        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Done").performClick()
         compose.waitForIdle()
         assertEquals("Bonsoir", texts.single().text)
     }
@@ -283,7 +347,7 @@ class TextToolTest {
         show()
         compose.onNodeWithContentDescription("Add text").performClick()
         compose.onNodeWithTag(TEXT_FIELD_TAG).performTextInput("Ici")
-        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithContentDescription("Done").performClick()
         compose.waitForIdle()
         assertEquals(0.4f, texts.single().x, 1e-5f)
         assertEquals(0.3f, texts.single().y, 1e-5f)

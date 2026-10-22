@@ -165,11 +165,13 @@ class EditorViewModel @Inject constructor(
 
     val canReplace: Boolean get() = _item.value?.let(editor::canReplace) == true
 
-    val hasChanges: Boolean get() = !history.current.isIdentity
+    /** Édition modifiée, ou texte en cours de saisie. */
+    val hasChanges: Boolean get() = !history.current.isIdentity || textTool.draft.value?.text?.isNotBlank() == true
 
     fun selectTool(tool: EditorTool) {
         if (tool == _tool.value) return
-        // Une sélection n'a de sens que dans son outil : elle ne réapparaît pas au retour.
+        // Une sélection n'a de sens que dans son outil : elle ne réapparaît pas au retour ; une saisie est validée.
+        textTool.confirm()
         textTool.clear()
         blurTool.clear()
         _tool.value = tool
@@ -280,18 +282,29 @@ class EditorViewModel @Inject constructor(
         }
     }
 
+    /** Pendant une saisie de texte, annuler l'abandonne seulement (elle n'est pas encore une étape). */
     fun undo() {
+        if (textTool.draft.value != null) {
+            textTool.cancel()
+            return
+        }
         val before = history.current
         if (history.undo()) afterHistory(before)
     }
 
     fun redo() {
+        textTool.cancel()
         val before = history.current
         if (history.redo()) afterHistory(before)
     }
 
-    /** « Annuler les modifications » : tout revient à l'original, textes et zones compris, en une étape annulable. */
+    /**
+     * « Tout annuler » : tout revient à l'original (recadrage, rotation, redressement, réglages,
+     * filtre, dessins, textes, zones floutées) en une étape, qu'« Annuler » défait. Une saisie en
+     * cours est d'abord validée : elle revient avec le reste.
+     */
     fun resetAll() {
+        textTool.confirm()
         val before = history.current
         straightenReference = null
         textTool.clear()
@@ -301,6 +314,8 @@ class EditorViewModel @Inject constructor(
     }
 
     fun save(mode: SaveMode) {
+        // Le texte en cours de saisie fait partie de ce qui est enregistré.
+        textTool.confirm()
         val media = _item.value ?: return
         if (_saving.value) return
         viewModelScope.launch {
