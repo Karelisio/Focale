@@ -44,12 +44,12 @@ fun FocaleApp(startRoute: Any, openRequests: StateFlow<OpenRequest?>, onOpenHand
         }
         when (request) {
             OpenRequest.Home -> Unit
-            // Appui sur le widget : ouvre la photo dans la visionneuse, au sein de la timeline.
-            is OpenRequest.Media ->
-                rootNav.navigate(ViewerRoute(RouteCodec.encode(MediaQuery.Timeline), request.mediaId)) { launchSingleTop = true }
+            // Appui sur le widget : ouvre la photo dans la visionneuse, au sein de la timeline (à la
+            // place d'une visionneuse déjà ouverte sur une autre photo).
+            is OpenRequest.Media -> rootNav.openOnTop(ViewerRoute(RouteCodec.encode(MediaQuery.Timeline), request.mediaId))
             OpenRequest.Vault -> rootNav.navigate(VaultRoute) { launchSingleTop = true }
             // Autre application : par-dessus l'écran courant, que le retour retrouve.
-            is OpenRequest.External -> rootNav.navigate(request.route) { launchSingleTop = true }
+            is OpenRequest.External -> rootNav.openOnTop(request.route)
         }
         onOpenHandled()
     }

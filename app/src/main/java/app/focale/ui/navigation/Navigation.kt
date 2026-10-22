@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
@@ -22,6 +23,20 @@ val LocalRootNavController = staticCompositionLocalOf<NavHostController> {
 /** Contrôleur du NavHost des onglets. */
 val LocalTabsNavController = staticCompositionLocalOf<NavHostController> {
     error("LocalTabsNavController non fourni")
+}
+
+/**
+ * Ouvre [route], demandée à l'activité déjà lancée (widget, autre application), par-dessus l'écran
+ * courant. Un écran du même type au sommet (la visionneuse sur une autre photo) est remplacé :
+ * `launchSingleTop` le réutiliserait avec son ViewModel, qui garderait sa photo au lieu de celle
+ * demandée. Sauf s'il est la racine (activité lancée pour lui) : son retour referme l'activité.
+ */
+inline fun <reified T : Any> NavHostController.openOnTop(route: T) {
+    val top = currentBackStackEntry?.destination
+    val replace = top != null && top.hasRoute<T>() && previousBackStackEntry != null
+    navigate(route) {
+        if (replace) popUpTo(top.id) { inclusive = true }
+    }
 }
 
 /** Ouvre la visionneuse sur [item], en parcourant les médias de [query]. */
