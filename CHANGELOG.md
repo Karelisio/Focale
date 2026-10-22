@@ -5,6 +5,25 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.11.0
+
+- Vidéos 360° : « 360° » ouvre la vidéo en vue immersive, avec ses commandes habituelles
+  (lecture, position, vitesse, ±10 s) ; on regarde autour au doigt ou en bougeant le téléphone.
+- Éditeur : « Tout annuler » rend la photo d'origine d'un appui, et le texte s'affiche sur la
+  photo à mesure que vous le tapez.
+- Rotation sans perte des photos HEIC / HEIF et AVIF, sans réencodage.
+- Collages Ultra HDR : un collage de photos HDR s'affiche lui aussi en HDR (Android 14+).
+- Diffusion vers une TV : une vidéo que la TV ne sait pas lire se lit aussitôt sur le
+  téléphone, à la même position, et la diffusion continue pour les médias suivants ; si la TV
+  perd la connexion, la vidéo reprend sur le téléphone.
+- Sauvegarde des données : restauration partielle, une case par catégorie (favoris, albums,
+  personnes, dossiers masqués, réglages, historique, dates d'origine).
+- « Nouveautés » et notes des mises à jour en anglais quand Focale s'affiche en anglais.
+- Grandes bibliothèques : recherche plus rapide (noms de fichiers, mois comme « juillet »),
+  étiquettes de l'onglet Recherche affichées sans attendre.
+- Visionneuse : la photo touchée dans le widget, ou ouverte depuis une autre application,
+  s'affiche même quand Focale montrait déjà une autre photo.
+
 ## 1.10.0
 
 - Photos 360° et panoramas : « 360° » ouvre une vue immersive où l'on regarde autour de soi

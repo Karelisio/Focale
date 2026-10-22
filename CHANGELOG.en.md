@@ -4,6 +4,25 @@ English version of CHANGELOG.md, with the same "## X.Y.Z" sections in the same o
 recent first). Focale shows these notes when its language is not French; the CI adds this
 version's section below the French one in the GitHub release description.
 
+## 1.11.0
+
+- 360° videos: "360°" opens the video in an immersive view with its usual controls (play,
+  position, speed, ±10 s); look around with your finger or by moving the phone.
+- Editor: "Undo all" brings back the original photo in one tap, and text appears on the photo
+  as you type it.
+- Lossless rotation of HEIC / HEIF and AVIF photos, without re-encoding.
+- Ultra HDR collages: a collage of HDR photos is shown in HDR too (Android 14 and later).
+- Cast to a TV: a video the TV cannot play is played right away on the phone, at the same
+  position, and casting continues for the next items; if the TV loses the connection, the
+  video resumes on the phone.
+- Data backup: partial restore, one checkbox per category (favorites, albums, people, hidden
+  folders, settings, search history, original dates).
+- "What's new" and update notes in English when Focale is shown in English.
+- Large libraries: faster search (file names, months such as "July"), and the Search tab
+  labels show up without waiting.
+- Viewer: the photo tapped in the widget, or opened from another app, is shown even when
+  Focale was already showing another photo.
+
 ## 1.10.0
 
 - 360° photos and panoramas: "360°" opens an immersive view where you look around with your
