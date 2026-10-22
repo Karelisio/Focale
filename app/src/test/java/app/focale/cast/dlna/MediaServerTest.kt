@@ -188,12 +188,16 @@ class MediaServerTest {
         val url = server.publish(BytesMedia(video, "video/mp4", video = true))
         assertEquals(200, request(url).status)
         server.stop()
-        try {
+        assertEquals(-1, server.port)
+        // Connexion refusée, en principe ; mais le port libéré peut déjà écouter pour un autre
+        // serveur (d'un autre test, d'un autre programme : vu en CI). Seul compte que le média
+        // n'y soit plus servi.
+        val reply = try {
             request(url)
-            fail("le serveur arrêté répond encore")
-        } catch (expected: IOException) {
-            // Connexion refusée.
+        } catch (refused: Exception) {
+            null
         }
+        assertFalse("le serveur arrêté sert encore le média", reply != null && reply.status == 200 && reply.body.contentEquals(video))
         try {
             server.publish(BytesMedia(video, "video/mp4", video = true))
             fail("publication après l'arrêt")
