@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:dlna="urn:schemas-dlna-org:device-1-0" configId="1337">
+  <specVersion>
+    <major>1</major>
+    <minor>1</minor>
+  </specVersion>
+  <URLBase>http://192.168.1.50:1704</URLBase>
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+    <friendlyName>Kodi (salon)</friendlyName>
+    <manufacturer>XBMC Foundation</manufacturer>
+    <manufacturerURL>http://kodi.tv/</manufacturerURL>
+    <modelDescription>Kodi - Media Renderer</modelDescription>
+    <modelName>Kodi</modelName>
+    <modelNumber>21.1 (21.1.0) Git:20240804-0b5c4c1f9a</modelNumber>
+    <modelURL>http://kodi.tv/</modelURL>
+    <UDN>uuid:a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41</UDN>
+    <dlna:X_DLNADOC>DMR-1.50</dlna:X_DLNADOC>
+    <iconList>
+      <icon>
+        <mimetype>image/png</mimetype>
+        <width>256</width>
+        <height>256</height>
+        <depth>8</depth>
+        <url>/AVTransport/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/icon-256x256.png</url>
+      </icon>
+    </iconList>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+        <SCPDURL>/AVTransport/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/scpd.xml</SCPDURL>
+        <controlURL>/AVTransport/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/control.xml</controlURL>
+        <eventSubURL>/AVTransport/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/event.xml</eventSubURL>
+      </service>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:ConnectionManager</serviceId>
+        <SCPDURL>/ConnectionManager/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/scpd.xml</SCPDURL>
+        <controlURL>/ConnectionManager/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/control.xml</controlURL>
+        <eventSubURL>/ConnectionManager/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/event.xml</eventSubURL>
+      </service>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+        <serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId>
+        <SCPDURL>/RenderingControl/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/scpd.xml</SCPDURL>
+        <controlURL>/RenderingControl/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/control.xml</controlURL>
+        <eventSubURL>/RenderingControl/a9a3d6a8-63ad-4b7f-b1bb-2f6c2f2b9d41/event.xml</eventSubURL>
+      </service>
+    </serviceList>
+  </device>
+</root>

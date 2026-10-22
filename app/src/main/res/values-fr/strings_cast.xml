@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Diffusion : bouton de la visionneuse et du diaporama, entrée du menu -->
+    <string name="cast_action">Diffuser</string>
+    <string name="cast_action_active">Diffusion sur %1$s</string>
+    <string name="cast_menu_tv">Diffuser sur une TV…</string>
+
+    <!-- Feuille de choix des appareils -->
+    <string name="cast_sheet_title">Diffuser</string>
+    <string name="cast_screens">Écrans externes</string>
+    <string name="cast_screen_default_name">Écran externe</string>
+    <string name="cast_screen_summary">HDMI, USB-C ou écran sans fil</string>
+    <string name="cast_tvs">TV du réseau local</string>
+    <string name="cast_tv_default_summary">TV DLNA</string>
+    <string name="cast_searching">Recherche des TV…</string>
+    <string name="cast_none_found">Aucune TV trouvée. Vérifiez qu\'elle est allumée et connectée au même réseau Wi-Fi.</string>
+    <string name="cast_search_again">Rechercher à nouveau</string>
+    <string name="cast_no_wifi">Connectez-vous au Wi-Fi pour trouver les TV de votre réseau.</string>
+    <string name="cast_permission">Autorisez l\'accès au réseau local pour trouver vos TV.</string>
+    <string name="cast_permission_allow">Autoriser</string>
+    <string name="cast_permission_settings">Ouvrir les réglages</string>
+    <string name="cast_privacy_note">Rien ne sort de votre réseau local, et le coffre-fort n\'est jamais diffusé.</string>
+
+    <!-- État de la diffusion -->
+    <string name="cast_casting_to">Diffusion sur %1$s</string>
+    <string name="cast_connecting">Connexion…</string>
+    <string name="cast_screen_active_summary">La photo ou la vidéo en cours s\'affiche en plein écran sur cet écran.</string>
+    <string name="cast_tv_active_summary">Envoyées depuis ce téléphone, par le réseau local uniquement.</string>
+    <string name="cast_stop">Arrêter</string>
+    <string name="cast_volume">Volume de la TV</string>
+    <string name="cast_playing_on">Lecture sur %1$s</string>
+
+    <!-- Messages -->
+    <string name="cast_refused_video">La TV ne lit pas ce format de vidéo</string>
+    <string name="cast_refused_photo">La TV n\'affiche pas cette photo</string>
+    <string name="cast_lost">Connexion à %1$s perdue</string>
+    <string name="cast_no_network">Connectez-vous au Wi-Fi pour diffuser sur une TV</string>
+    <string name="cast_failed">Envoi à la TV impossible</string>
+
+    <!-- Notification de la diffusion vers une TV -->
+    <string name="cast_channel">Diffusion</string>
+    <string name="cast_channel_description">Affichée tant qu\'une TV lit des photos ou des vidéos de Focale</string>
+    <string name="cast_notification_title">Diffusion sur « %1$s »</string>
+    <string name="cast_notification_title_generic">Diffusion sur une TV</string>
+    <string name="cast_notification_text">Photos et vidéos de Focale</string>
+
+    <!-- Réglages -->
+    <string name="cast_settings_title">Diffusion</string>
+    <string name="cast_settings_discovery">Rechercher les TV automatiquement</string>
+    <string name="cast_settings_discovery_summary">À l\'ouverture de la visionneuse ou d\'un diaporama, en Wi-Fi uniquement. Rien ne sort de votre réseau local.</string>
+</resources>

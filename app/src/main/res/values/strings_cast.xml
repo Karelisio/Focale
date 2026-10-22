@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Diffusion : bouton de la visionneuse et du diaporama, entrée du menu -->
+    <string name="cast_action">Cast</string>
+    <string name="cast_action_active">Casting to %1$s</string>
+    <string name="cast_menu_tv">Cast to a TV…</string>
+
+    <!-- Feuille de choix des appareils -->
+    <string name="cast_sheet_title">Cast</string>
+    <string name="cast_screens">External screens</string>
+    <string name="cast_screen_default_name">External screen</string>
+    <string name="cast_screen_summary">HDMI, USB-C or wireless display</string>
+    <string name="cast_tvs">TVs on this network</string>
+    <string name="cast_tv_default_summary">DLNA TV</string>
+    <string name="cast_searching">Looking for TVs…</string>
+    <string name="cast_none_found">No TV found. Check that it is on and connected to the same Wi-Fi network.</string>
+    <string name="cast_search_again">Search again</string>
+    <string name="cast_no_wifi">Connect to Wi-Fi to find the TVs on your network.</string>
+    <string name="cast_permission">Allow access to the local network to find your TVs.</string>
+    <string name="cast_permission_allow">Allow</string>
+    <string name="cast_permission_settings">Open settings</string>
+    <string name="cast_privacy_note">Nothing leaves your local network, and the vault is never cast.</string>
+
+    <!-- État de la diffusion -->
+    <string name="cast_casting_to">Casting to %1$s</string>
+    <string name="cast_connecting">Connecting…</string>
+    <string name="cast_screen_active_summary">The photo or video on screen is shown full screen on this display.</string>
+    <string name="cast_tv_active_summary">Sent from this phone over your local network only.</string>
+    <string name="cast_stop">Stop</string>
+    <string name="cast_volume">TV volume</string>
+    <string name="cast_playing_on">Playing on %1$s</string>
+
+    <!-- Messages -->
+    <string name="cast_refused_video">The TV can\'t play this video format</string>
+    <string name="cast_refused_photo">The TV can\'t show this photo</string>
+    <string name="cast_lost">Lost connection to %1$s</string>
+    <string name="cast_no_network">Connect to Wi-Fi to cast to a TV</string>
+    <string name="cast_failed">Couldn\'t send this to the TV</string>
+
+    <!-- Notification de la diffusion vers une TV -->
+    <string name="cast_channel">Casting</string>
+    <string name="cast_channel_description">Shown while a TV plays photos or videos from Focale</string>
+    <string name="cast_notification_title">Casting to %1$s</string>
+    <string name="cast_notification_title_generic">Casting to a TV</string>
+    <string name="cast_notification_text">Photos and videos from Focale</string>
+
+    <!-- Réglages -->
+    <string name="cast_settings_title">Cast</string>
+    <string name="cast_settings_discovery">Look for TVs automatically</string>
+    <string name="cast_settings_discovery_summary">When the viewer or a slideshow opens, on Wi-Fi only. Nothing leaves your local network.</string>
+</resources>

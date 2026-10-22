@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BatteryChargingFull
+import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.Public
@@ -43,6 +44,9 @@ fun LazyListScope.settingsExtraSections(settings: AppSettings, viewModel: Settin
     item { SlideshowSection(settings, viewModel) }
     if (BuildConfig.ONLINE_MAP_AVAILABLE) {
         item { MapSection(settings, viewModel) }
+    }
+    if (BuildConfig.TV_CAST_AVAILABLE) {
+        item { CastSection(settings, viewModel) }
     }
     item { PrivacySection(settings, viewModel) }
     item { AnalysisSection(settings, viewModel) }
@@ -78,6 +82,23 @@ private fun MapSection(settings: AppSettings, viewModel: SettingsViewModel) {
                 icon = Icons.Outlined.Public,
                 checked = settings.onlineMapTiles,
                 onCheckedChange = viewModel::setOnlineMapTiles,
+                shapes = shapes,
+            )
+        }
+    }
+}
+
+/** Diffusion vers les TV : recherche automatique (réseau local seulement), désactivable. */
+@Composable
+private fun CastSection(settings: AppSettings, viewModel: SettingsViewModel) {
+    SettingsGroup(stringResource(R.string.cast_settings_title)) {
+        item { shapes ->
+            SettingsSwitch(
+                title = stringResource(R.string.cast_settings_discovery),
+                subtitle = stringResource(R.string.cast_settings_discovery_summary),
+                icon = Icons.Outlined.Cast,
+                checked = settings.tvDiscovery,
+                onCheckedChange = viewModel::setTvDiscovery,
                 shapes = shapes,
             )
         }

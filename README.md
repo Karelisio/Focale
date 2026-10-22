@@ -94,6 +94,13 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   en option (variante `standard`).
 - **Diaporama** en fondu enchaîné avec effet Ken Burns, depuis la visionneuse ou
   n'importe quel album.
+- **Diffusion vers une TV**, sans Google Cast ni bibliothèque tierce : la visionneuse et le
+  diaporama s'affichent en plein écran sur un écran externe (HDMI, USB-C, Miracast, « Caster
+  l'écran » du système), le téléphone gardant les commandes ; dans la variante `standard`, vers
+  les TV du réseau local (DLNA/UPnP : Samsung, LG, Sony, Kodi…), servies par un petit serveur
+  local démarré le temps de la diffusion (photo réduite en JPEG sans métadonnées, vidéo telle
+  quelle, lecture, pause, position et volume depuis le téléphone, notification « Arrêter » en
+  arrière-plan). Rien ne sort du réseau local ; le coffre-fort n'est jamais diffusé.
 - **Widget** « Souvenir » (Glance, couleurs Material You) : une photo du jour, renouvelée
   toutes les quatre heures, qui s'ouvre dans la visionneuse.
 - **Nouveautés** présentées au premier lancement après chaque mise à jour, tirées de
@@ -126,8 +133,8 @@ architecture (`arm64-v8a` pour la plupart des téléphones récents) plus un APK
 
 | Variante | Réseau |
 |---|---|
-| `standard` | `INTERNET` pour le fond de carte OpenStreetMap (**désactivé par défaut**) et les mises à jour intégrées (recherche quotidienne sur GitHub, désactivable) |
-| `strict` | Aucune permission `INTERNET` : carte hors ligne, mises à jour manuelles |
+| `standard` | `INTERNET` pour le fond de carte OpenStreetMap (**désactivé par défaut**) et les mises à jour intégrées (recherche quotidienne sur GitHub, désactivable) ; réseau local pour la diffusion vers les TV (DLNA : recherche SSDP à l'ouverture de la visionneuse, désactivable, et petit serveur local pendant la diffusion) |
+| `strict` | Aucune permission réseau : carte hors ligne, mises à jour manuelles, diffusion vers un écran externe seulement |
 
 ### Publier une version
 

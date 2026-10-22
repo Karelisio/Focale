@@ -51,6 +51,11 @@ data class AppSettings(
     val vaultAutoLockSeconds: Int = 0,
     /** Recherche quotidienne d'une nouvelle version sur GitHub (variante standard). */
     val autoCheckUpdates: Boolean = true,
+    /**
+     * Recherche des TV du réseau local (SSDP) à l'ouverture de la visionneuse et du diaporama
+     * (variante standard) ; sans elle, seulement à la demande.
+     */
+    val tvDiscovery: Boolean = true,
     /** Dossiers (BUCKET_ID) masqués de la timeline, des souvenirs et du widget. */
     val hiddenFolders: Set<Long> = emptySet(),
     /** Ordre de l'écran Personnes et de la rangée Personnes de l'onglet Albums. */

@@ -102,8 +102,10 @@ android {
         }
     }
 
-    // « standard » : fond de carte OpenStreetMap activable et mises à jour depuis GitHub.
-    // « strict »   : aucune permission INTERNET, carte hors ligne, mises à jour manuelles.
+    // « standard » : fond de carte OpenStreetMap activable, mises à jour depuis GitHub et
+    //                diffusion vers les TV du réseau local (DLNA).
+    // « strict »   : aucune permission réseau, carte hors ligne, mises à jour manuelles ; seule
+    //                la diffusion vers un écran externe (HDMI, Miracast) reste.
     flavorDimensions += "network"
     productFlavors {
         create("standard") {
@@ -111,6 +113,7 @@ android {
             isDefault = true
             buildConfigField("boolean", "ONLINE_MAP_AVAILABLE", "true")
             buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
+            buildConfigField("boolean", "TV_CAST_AVAILABLE", "true")
         }
         create("strict") {
             dimension = "network"
@@ -118,6 +121,7 @@ android {
             versionNameSuffix = "-strict"
             buildConfigField("boolean", "ONLINE_MAP_AVAILABLE", "false")
             buildConfigField("String", "UPDATE_REPOSITORY", "\"\"")
+            buildConfigField("boolean", "TV_CAST_AVAILABLE", "false")
         }
     }
 

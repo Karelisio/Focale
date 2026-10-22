@@ -2,6 +2,7 @@ package app.focale.ui.viewer
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.RotateRight
+import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TextFields
@@ -13,9 +14,20 @@ import app.focale.core.model.MediaItem
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.openSlideshow
 
-/** Entrées de menu ajoutées par d'autres fonctionnalités (texte, diaporama, coffre…). */
+/**
+ * Entrées de menu ajoutées par d'autres fonctionnalités (texte, diaporama, diffusion, coffre…).
+ *
+ * @param onCast « Diffuser sur une TV… » (variante standard) : ouvre la feuille de diffusion, qui
+ *   lance la recherche ; le bouton « Diffuser » n'apparaît qu'une fois un appareil trouvé.
+ */
 @Composable
-fun ViewerExtraMenuItems(viewModel: ViewerViewModel, item: MediaItem?, dismiss: () -> Unit, onRotate: (() -> Unit)? = null) {
+fun ViewerExtraMenuItems(
+    viewModel: ViewerViewModel,
+    item: MediaItem?,
+    dismiss: () -> Unit,
+    onRotate: (() -> Unit)? = null,
+    onCast: (() -> Unit)? = null,
+) {
     if (item == null) return
     val rootNav = LocalRootNavController.current
     // Même rotation que le geste à deux doigts, pour qui ne peut pas le faire.
@@ -35,6 +47,12 @@ fun ViewerExtraMenuItems(viewModel: ViewerViewModel, item: MediaItem?, dismiss: 
     ViewerMenuItem(Icons.Outlined.Slideshow, stringResource(R.string.action_slideshow)) {
         dismiss()
         rootNav.openSlideshow(viewModel.query, startId = item.id)
+    }
+    if (onCast != null) {
+        ViewerMenuItem(Icons.Outlined.Cast, stringResource(R.string.cast_menu_tv)) {
+            dismiss()
+            onCast()
+        }
     }
     ViewerMenuItem(Icons.Outlined.Lock, stringResource(R.string.action_move_to_vault)) {
         dismiss()
