@@ -10,7 +10,7 @@ version's section below the French one in the GitHub release description.
   finger or by moving the phone; "Panorama view" pans across a panorama at the height of the
   screen.
 - Cast to a TV: the current photo, video or slideshow is shown on a connected screen (HDMI,
-  USB-C) or wirelessly (Miracast, "Cast screen"), while the phone keeps the controls. In the
+  USB-C) or wirelessly (Miracast, "Screen cast"), while the phone keeps the controls. In the
   standard version, send to TVs on your local network (DLNA: Samsung, LG, Sony, Kodi…), without
   Google Cast and without anything leaving the local network. The vault is never cast.
 - Collages: select 2 to 9 photos, then "Create collage"; several layouts, formats, spacing,

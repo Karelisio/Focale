@@ -145,6 +145,8 @@ dans leur ordre sans trier la bibliothèque : (`is_trashed`, `date_taken`) pour 
 |---|---|
 | `media_analysis` | état d'analyse, `phash`, `blur_score`, `latitude`/`longitude`, `place`, `place_key` (ses noms normalisés, traductions comprises), `country` |
 | `media_label` | (media, étiquette ML Kit canonique, confiance) ; index (`label`, `confidence`, `media_id`), version 7 |
+| `label_count` | nombre de médias hors corbeille de chaque étiquette (onglet Recherche), tenu à jour à chaque écriture des médias ou des étiquettes (`LabelCountQueries`), version 8 |
+| `media_name` | index plein texte FTS4 des noms de fichiers : chaque suite de lettres du nom et ses suffixes (`MediaNames`), tenu à jour avec `media` (`MediaDao.upsert`, `deleteByIds`), version 8 |
 | `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée |
 | `media_embedding` | empreinte TinyCLIP de chaque photo (512 flottants, norme 1) |
 | `favorite` | médias favoris |
@@ -164,8 +166,8 @@ migrations (`DatabaseMigrations`) reprennent le SQL exporté par Room dans
 
 Ce que l'utilisateur a construit (`favorite`, `album`, `album_media`, `person`, `face`,
 `face_scan`, `person_refusal`, `media_date`, `search_history`), avec les dossiers masqués et les
-réglages, part dans la sauvegarde des données (§ 6.11) ; ce que l'analyse recalcule, le coffre
-et la corbeille, non.
+réglages, part dans la sauvegarde des données (§ 6.11) ; ce que l'analyse recalcule, ce qui se
+déduit de l'index (`label_count`, `media_name`), le coffre et la corbeille, non.
 
 ### 5.3 `MediaQuery` : une requête pour tout
 
@@ -261,6 +263,17 @@ dictionnaire FR/EN des 447 étiquettes (avec synonymes et hyperonymes :
 « Lisbonne » comme « Lisbon » ; une carte de lieu cherche le nom GeoNames exact), aux dates
 (« 2023 », « juillet 2022 », « 14/07/2021 »), aux noms de fichiers et au texte reconnu
 dans les photos (« wifi » trouve aussi « Wi-Fi »).
+
+Index de la recherche (base v8, voir [PERFORMANCE.md](PERFORMANCE.md)) : un mot d'au moins trois
+lettres ASCII cherché dans les noms de fichiers passe par l'index plein texte `media_name` (FTS4,
+tokenizer `simple`) : chaque suite de lettres d'un nom y figure avec ses suffixes (« Screenshot » :
+« Screenshot creenshot … shot hot »), si bien qu'un mot contenu dans un nom commence l'un d'eux ;
+les candidats sont revérifiés par le `LIKE '%mot%'` d'avant, sans résultat perdu ni ajouté
+(`MediaNameSearchTest`). Un texte plus court, avec un chiffre ou un séparateur garde le `LIKE` sur
+chaque nom. Un mois de toutes les années (« juillet ») est borné en Kotlin dans le fuseau courant,
+de 1900 à 2049 (minuit local du premier jour, comme les en-têtes), puis cherché par dichotomie sur
+la date de chaque média ; hors de ces années, le mois local de SQLite. Les étiquettes de l'onglet
+Recherche sont lues dans `label_count`, sans recompter `media_label`.
 
 Recherche en langage naturel : l'étape d'analyse « empreintes » (`EmbeddingStep`) calcule
 l'empreinte TinyCLIP de chaque photo (miniature MediaStore, prétraitement CLIP, modèle
@@ -1008,9 +1021,16 @@ application ouvre les photos et proposer de choisir Focale.
   mois des dates numériques, « 07/14/2021 » en anglais des États-Unis, l'autre ordre s'il est le
   seul valable ; noms de pays dans la langue de l'application, `SearchChipDetector`). Les écrans
   lisent la langue de leur configuration (`LocalConfiguration`, ressources de l'activité).
-- Limites : le journal des nouveautés (CHANGELOG.md) n'existe qu'en français ; un titre déjà passé
-  en argument de navigation (souvenir, étiquette ouverte depuis la recherche) et une notification
-  déjà affichée gardent leur langue.
+- Notes de version : `CHANGELOG.md` (français) et sa traduction `CHANGELOG.en.md`, aux mêmes
+  sections dans le même ordre (`ChangelogTest`), sont embarqués dans les assets (`changelogAssets`,
+  `app/build.gradle.kts`) ; « Nouveautés » lit celui de la langue de Focale (`Changelog.asset` :
+  français, sinon anglais ; `WhatsNewRepository`). La CI écrit la description de la version GitHub
+  avec la section française, puis, après la marque `<!-- en -->` (invisible sur GitHub), la
+  section anglaise ; l'écran de mise à jour n'en affiche que la partie de sa langue
+  (`ReleaseNotes.forLanguage`), les notes entières sans marque (versions antérieures, notes
+  écrites sur GitHub). Une version déjà installée, antérieure à cette marque, affiche les deux.
+- Limites : un titre déjà passé en argument de navigation (souvenir, étiquette ouverte depuis la
+  recherche) et une notification déjà affichée gardent leur langue.
 
 ---
 
