@@ -221,7 +221,7 @@ internal fun InkPalette(selected: InkColor?, enabled: Boolean, onSelect: (InkCol
 
 /** Pastille ronde qui se transforme en « cookie » coché une fois choisie, comme la sélection de la grille. */
 @Composable
-private fun InkSwatch(
+internal fun InkSwatch(
     color: Color,
     label: String,
     selected: Boolean,

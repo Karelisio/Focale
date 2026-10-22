@@ -79,6 +79,7 @@ import app.focale.ui.components.rememberNotificationPermission
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.VaultRoute
 import app.focale.ui.navigation.VaultUnlockRoute
+import app.focale.ui.navigation.openCollage
 import app.focale.ui.viewer.findActivity
 import app.focale.vault.VaultAlbum
 import app.focale.vault.VaultDestination
@@ -140,6 +141,7 @@ fun MediaActionsHost(
                 is ActionEvent.Print -> if (!PhotoPrinter.print(context.findActivity() ?: context, event.photos)) {
                     showMessage(ActionEvent.Message(UiText.Res(R.string.print_unavailable)))
                 }
+                is ActionEvent.OpenCollage -> rootNav.openCollage(event.ids, event.truncated)
             }
         }
     }

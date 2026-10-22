@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.AutoAwesomeMosaic
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
@@ -45,8 +46,9 @@ import app.focale.R
 data class ExtraAction(val label: String, val icon: ImageVector, val onClick: () -> Unit)
 
 /**
- * Barre d'actions flottante (Material 3 Expressive) du mode sélection. [onPrint] : entrée
- * « Imprimer » du menu, absente sans lui.
+ * Barre d'actions flottante (Material 3 Expressive) du mode sélection. [onCollage] : « Créer un
+ * collage » en tête du menu, dès deux éléments sélectionnés ; [onPrint] : entrée « Imprimer » du
+ * menu, absente sans lui.
  */
 @Composable
 fun SelectionActionsBar(
@@ -64,6 +66,7 @@ fun SelectionActionsBar(
     modifier: Modifier = Modifier,
     onPrint: (() -> Unit)? = null,
     extraActions: List<ExtraAction> = emptyList(),
+    onCollage: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -86,6 +89,12 @@ fun SelectionActionsBar(
             Box {
                 ToolbarIcon(Icons.Rounded.MoreVert, stringResource(R.string.action_more)) { menuOpen = true }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (onCollage != null && selectionCount >= 2) {
+                        MenuEntry(Icons.Outlined.AutoAwesomeMosaic, stringResource(R.string.collage_action)) {
+                            menuOpen = false
+                            onCollage()
+                        }
+                    }
                     MenuEntry(Icons.Outlined.ContentCopy, stringResource(R.string.action_copy_to)) {
                         menuOpen = false
                         onCopy()

@@ -156,6 +156,7 @@ fun MediaGridScaffold(
                 onSelectAll = onSelectAll,
                 onPrint = { actions.print(selection) },
                 extraActions = extraSelectionActions,
+                onCollage = { actions.createCollage(selection) },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

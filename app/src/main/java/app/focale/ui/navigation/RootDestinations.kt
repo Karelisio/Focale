@@ -11,6 +11,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import app.focale.ui.collage.CollageScreen
 import app.focale.ui.components.LocalNavAnimatedVisibilityScope
 import app.focale.ui.editor.EditorScreen
 import app.focale.ui.slideshow.SlideshowScreen
@@ -35,6 +36,9 @@ fun NavGraphBuilder.additionalRootDestinations(rootNav: NavHostController) {
     }
     fullScreen<VideoEditorRoute> {
         VideoEditorScreen(onClose = { rootNav.popBackStack() })
+    }
+    fullScreen<CollageRoute> {
+        CollageScreen(onClose = { rootNav.popBackStack() }, onSaved = rootNav::openSavedCollage)
     }
     fullScreen<SlideshowRoute> {
         SlideshowScreen(onClose = { rootNav.popBackStack() })

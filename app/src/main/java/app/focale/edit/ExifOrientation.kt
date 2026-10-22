@@ -15,6 +15,12 @@ object ExifOrientation {
     private val TURNS = intArrayOf(0, 0, 2, 2, 1, 1, 3, 3)
     private val MIRRORED = booleanArrayOf(false, true, false, true, true, false, true, false)
 
+    /** Quarts de tour horaires qui affichent l'image stockée (valeur invalide : aucun). */
+    fun quarterTurns(orientation: Int): Int = if (orientation in 1..8) TURNS[orientation - 1] else 0
+
+    /** Miroir horizontal appliqué après les quarts de tour (valeur invalide : aucun). */
+    fun mirrored(orientation: Int): Boolean = orientation in 1..8 && MIRRORED[orientation - 1]
+
     /**
      * Orientation qui affiche l'image tournée de [quarterTurns] quarts de tour horaires
      * (négatif : antihoraires) par rapport à [orientation]. Avec miroir, tourner l'affichage

@@ -33,6 +33,13 @@ data class EditorRoute(val mediaId: Long)
 @Serializable
 data class VideoEditorRoute(val mediaId: Long)
 
+/**
+ * Collage des photos [mediaIds] (2 à 9, dans l'ordre de la sélection). [truncated] : la sélection
+ * en comptait davantage, l'écran le signale.
+ */
+@Serializable
+data class CollageRoute(val mediaIds: List<Long>, val truncated: Boolean = false)
+
 /** Diaporama des médias de [query], à partir de [startId] (premier média si absent). */
 @Serializable
 data class SlideshowRoute(val query: String, val startId: Long? = null)

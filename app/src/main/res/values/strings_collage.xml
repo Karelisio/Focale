@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Collage : entrée depuis la sélection, écran et enregistrement -->
+    <string name="collage_action">Create collage</string>
+    <string name="collage_title">Collage</string>
+    <string name="collage_save">Save</string>
+    <string name="collage_save_and_share">Save and share</string>
+    <string name="collage_saving">Creating the collage…</string>
+    <string name="collage_saved">Collage saved</string>
+    <string name="collage_failed">Couldn\'t create the collage</string>
+    <string name="collage_not_enough_photos">Select 2 to 9 photos for a collage (videos aren\'t used)</string>
+    <plurals name="collage_truncated">
+        <item quantity="one">Collage limited to %d photo: the first one selected</item>
+        <item quantity="other">Collage limited to %d photos: the first ones selected</item>
+    </plurals>
+    <string name="collage_hint">Drag to frame · pinch to zoom · long-press to swap</string>
+    <string name="collage_discard_title">Discard this collage?</string>
+    <string name="collage_discard_message">The layout and settings will be lost.</string>
+    <string name="collage_discard">Discard</string>
+
+    <!-- Réglages -->
+    <string name="collage_tool_layout">Layout</string>
+    <string name="collage_tool_format">Format</string>
+    <string name="collage_tool_borders">Borders</string>
+    <string name="collage_tool_background">Background</string>
+    <string name="collage_spacing">Spacing</string>
+    <string name="collage_corners">Rounded corners</string>
+    <string name="collage_aspect_square">Square (1:1)</string>
+    <string name="collage_aspect_portrait">Portrait (4:5)</string>
+    <string name="collage_aspect_photo">Photo (3:4)</string>
+    <string name="collage_aspect_story">Vertical (9:16)</string>
+    <string name="collage_aspect_landscape">Landscape (16:9)</string>
+    <string name="collage_background_white">White</string>
+    <string name="collage_background_black">Black</string>
+    <string name="collage_background_primary">Theme: primary</string>
+    <string name="collage_background_primary_soft">Theme: soft primary</string>
+    <string name="collage_background_secondary">Theme: secondary</string>
+    <string name="collage_background_secondary_soft">Theme: soft secondary</string>
+    <string name="collage_background_tertiary">Theme: tertiary</string>
+    <string name="collage_background_tertiary_soft">Theme: soft tertiary</string>
+
+    <!-- Cases (TalkBack) -->
+    <string name="collage_cell_description">Cell %1$d of %2$d: %3$s</string>
+    <string name="collage_action_swap_previous">Swap with previous cell</string>
+    <string name="collage_action_swap_next">Swap with next cell</string>
+    <string name="collage_action_zoom_in">Zoom in</string>
+    <string name="collage_action_zoom_out">Zoom out</string>
+    <string name="collage_action_reset_frame">Reset framing</string>
+
+    <!-- Dispositions -->
+    <string name="collage_layout_side_by_side">Side by side</string>
+    <string name="collage_layout_stacked">One above the other</string>
+    <string name="collage_layout_large_left">Large on the left</string>
+    <string name="collage_layout_large_top">Large on top</string>
+    <string name="collage_layout_grid">Grid %1$d × %2$d</string>
+    <plurals name="collage_layout_columns">
+        <item quantity="one">%d column</item>
+        <item quantity="other">%d columns</item>
+    </plurals>
+    <plurals name="collage_layout_rows">
+        <item quantity="one">%d row</item>
+        <item quantity="other">%d rows</item>
+    </plurals>
+    <plurals name="collage_layout_large_left_and">
+        <item quantity="one">Large on the left, %d on the right</item>
+        <item quantity="other">Large on the left, %d on the right</item>
+    </plurals>
+    <plurals name="collage_layout_large_right_and">
+        <item quantity="one">Large on the right, %d on the left</item>
+        <item quantity="other">Large on the right, %d on the left</item>
+    </plurals>
+    <plurals name="collage_layout_large_top_and">
+        <item quantity="one">Large on top, %d below</item>
+        <item quantity="other">Large on top, %d below</item>
+    </plurals>
+    <plurals name="collage_layout_large_bottom_and">
+        <item quantity="one">Large at the bottom, %d above</item>
+        <item quantity="other">Large at the bottom, %d above</item>
+    </plurals>
+    <plurals name="collage_layout_large_and_small">
+        <item quantity="one">One large, %d small</item>
+        <item quantity="other">One large, %d small</item>
+    </plurals>
+    <string name="collage_layout_top_bottom">%1$d on top, then %2$d</string>
+    <string name="collage_layout_three_rows">Rows of %1$d, %2$d, %3$d</string>
+    <string name="collage_layout_three_columns">Columns of %1$d, %2$d, %3$d</string>
+    <string name="collage_layout_staggered">Staggered mosaic</string>
+    <string name="collage_layout_pinwheel">Pinwheel</string>
+    <string name="collage_layout_large_center">Large in the center</string>
+</resources>

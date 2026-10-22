@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Collage : entrée depuis la sélection, écran et enregistrement -->
+    <string name="collage_action">Créer un collage</string>
+    <string name="collage_title">Collage</string>
+    <string name="collage_save">Enregistrer</string>
+    <string name="collage_save_and_share">Enregistrer et partager</string>
+    <string name="collage_saving">Création du collage…</string>
+    <string name="collage_saved">Collage enregistré</string>
+    <string name="collage_failed">Impossible de créer le collage</string>
+    <string name="collage_not_enough_photos">Sélectionnez de 2 à 9 photos pour un collage (les vidéos ne sont pas utilisées)</string>
+    <plurals name="collage_truncated">
+        <item quantity="one">Collage limité à %d photo : la première sélectionnée</item>
+        <item quantity="many">Collage limité à %d photos : les premières sélectionnées</item>
+        <item quantity="other">Collage limité à %d photos : les premières sélectionnées</item>
+    </plurals>
+    <string name="collage_hint">Glissez pour cadrer · pincez pour zoomer · appui long pour échanger</string>
+    <string name="collage_discard_title">Abandonner ce collage ?</string>
+    <string name="collage_discard_message">La disposition et les réglages seront perdus.</string>
+    <string name="collage_discard">Abandonner</string>
+
+    <!-- Réglages -->
+    <string name="collage_tool_layout">Disposition</string>
+    <string name="collage_tool_format">Format</string>
+    <string name="collage_tool_borders">Bordures</string>
+    <string name="collage_tool_background">Fond</string>
+    <string name="collage_spacing">Espacement</string>
+    <string name="collage_corners">Arrondi des coins</string>
+    <string name="collage_aspect_square">Carré (1:1)</string>
+    <string name="collage_aspect_portrait">Portrait (4:5)</string>
+    <string name="collage_aspect_photo">Photo (3:4)</string>
+    <string name="collage_aspect_story">Vertical (9:16)</string>
+    <string name="collage_aspect_landscape">Paysage (16:9)</string>
+    <string name="collage_background_white">Blanc</string>
+    <string name="collage_background_black">Noir</string>
+    <string name="collage_background_primary">Thème : principale</string>
+    <string name="collage_background_primary_soft">Thème : principale atténuée</string>
+    <string name="collage_background_secondary">Thème : secondaire</string>
+    <string name="collage_background_secondary_soft">Thème : secondaire atténuée</string>
+    <string name="collage_background_tertiary">Thème : tertiaire</string>
+    <string name="collage_background_tertiary_soft">Thème : tertiaire atténuée</string>
+
+    <!-- Cases (TalkBack) -->
+    <string name="collage_cell_description">Case %1$d sur %2$d : %3$s</string>
+    <string name="collage_action_swap_previous">Échanger avec la case précédente</string>
+    <string name="collage_action_swap_next">Échanger avec la case suivante</string>
+    <string name="collage_action_zoom_in">Agrandir</string>
+    <string name="collage_action_zoom_out">Réduire</string>
+    <string name="collage_action_reset_frame">Recentrer</string>
+
+    <!-- Dispositions -->
+    <string name="collage_layout_side_by_side">Côte à côte</string>
+    <string name="collage_layout_stacked">L\'une au-dessus de l\'autre</string>
+    <string name="collage_layout_large_left">Grande à gauche</string>
+    <string name="collage_layout_large_top">Grande en haut</string>
+    <string name="collage_layout_grid">Grille %1$d × %2$d</string>
+    <plurals name="collage_layout_columns">
+        <item quantity="one">%d colonne</item>
+        <item quantity="many">%d colonnes</item>
+        <item quantity="other">%d colonnes</item>
+    </plurals>
+    <plurals name="collage_layout_rows">
+        <item quantity="one">%d rangée</item>
+        <item quantity="many">%d rangées</item>
+        <item quantity="other">%d rangées</item>
+    </plurals>
+    <plurals name="collage_layout_large_left_and">
+        <item quantity="one">Une grande à gauche, %d à droite</item>
+        <item quantity="many">Une grande à gauche, %d à droite</item>
+        <item quantity="other">Une grande à gauche, %d à droite</item>
+    </plurals>
+    <plurals name="collage_layout_large_right_and">
+        <item quantity="one">Une grande à droite, %d à gauche</item>
+        <item quantity="many">Une grande à droite, %d à gauche</item>
+        <item quantity="other">Une grande à droite, %d à gauche</item>
+    </plurals>
+    <plurals name="collage_layout_large_top_and">
+        <item quantity="one">Une grande en haut, %d en bas</item>
+        <item quantity="many">Une grande en haut, %d en bas</item>
+        <item quantity="other">Une grande en haut, %d en bas</item>
+    </plurals>
+    <plurals name="collage_layout_large_bottom_and">
+        <item quantity="one">Une grande en bas, %d en haut</item>
+        <item quantity="many">Une grande en bas, %d en haut</item>
+        <item quantity="other">Une grande en bas, %d en haut</item>
+    </plurals>
+    <plurals name="collage_layout_large_and_small">
+        <item quantity="one">Une grande et %d petite</item>
+        <item quantity="many">Une grande et %d petites</item>
+        <item quantity="other">Une grande et %d petites</item>
+    </plurals>
+    <string name="collage_layout_top_bottom">%1$d en haut, %2$d en bas</string>
+    <string name="collage_layout_three_rows">Rangées de %1$d, %2$d et %3$d</string>
+    <string name="collage_layout_three_columns">Colonnes de %1$d, %2$d et %3$d</string>
+    <string name="collage_layout_staggered">Mosaïque décalée</string>
+    <string name="collage_layout_pinwheel">Moulinet</string>
+    <string name="collage_layout_large_center">Une grande au centre</string>
+</resources>
