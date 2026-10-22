@@ -15,6 +15,10 @@ import app.focale.data.ImageEditor
 import app.focale.data.MediaRepository
 import app.focale.data.OperationResult
 import app.focale.edit.Adjustment
+import app.focale.edit.BlurMath
+import app.focale.edit.BlurPatch
+import app.focale.edit.BlurRegion
+import app.focale.edit.BlurRenderer
 import app.focale.edit.CropAspect
 import app.focale.edit.CropMath
 import app.focale.edit.DrawTool
@@ -25,23 +29,29 @@ import app.focale.edit.FilterPreset
 import app.focale.edit.NormRect
 import app.focale.edit.SaveMode
 import app.focale.edit.StraightenMath
+import app.focale.people.FaceLocator
 import app.focale.ui.navigation.EditorRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class EditorTool { CROP, FILTERS, ADJUST, DRAW }
+enum class EditorTool { CROP, FILTERS, ADJUST, DRAW, TEXT, BLUR }
 
 /** Aperçu géométrique et l'orientation pour laquelle il a été rendu. */
 data class EditorPreview(val image: ImageBitmap, val quarterTurns: Int, val flipHorizontal: Boolean) {
@@ -49,11 +59,17 @@ data class EditorPreview(val image: ImageBitmap, val quarterTurns: Int, val flip
     fun matches(state: EditState): Boolean = quarterTurns == state.quarterTurns && flipHorizontal == state.flipHorizontal
 }
 
-/** Résultat d'un enregistrement, consommé par l'écran. */
+/** Résultat d'un enregistrement ou d'une détection de visages, consommé par l'écran. */
 sealed interface EditorEvent {
     data class Saved(val mode: SaveMode) : EditorEvent
     data object Failed : EditorEvent
+
+    /** Bouton « Visages » : [count] zones ajoutées (0 : aucun visage nouveau trouvé). */
+    data class FacesBlurred(val count: Int) : EditorEvent
 }
+
+/** Ce dont dépendent les zones floutées calculées de l'aperçu. */
+private data class BlurInputs(val blurs: List<BlurRegion>, val quarterTurns: Int, val flipHorizontal: Boolean)
 
 @HiltViewModel
 class EditorViewModel @Inject constructor(
@@ -61,6 +77,7 @@ class EditorViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val editor: ImageEditor,
     private val seedExtractor: SeedColorExtractor,
+    private val faceLocator: FaceLocator,
     @DefaultDispatcher private val dispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -80,8 +97,26 @@ class EditorViewModel @Inject constructor(
     /** Aperçu de l'original (comparaison avant / après). */
     private var base: Bitmap? = null
 
-    private val _state = MutableStateFlow(EditState())
-    val state: StateFlow<EditState> = _state.asStateFlow()
+    /** État de l'édition et historique, partagés avec les outils Texte et Flouter. */
+    private val history = EditHistory()
+    val state: StateFlow<EditState> = history.state
+
+    /** Outil Texte : textes, sélection, saisie ouverte et réglages. */
+    val textTool = TextController(history)
+
+    /** Outil Flouter : zones, sélection et réglages. */
+    val blurTool = BlurController(history)
+
+    /**
+     * Zones floutées de l'aperçu, calculées en arrière-plan sur l'image réduite à chaque
+     * changement de zone ou d'orientation ; une zone en cours de déplacement garde la sienne
+     * jusqu'au calcul suivant, qui la suit ([BlurRenderer.draw]).
+     */
+    private val _blurPatches = MutableStateFlow<Map<Long, BlurPatch>>(emptyMap())
+    val blurPatches: StateFlow<Map<Long, BlurPatch>> = _blurPatches.asStateFlow()
+
+    private val _detectingFaces = MutableStateFlow(false)
+    val detectingFaces: StateFlow<Boolean> = _detectingFaces.asStateFlow()
 
     private val _tool = MutableStateFlow(EditorTool.CROP)
     val tool: StateFlow<EditorTool> = _tool.asStateFlow()
@@ -109,12 +144,8 @@ class EditorViewModel @Inject constructor(
     private val _seed = MutableStateFlow<Color?>(null)
     val seed: StateFlow<Color?> = _seed.asStateFlow()
 
-    private val past = ArrayDeque<EditState>()
-    private val future = ArrayDeque<EditState>()
-    private val _canUndo = MutableStateFlow(false)
-    val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
-    private val _canRedo = MutableStateFlow(false)
-    val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
+    val canUndo: StateFlow<Boolean> = history.canUndo
+    val canRedo: StateFlow<Boolean> = history.canRedo
 
     private val events = Channel<EditorEvent>(Channel.BUFFERED)
     val eventFlow: Flow<EditorEvent> = events.receiveAsFlow()
@@ -128,14 +159,19 @@ class EditorViewModel @Inject constructor(
                 ?: return@launch events.send(EditorEvent.Failed)
             base = loaded
             refreshPreview()
+            observeBlurs(loaded)
         }
     }
 
     val canReplace: Boolean get() = _item.value?.let(editor::canReplace) == true
 
-    val hasChanges: Boolean get() = !_state.value.isIdentity
+    val hasChanges: Boolean get() = !history.current.isIdentity
 
     fun selectTool(tool: EditorTool) {
+        if (tool == _tool.value) return
+        // Une sélection n'a de sens que dans son outil : elle ne réapparaît pas au retour.
+        textTool.clear()
+        blurTool.clear()
         _tool.value = tool
     }
 
@@ -144,45 +180,29 @@ class EditorViewModel @Inject constructor(
     }
 
     fun rotate() {
-        val current = _state.value
-        // Rotation et miroir ne commutent pas : avec miroir, un quart de tour horaire de
-        // l'image affichée correspond à un quart de tour antihoraire de l'original.
-        val turns = if (current.flipHorizontal) current.quarterTurns - 1 else current.quarterTurns + 1
-        // Recadrage et traits, exprimés dans le repère affiché, tournent avec lui ; le
-        // redressement, rotation lui aussi, ne change pas.
-        val rotated = current.copy(
-            quarterTurns = Math.floorMod(turns, 4),
-            crop = CropMath.rotateClockwise(current.crop),
-            strokes = current.strokes.map(DrawingStroke::rotateClockwise),
-        )
+        val current = history.current
+        // Recadrage, traits, textes et zones tournent avec l'image ([EditState.rotated]).
+        val rotated = current.rotated()
         straightenReference = straightenReference?.let(CropMath::rotateClockwise)
         commit(if (current.aspect == CropAspect.FREE) rotated else refit(rotated))
         refreshPreview()
     }
 
     fun flip() {
-        val current = _state.value
-        // Dans un miroir, le redressement tourne dans l'autre sens.
+        // Le redressement s'inverse, les lettres des textes ne sont pas retournées ([EditState.mirrored]).
         straightenReference = straightenReference?.let(CropMath::flipHorizontal)
-        commit(
-            current.copy(
-                flipHorizontal = !current.flipHorizontal,
-                straighten = StraightenMath.clamp(-current.straighten),
-                crop = CropMath.flipHorizontal(current.crop),
-                strokes = current.strokes.map(DrawingStroke::flipHorizontal),
-            ),
-        )
+        commit(history.current.mirrored())
         refreshPreview()
     }
 
     fun setAspect(aspect: CropAspect) {
-        commit(refit(_state.value.copy(aspect = aspect)))
+        commit(refit(history.current.copy(aspect = aspect)))
     }
 
     /** Pendant un geste de recadrage : pas d'entrée d'historique à chaque mouvement. */
     fun dragCrop(rect: NormRect) {
         straightenReference = null
-        _state.value = _state.value.copy(crop = rect)
+        history.update(history.current.copy(crop = rect))
     }
 
     /** Début d'un redressement à la règle ou à deux doigts : une seule étape d'historique. */
@@ -193,24 +213,24 @@ class EditorViewModel @Inject constructor(
 
     /** Pendant un redressement : angle et recadrage suivent, sans entrée d'historique. */
     fun straighten(angle: Float) {
-        _state.value = straightened(_state.value, angle)
+        history.update(straightened(history.current, angle))
     }
 
     fun endStraighten() {
         _straightening.value = false
     }
 
-    fun resetStraighten() = commit(straightened(_state.value, 0f))
+    fun resetStraighten() = commit(straightened(history.current, 0f))
 
     fun beginGesture() = remember()
 
-    fun setFilter(filter: FilterPreset) = commit(_state.value.copy(filter = filter))
+    fun setFilter(filter: FilterPreset) = commit(history.current.copy(filter = filter))
 
     fun setAdjustmentValue(value: Float) {
-        _state.value = _state.value.with(_adjustment.value, value)
+        history.update(history.current.with(_adjustment.value, value))
     }
 
-    fun resetAdjustment(adjustment: Adjustment) = commit(_state.value.with(adjustment, 0f))
+    fun resetAdjustment(adjustment: Adjustment) = commit(history.current.with(adjustment, 0f))
 
     fun selectDrawTool(tool: DrawTool) = _drawing.update { it.copy(tool = tool) }
 
@@ -219,31 +239,65 @@ class EditorViewModel @Inject constructor(
     fun setDrawSize(size: Float) = _drawing.update { it.copy(size = size.coerceIn(DrawingOptions.MIN_SIZE, DrawingOptions.MAX_SIZE)) }
 
     /** Chaque trait terminé forme une étape d'historique. */
-    fun addStroke(stroke: DrawingStroke) = commit(_state.value.copy(strokes = _state.value.strokes + stroke))
+    fun addStroke(stroke: DrawingStroke) = commit(history.current.copy(strokes = history.current.strokes + stroke))
 
     /**
      * Gomme : comme pour un recadrage, l'étape d'historique est créée au début du geste
      * ([beginGesture], au premier trait touché), qui peut en effacer plusieurs.
      */
     fun eraseStroke(stroke: DrawingStroke) {
-        _state.value = _state.value.copy(strokes = _state.value.strokes.filterNot { it === stroke })
+        history.update(history.current.copy(strokes = history.current.strokes.filterNot { it === stroke }))
+    }
+
+    /**
+     * Bouton « Visages » : une zone ellipse, au style et à l'intensité courants, sur chaque
+     * visage détecté (ML Kit, sur l'aperçu de l'original) que ne couvre pas déjà une zone, le
+     * tout en une seule étape d'historique.
+     */
+    fun blurFaces() {
+        val source = base ?: return
+        if (_detectingFaces.value) return
+        viewModelScope.launch {
+            _detectingFaces.value = true
+            val faces = try {
+                faceLocator.locate(source)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            } finally {
+                _detectingFaces.value = false
+            }
+            val state = history.current
+            val (width, height) = frameSize(state) ?: return@launch
+            val w = width.toFloat()
+            val h = height.toFloat()
+            val areas = faces
+                .map { BlurMath.faceArea(NormRect(it.left, it.top, it.right, it.bottom), state.quarterTurns, state.flipHorizontal, w, h) }
+                .filter { face -> state.blurs.none { BlurMath.contains(it.area, face.x * w, face.y * h, w, h) } }
+            blurTool.addAll(areas)
+            events.send(EditorEvent.FacesBlurred(areas.size))
+        }
     }
 
     fun undo() {
-        val previous = past.removeLastOrNull() ?: return
-        future.addLast(_state.value)
-        applyHistory(previous)
+        val before = history.current
+        if (history.undo()) afterHistory(before)
     }
 
     fun redo() {
-        val next = future.removeLastOrNull() ?: return
-        past.addLast(_state.value)
-        applyHistory(next)
+        val before = history.current
+        if (history.redo()) afterHistory(before)
     }
 
+    /** « Annuler les modifications » : tout revient à l'original, textes et zones compris, en une étape annulable. */
     fun resetAll() {
+        val before = history.current
         straightenReference = null
+        textTool.clear()
+        blurTool.clear()
         commit(EditState())
+        if (before.quarterTurns % 4 != 0 || before.flipHorizontal) refreshPreview()
     }
 
     fun save(mode: SaveMode) {
@@ -251,7 +305,7 @@ class EditorViewModel @Inject constructor(
         if (_saving.value) return
         viewModelScope.launch {
             _saving.value = true
-            val result = editor.save(media, _state.value, mode)
+            val result = editor.save(media, history.current, mode)
             _saving.value = false
             events.send(
                 when (result) {
@@ -269,7 +323,7 @@ class EditorViewModel @Inject constructor(
     /** Rapport normalisé imposé par le format courant, null si libre. */
     fun cropRatio(): Float? {
         val preview = _preview.value?.image ?: return null
-        return CropMath.normalizedRatio(_state.value.aspect, preview.width, preview.height, preview.width.toFloat() / preview.height)
+        return CropMath.normalizedRatio(history.current.aspect, preview.width, preview.height, preview.width.toFloat() / preview.height)
     }
 
     /** Cadre automatique du format de [state], ramené dans l'image redressée, et retenu comme recadrage voulu. */
@@ -311,35 +365,50 @@ class EditorViewModel @Inject constructor(
         return if (state.quarterTurns % 2 == 1) source.height to source.width else source.width to source.height
     }
 
-    private fun commit(newState: EditState) {
-        if (newState == _state.value) return
-        remember()
-        _state.value = newState
-    }
+    private fun commit(newState: EditState) = history.commit(newState)
 
-    private fun remember() {
-        past.addLast(_state.value)
-        if (past.size > HISTORY) past.removeFirst()
-        future.clear()
-        updateHistoryFlags()
-    }
+    private fun remember() = history.remember()
 
-    private fun applyHistory(state: EditState) {
-        val geometryChanged = state.quarterTurns != _state.value.quarterTurns || state.flipHorizontal != _state.value.flipHorizontal
+    /** Après annuler ou rétablir : aperçu pivoté si besoin, sélections d'éléments disparus oubliées. */
+    private fun afterHistory(before: EditState) {
+        val state = history.current
+        val geometryChanged = state.quarterTurns != before.quarterTurns || state.flipHorizontal != before.flipHorizontal
         straightenReference = null
-        _state.value = state
-        updateHistoryFlags()
+        textTool.sync()
+        blurTool.sync()
         if (geometryChanged) refreshPreview()
     }
 
-    private fun updateHistoryFlags() {
-        _canUndo.value = past.isNotEmpty()
-        _canRedo.value = future.isNotEmpty()
+    /**
+     * Calcule en arrière-plan les zones floutées de l'aperçu sur [source] (l'original réduit) :
+     * seules les zones nouvelles ou modifiées le sont, et un calcul dépassé est abandonné.
+     */
+    private fun observeBlurs(source: Bitmap) {
+        viewModelScope.launch {
+            history.state
+                .map { BlurInputs(it.blurs, it.quarterTurns, it.flipHorizontal) }
+                .distinctUntilChanged()
+                .collectLatest { inputs ->
+                    val previous = _blurPatches.value
+                    _blurPatches.value = withContext(dispatcher) {
+                        buildMap {
+                            for (region in inputs.blurs) {
+                                ensureActive()
+                                val cached = previous[region.id]?.takeIf {
+                                    it.region == region && it.quarterTurns == inputs.quarterTurns && it.flipHorizontal == inputs.flipHorizontal
+                                }
+                                val patch = cached ?: BlurRenderer.patch(source, inputs.quarterTurns, inputs.flipHorizontal, region)
+                                if (patch != null) put(region.id, patch)
+                            }
+                        }
+                    }
+                }
+        }
     }
 
     private fun refreshPreview() {
         val source = base ?: return
-        val state = _state.value
+        val state = history.current
         // Seul le dernier rendu lancé est publié, même si des rotations rapprochées se croisent.
         previewJob?.cancel()
         previewJob = viewModelScope.launch {
@@ -351,8 +420,6 @@ class EditorViewModel @Inject constructor(
     }
 
     private companion object {
-        const val HISTORY = 50
-
         /** Écart toléré entre deux recadrages normalisés tenus pour identiques. */
         const val EPSILON = 1e-4f
     }

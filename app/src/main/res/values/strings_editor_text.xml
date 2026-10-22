@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Éditeur : outil Texte -->
+    <string name="editor_text">Text</string>
+    <string name="text_add">Add text</string>
+    <string name="text_edit_title">Edit text</string>
+    <string name="text_field_label">Text</string>
+    <string name="text_done">OK</string>
+    <string name="text_delete">Delete text</string>
+    <string name="text_bold">Bold</string>
+    <string name="text_size">Text size</string>
+    <string name="text_background_none">No background</string>
+    <string name="text_background_box">Box</string>
+    <string name="text_background_outline">Outline</string>
+    <string name="text_item_description">Text: “%1$s”</string>
+    <string name="text_action_edit">Edit</string>
+    <string name="text_action_delete">Delete</string>
+</resources>

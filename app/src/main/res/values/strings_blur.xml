@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Éditeur : outil Flouter -->
+    <string name="editor_blur">Blur</string>
+    <string name="blur_rectangle">Rectangle</string>
+    <string name="blur_ellipse">Ellipse</string>
+    <string name="blur_brush">Brush</string>
+    <string name="blur_style_blur">Blur</string>
+    <string name="blur_style_pixelate">Pixels</string>
+    <string name="blur_intensity">Intensity</string>
+    <string name="blur_brush_size">Brush size</string>
+    <string name="blur_faces">Faces</string>
+    <string name="blur_faces_description">Blur detected faces</string>
+    <string name="blur_faces_none">No new face found</string>
+    <plurals name="blur_faces_found">
+        <item quantity="one">%d face blurred</item>
+        <item quantity="other">%,d faces blurred</item>
+    </plurals>
+    <string name="blur_delete">Delete zone</string>
+    <string name="blur_zone_description">Blurred zone %1$d (%2$s)</string>
+    <string name="blur_action_select">Select</string>
+    <string name="blur_action_delete">Delete</string>
+</resources>
