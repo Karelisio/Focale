@@ -13,10 +13,15 @@ import android.os.Build
 import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import app.focale.collage.BitmapSource
+import app.focale.collage.CollageGainLayer
+import app.focale.collage.CollageGainmap
 import app.focale.collage.CollageRenderer
 import app.focale.collage.CollageSource
 import app.focale.collage.CollageState
+import app.focale.collage.DecodedRegion
 import app.focale.core.di.IoDispatcher
+import app.focale.core.image.GainmapParams
+import app.focale.core.image.UltraHdr
 import app.focale.core.mediastore.MediaSyncManager
 import app.focale.core.model.MediaItem
 import app.focale.edit.ExifOrientation
@@ -77,8 +82,17 @@ class CollageMaker @Inject constructor(
             val (width, height) = state.aspect.size(CollageRenderer.LONG_SIDE)
             val temp = File.createTempFile("collage", ".jpg", context.cacheDir)
             try {
-                val bitmap = CollageRenderer.render(state, width, height, open = { open(items.getValue(it)) })
+                // Photos Ultra HDR (Android 14+) : le collage l'est aussi, gainmap composée case par case.
+                val gainmaps = gainmaps(state.photos.mapNotNull(items::get))
+                val layer = CollageGainmap.combine(state.photos.map { gainmaps[it] })?.let { CollageGainLayer(width, height, it) }
+                val bitmap = try {
+                    CollageRenderer.render(state, width, height, open = { open(items.getValue(it), gainmaps[it]) }, gainmap = layer)
+                        .also { if (layer != null && UltraHdr.supported) it.gainmap = UltraHdr.gainmap(layer.contents(), layer.params) }
+                } finally {
+                    layer?.recycle()
+                }
                 try {
+                    // Avec une gainmap, Android écrit un JPEG Ultra HDR.
                     temp.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, QUALITY, it) }
                 } finally {
                     bitmap.recycle()
@@ -105,12 +119,26 @@ class CollageMaker @Inject constructor(
             }
         }
 
-    /** Ouvre [item] : décodeur de zones si son format le permet, sinon image réduite en mémoire. */
-    fun open(item: MediaItem): CollageSource {
+    /**
+     * Ouvre [item] : décodeur de zones si son format le permet, sinon image réduite en mémoire.
+     * [gainmap] : paramètres de sa gainmap ([gainmaps]), dont les zones sont alors décodées aussi.
+     */
+    fun open(item: MediaItem, gainmap: GainmapParams? = null): CollageSource {
         val decoder = runCatching { resolver.openInputStream(item.uri)?.use(::regionDecoder) }
             .onFailure { Log.i(TAG, "Pas de décodeur de zones pour ${item.mimeType}", it) }
             .getOrNull()
-        return if (decoder != null) RegionSource(decoder, orientationOf(item)) else decodeWhole(item)
+        return if (decoder != null) RegionSource(decoder, orientationOf(item), gainmap) else decodeWhole(item, gainmap)
+    }
+
+    /**
+     * Paramètres des gainmaps des photos Ultra HDR de [items], par identifiant ; vide avant
+     * Android 14, où ni le décodage ni l'encodage des gainmaps n'existent.
+     */
+    private fun gainmaps(items: List<MediaItem>): Map<Long, GainmapParams> {
+        if (!UltraHdr.supported) return emptyMap()
+        return items.filter { UltraHdr.isCandidate(it.mimeType) }
+            .mapNotNull { item -> UltraHdr.params(resolver, item.uri)?.let { item.id to it } }
+            .toMap()
     }
 
     private fun regionDecoder(stream: InputStream): BitmapRegionDecoder? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -135,9 +163,10 @@ class CollageMaker @Inject constructor(
 
     /**
      * Repli (AVIF, DNG…) : image entière décodée, orientation appliquée par le décodeur, réduite à
-     * [WHOLE_SIDE] px sur le grand côté et [WHOLE_PIXELS] pixels au plus.
+     * [WHOLE_SIDE] px sur le grand côté et [WHOLE_PIXELS] pixels au plus ; sa gainmap, réduite
+     * avec elle par le décodeur, est gardée si [gainmap] l'annonce.
      */
-    private fun decodeWhole(item: MediaItem): CollageSource {
+    private fun decodeWhole(item: MediaItem, gainmap: GainmapParams?): CollageSource {
         val bitmap = ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, item.uri)) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             val width = info.size.width
@@ -145,7 +174,8 @@ class CollageMaker @Inject constructor(
             val scale = min(WHOLE_SIDE / max(width, height).toFloat(), sqrt(WHOLE_PIXELS / (width.toFloat() * height)))
             if (scale < 1f) decoder.setTargetSize((width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1))
         }
-        return BitmapSource(bitmap, ExifOrientation.NORMAL)
+        val contents = if (gainmap != null && UltraHdr.supported) bitmap.gainmap?.gainmapContents else null
+        return BitmapSource(bitmap, ExifOrientation.NORMAL, gainmapContents = contents, gainmap = gainmap.takeIf { contents != null })
     }
 
     /** Date de création en EXIF (MediaStore en tire la date de prise de vue), logiciel, orientation normale. */
@@ -175,8 +205,15 @@ class CollageMaker @Inject constructor(
 
     private fun fileName(now: Long): String = "Collage_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ROOT).format(Date(now)) + ".jpg"
 
-    /** Photo lue zone par zone ; le décodeur est libéré à la fermeture. */
-    private class RegionSource(private val decoder: BitmapRegionDecoder, override val orientation: Int) : CollageSource {
+    /**
+     * Photo lue zone par zone ; le décodeur est libéré à la fermeture. Sur Android 14+, il décode
+     * aussi la zone de la gainmap, rattachée au bitmap rendu.
+     */
+    private class RegionSource(
+        private val decoder: BitmapRegionDecoder,
+        override val orientation: Int,
+        override val gainmap: GainmapParams?,
+    ) : CollageSource {
         override val width: Int = decoder.width
         override val height: Int = decoder.height
         private val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
@@ -184,6 +221,12 @@ class CollageMaker @Inject constructor(
         override fun decode(region: Rect, sampleSize: Int): Bitmap {
             options.inSampleSize = sampleSize
             return decoder.decodeRegion(region, options) ?: error("Zone illisible : $region")
+        }
+
+        override fun decodeWithGainmap(region: Rect, sampleSize: Int): DecodedRegion {
+            val bitmap = decode(region, sampleSize)
+            val contents = if (UltraHdr.supported) bitmap.gainmap?.gainmapContents else null
+            return DecodedRegion(bitmap, contents, owned = false)
         }
 
         override fun close() = decoder.recycle()

@@ -11,6 +11,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withClip
+import app.focale.core.image.GainmapParams
 import java.io.Closeable
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -27,36 +28,88 @@ interface CollageSource : Closeable {
     val height: Int
     val orientation: Int
 
+    /** Paramètres de la gainmap Ultra HDR de la photo ; null pour une photo SDR (ou avant Android 14). */
+    val gainmap: GainmapParams? get() = null
+
     /**
      * Zone [region] de l'image stockée, réduite d'un facteur [sampleSize] (puissance de 2) :
      * bitmap d'environ `region / sampleSize` pixels, dont le pixel (0, 0) commence au coin de [region].
      */
     fun decode(region: Rect, sampleSize: Int): Bitmap
 
+    /** Comme [decode], avec la même zone de la gainmap, à sa propre résolution, si la photo en a une. */
+    fun decodeWithGainmap(region: Rect, sampleSize: Int): DecodedRegion = DecodedRegion(decode(region, sampleSize), null, owned = false)
+
     override fun close() = Unit
 }
 
 /**
- * Photo déjà en mémoire (repli des formats sans décodeur de zones, tests). [owned] : le bitmap est
- * recyclé à la fermeture.
+ * Zone décodée et la zone correspondante de sa gainmap ([gainmap], null sans). [owned] : la
+ * gainmap est un bitmap à part, recyclé avec la zone ; sinon elle appartient à [bitmap].
  */
-class BitmapSource(private val bitmap: Bitmap, override val orientation: Int, private val owned: Boolean = true) : CollageSource {
+class DecodedRegion(val bitmap: Bitmap, val gainmap: Bitmap?, private val owned: Boolean) {
+    fun recycle() {
+        bitmap.recycle()
+        if (owned) gainmap?.recycle()
+    }
+}
+
+/**
+ * Photo déjà en mémoire (repli des formats sans décodeur de zones, tests). [owned] : le bitmap (et
+ * sa gainmap [gainmapContents], de paramètres [gainmap], à toute résolution) est recyclé à la fermeture.
+ */
+class BitmapSource(
+    private val bitmap: Bitmap,
+    override val orientation: Int,
+    private val owned: Boolean = true,
+    private val gainmapContents: Bitmap? = null,
+    override val gainmap: GainmapParams? = null,
+) : CollageSource {
     override val width: Int get() = bitmap.width
     override val height: Int get() = bitmap.height
 
     /** Toujours un bitmap neuf, que l'appelant recycle. Comme le décodeur de zones : division entière. */
     override fun decode(region: Rect, sampleSize: Int): Bitmap {
+        val covered = covered(region, sampleSize)
+        return part(bitmap, covered, covered.width() / sampleSize, covered.height() / sampleSize)
+    }
+
+    /** Gainmap de la même zone que [decode], réduite dans les mêmes proportions que l'image. */
+    override fun decodeWithGainmap(region: Rect, sampleSize: Int): DecodedRegion {
+        val decoded = decode(region, sampleSize)
+        val contents = gainmapContents ?: return DecodedRegion(decoded, null, owned = false)
+        val scaleX = contents.width / bitmap.width.toFloat()
+        val scaleY = contents.height / bitmap.height.toFloat()
+        val covered = covered(region, sampleSize)
+        val source = Rect(
+            (covered.left * scaleX).toInt(),
+            (covered.top * scaleY).toInt(),
+            ceil(covered.right * scaleX).toInt().coerceAtMost(contents.width),
+            ceil(covered.bottom * scaleY).toInt().coerceAtMost(contents.height),
+        )
+        val gain = part(contents, source, max(1, round(decoded.width * scaleX).toInt()), max(1, round(decoded.height * scaleY).toInt()))
+        return DecodedRegion(decoded, gain, owned = true)
+    }
+
+    /** Zone stockée que couvre un décodage de [region] réduit de [sampleSize] (division entière). */
+    private fun covered(region: Rect, sampleSize: Int): Rect {
         val width = (region.width() / sampleSize).coerceAtLeast(1)
         val height = (region.height() / sampleSize).coerceAtLeast(1)
-        val part = createBitmap(width, height)
-        val target = Rect(0, 0, width, height)
-        val source = Rect(region.left, region.top, region.left + width * sampleSize, region.top + height * sampleSize)
-        Canvas(part).drawBitmap(bitmap, source, target, Paint(Paint.FILTER_BITMAP_FLAG))
+        return Rect(region.left, region.top, region.left + width * sampleSize, region.top + height * sampleSize)
+    }
+
+    private fun part(from: Bitmap, source: Rect, width: Int, height: Int): Bitmap {
+        val config = if (from.config == Bitmap.Config.ALPHA_8) Bitmap.Config.ALPHA_8 else Bitmap.Config.ARGB_8888
+        val part = createBitmap(width, height, config)
+        Canvas(part).drawBitmap(from, source, Rect(0, 0, width, height), Paint(Paint.FILTER_BITMAP_FLAG))
         return part
     }
 
     override fun close() {
-        if (owned) bitmap.recycle()
+        if (owned) {
+            bitmap.recycle()
+            gainmapContents?.recycle()
+        }
     }
 }
 
@@ -65,7 +118,8 @@ class BitmapSource(private val bitmap: Bitmap, override val orientation: Int, pr
  * arrondis. Chaque photo est décodée à la résolution utile seulement : la zone visible de l'image
  * stockée, réduite par le plus grand facteur qui laisse au moins un pixel de la photo par pixel du
  * collage, et par bandes de [BAND_PIXELS] pixels décodés au plus. Neuf photos de 50 Mpx tiennent
- * ainsi en mémoire : le collage, plus une bande à la fois.
+ * ainsi en mémoire : le collage, plus une bande à la fois. Avec une [CollageGainLayer], la
+ * gainmap des photos Ultra HDR y est peinte au même cadrage, bande par bande ([CollageGainmap]).
  */
 object CollageRenderer {
     /** Grand côté de l'export. */
@@ -84,6 +138,7 @@ object CollageRenderer {
         height: Int,
         open: (Long) -> CollageSource,
         bandPixels: Int = BAND_PIXELS,
+        gainmap: CollageGainLayer? = null,
     ): Bitmap {
         val output = createBitmap(width, height)
         val canvas = Canvas(output)
@@ -93,7 +148,9 @@ object CollageRenderer {
         cells.forEachIndexed { index, cell ->
             val photo = state.photos[index]
             val radius = CollageGeometry.radius(state.corners, width.toFloat(), height.toFloat(), cell)
-            open(photo).use { source -> drawCell(canvas, cell, radius, state.backgroundColor, state.frame(photo), source, bandPixels) }
+            open(photo).use { source ->
+                drawCell(canvas, cell, radius, state.backgroundColor, state.frame(photo), source, bandPixels, gainmap)
+            }
         }
         return output
     }
@@ -135,6 +192,7 @@ object CollageRenderer {
      * Les bornes des zones sont des multiples du facteur de réduction : toutes les bandes tombent
      * sur la même grille de pixels réduits. Les coins arrondis sont ensuite repeints de la couleur
      * [background], hors du rectangle arrondi et en une fois : leur lissage ne dépend pas des bandes.
+     * Avec [gainmap], la gainmap d'une photo HDR suit le même chemin, et ses coins redeviennent neutres.
      */
     fun drawCell(
         canvas: Canvas,
@@ -144,6 +202,7 @@ object CollageRenderer {
         frame: CellFrame,
         source: CollageSource,
         bandPixels: Int = BAND_PIXELS,
+        gainmap: CollageGainLayer? = null,
     ) {
         val orientation = ImageOrientation(source.width, source.height, source.orientation)
         val visible = CellFraming.visible(
@@ -176,11 +235,17 @@ object CollageRenderer {
         // Bords de la case au pixel près : pas de lissage, au raccord des bandes comme au bord.
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
         val core = RectF()
+        val gainParams = source.gainmap?.takeIf { gainmap != null }
         var bandTop = top
         while (bandTop < bottom) {
             val bandBottom = min(bottom, bandTop + bandHeight)
             val region = Rect(left, max(top, bandTop - margin), right, min(bottom, bandBottom + margin))
-            val bitmap = source.decode(region, sample)
+            val decoded = if (gainParams != null) {
+                source.decodeWithGainmap(region, sample)
+            } else {
+                DecodedRegion(source.decode(region, sample), null, owned = false)
+            }
+            val bitmap = decoded.bitmap
             try {
                 // Pixel décodé → image stockée (chaque pixel couvre [sample] pixels stockés) → collage.
                 val local = Matrix().apply {
@@ -195,9 +260,13 @@ object CollageRenderer {
                 toCollage.mapRect(core)
                 core.set(round(core.left), round(core.top), round(core.right), round(core.bottom))
                 canvas.withClip(core) { drawRect(bounds, paint) }
+                val gain = decoded.gainmap
+                if (gainmap != null && gainParams != null && gain != null) {
+                    gainmap.draw(gain, gainParams, bitmap.width, bitmap.height, local, core, bounds)
+                }
             } finally {
                 paint.shader = null
-                bitmap.recycle()
+                decoded.recycle()
             }
             bandTop = bandBottom
         }
@@ -207,6 +276,7 @@ object CollageRenderer {
                 op(Path().apply { addRoundRect(bounds, radius, radius, Path.Direction.CW) }, Path.Op.DIFFERENCE)
             }
             canvas.drawPath(corners, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = background })
+            gainmap?.fill(corners)
         }
     }
 
