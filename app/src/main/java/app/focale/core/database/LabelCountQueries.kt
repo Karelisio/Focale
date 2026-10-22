@@ -57,9 +57,10 @@ interface LabelCountQueries {
      */
     suspend fun <T> withLabelCounts(ids: Collection<Long>, change: suspend () -> T): T {
         val chunks = ids.distinct().chunked(MAX_IDS)
-        if (hasLabels()) chunks.forEach { uncountLabels(it) }
+        val counted = hasLabels()
+        if (counted) chunks.forEach { uncountLabels(it) }
         val result = change()
-        if (hasLabels()) chunks.forEach { countLabels(it) }
+        if (counted || hasLabels()) chunks.forEach { countLabels(it) }
         return result
     }
 
