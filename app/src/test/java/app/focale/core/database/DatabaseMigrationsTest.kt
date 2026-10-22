@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -20,7 +21,7 @@ class DatabaseMigrationsTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun `la migration 1 vers 7 conserve les données et produit le schéma attendu par Room`() {
+    fun `la migration 1 vers 8 conserve les données et produit le schéma attendu par Room`() {
         val file = databaseAt(version = 1) { db ->
             db.execSQL("INSERT INTO favorite (media_id, added_at) VALUES (42, 1000)")
             db.execSQL(vaultItem(id = 3))
@@ -158,6 +159,46 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun `la migration 7 vers 8 compte les étiquettes et indexe les mots des noms des médias déjà là`() {
+        // Base de la 1.10.0 (version 7 publiée) : un média dans la corbeille, des étiquettes d'un média
+        // absent de l'index (accès partiel).
+        val file = databaseAt(version = 7) { db ->
+            db.execSQL(media(id = 7, name = "Screenshot_20240101-120000.png"))
+            db.execSQL(media(id = 8, name = "IMG_20240102_090000.jpg"))
+            db.execSQL(media(id = 9, name = "facture_EDF.jpg", trashed = true))
+            db.execSQL(
+                "INSERT INTO media_label (media_id, label, confidence) " +
+                    "VALUES (7, 'Dog', 0.9), (8, 'Dog', 0.7), (8, 'Beach', 0.8), (9, 'Dog', 0.6), (12, 'Beach', 0.9)",
+            )
+        }
+        val database = Room.databaseBuilder(context, FocaleDatabase::class.java, file.path)
+            .addMigrations(*DatabaseMigrations.ALL)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val db = database.openHelper.writableDatabase
+            assertEquals(LATEST, db.version)
+            // Médias de l'index, hors corbeille : Dog 2, Beach 1, comme le recalcul complet.
+            val counts = runBlocking { database.analysisDao().labelCounts() }
+            assertEquals(listOf(LabelTally("Beach", 1), LabelTally("Dog", 2)), counts)
+            runBlocking { database.analysisDao().rebuildLabelCounts() }
+            assertEquals(counts, runBlocking { database.analysisDao().labelCounts() })
+            // Mots des noms : chaque média indexé, cherché par l'index plein texte.
+            assertEquals(3L, db.longOf("SELECT COUNT(*) FROM media_name"))
+            assertEquals(MediaNames.document("Screenshot_20240101-120000.png"), db.stringOf("SELECT words FROM media_name WHERE rowid = 7"))
+            assertEquals(7L, db.longOf("SELECT rowid FROM media_name WHERE media_name MATCH '\"shot*\"'"))
+            assertEquals(9L, db.longOf("SELECT rowid FROM media_name WHERE media_name MATCH '\"edf*\"'"))
+            // Écritures suivantes tenues à jour : le média sort de la corbeille.
+            runBlocking {
+                database.mediaDao().upsert(listOf(database.mediaDao().get(9)!!.copy(isTrashed = false)))
+                assertEquals(listOf(LabelTally("Beach", 1), LabelTally("Dog", 3)), database.analysisDao().labelCounts())
+            }
+        } finally {
+            database.close()
+        }
+    }
+
     private fun SupportSQLiteDatabase.indexNames(table: String): Set<String> = query("PRAGMA index_list(`$table`)").use { cursor ->
         buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
     }
@@ -169,6 +210,13 @@ class DatabaseMigrationsTest {
     private fun SupportSQLiteDatabase.plan(sql: String): String = query("EXPLAIN QUERY PLAN $sql").use { cursor ->
         buildList { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("detail"))) }.joinToString(" | ")
     }
+
+    private fun media(id: Long, name: String, trashed: Boolean = false) =
+        "INSERT INTO media (id, media_type, mime_type, display_name, relative_path, bucket_id, bucket_name, date_taken, " +
+            "date_added, date_modified, generation, size, width, height, orientation, duration, volume_name, " +
+            "is_screenshot, is_gif, is_trashed, date_expires) " +
+            "VALUES ($id, 1, 'image/jpeg', '$name', 'DCIM/Camera/', 42, 'Camera', 1000, 1000, 1000, 1, 1, 1, 1, 0, 0, " +
+            "'external_primary', 0, 0, ${if (trashed) 1 else 0}, 0)"
 
     private fun vaultItem(id: Long) =
         "INSERT INTO vault_item (id, display_name, mime_type, media_type, original_path, date_taken, size, width, height, " +
@@ -228,6 +276,6 @@ class DatabaseMigrationsTest {
         /** Dossier courant des tests : le module app. */
         val SCHEMAS = File("schemas/app.focale.core.database.FocaleDatabase")
         const val TABLE_NAME = "\${TABLE_NAME}"
-        const val LATEST = 7
+        const val LATEST = 8
     }
 }

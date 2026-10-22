@@ -118,15 +118,15 @@ class SearchRepository @Inject constructor(
     }
 
     /**
-     * Étiquettes les plus présentes (onglet Recherche) et leur couverture. La requête lit toutes les
-     * étiquettes, que l'analyse réécrit à chaque lot pendant des heures : relue au plus toutes les
-     * [STATS_INTERVAL] (aussitôt à la fin d'une file, [AnalysisMilestones]), couvertures relues
-     * seulement quand le résultat change.
+     * Étiquettes les plus présentes (onglet Recherche) et leur couverture. L'analyse réécrit les
+     * étiquettes à chaque lot pendant des heures : relues au plus toutes les [STATS_INTERVAL]
+     * (aussitôt à la fin d'une file, [AnalysisMilestones]), couvertures relues seulement quand le
+     * résultat change.
      */
     fun observeThings(limit: Int = 60): Flow<List<ThingSuggestion>> =
-        sampledStats("media", "media_label") { analysisDao.labelStats(limit) }.mapLatest { stats ->
-            val covers = mediaRepository.getByIds(stats.map { it.coverId }).associateBy { it.id }
-            stats.map { ThingSuggestion(it.label, it.count, covers[it.coverId]) }
+        sampledStats("media", "media_label", "label_count") { analysisDao.labelStats(limit) }.mapLatest { stats ->
+            val covers = mediaRepository.getByIds(stats.mapNotNull { it.coverId }).associateBy { it.id }
+            stats.map { ThingSuggestion(it.label, it.count, it.coverId?.let(covers::get)) }
         }.flowOn(io)
 
     /** Lieux les plus photographiés et leur photo la plus récente, relus comme [observeThings]. */

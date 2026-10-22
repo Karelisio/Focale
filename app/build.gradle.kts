@@ -33,11 +33,12 @@ val appVersionName: String = (System.getenv("FOCALE_VERSION")?.takeIf { it.isNot
 val appVersionCode: Int = appVersionName.split('.').map(String::toInt)
     .let { (major, minor, patch) -> major * 1_000_000 + minor * 1_000 + patch }
 
-// Journal des versions (CHANGELOG.md à la racine) embarqué dans les assets : l'application
-// en affiche les nouveautés au premier lancement après une mise à jour.
+// Journal des versions (CHANGELOG.md à la racine, en français, et sa traduction anglaise
+// CHANGELOG.en.md) embarqué dans les assets : l'application en affiche les nouveautés, dans sa
+// langue, au premier lancement après une mise à jour.
 abstract class ChangelogAssetTask : DefaultTask() {
-    @get:InputFile
-    abstract val changelog: RegularFileProperty
+    @get:InputFiles
+    abstract val changelogs: ConfigurableFileCollection
 
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
@@ -47,12 +48,12 @@ abstract class ChangelogAssetTask : DefaultTask() {
         val dir = outputDir.get().asFile
         dir.deleteRecursively()
         dir.mkdirs()
-        changelog.get().asFile.copyTo(dir.resolve("CHANGELOG.md"))
+        changelogs.forEach { it.copyTo(dir.resolve(it.name)) }
     }
 }
 
 val changelogAssets = tasks.register<ChangelogAssetTask>("changelogAssets") {
-    changelog.set(rootProject.layout.projectDirectory.file("CHANGELOG.md"))
+    changelogs.from(rootProject.layout.projectDirectory.files("CHANGELOG.md", "CHANGELOG.en.md"))
 }
 
 // Dépôt GitHub interrogé par les mises à jour intégrées : celui de la CI, sinon l'original.

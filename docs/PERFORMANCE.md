@@ -22,7 +22,7 @@ Gradle n'est donc nécessaire.
 | Classe | Ce qu'elle mesure |
 |---|---|
 | `MediaSyncLoadTest` | `MediaSyncManager` depuis un faux MediaStore (`FakeMediaStore`, fournisseur Robolectric de l'autorité `media`) : synchronisation complète, puis incrémentale (300 modifiés, 150 ajoutés, 50 supprimés), puis sans changement |
-| `TimelineScrollLoadTest` | pages Paging de la timeline (continu et sauts, `initialKey`, nombre total de chaque source), en-têtes (`insertSeparators`), histogramme de la bulle et position dans la grille (comparés aux en-têtes), position dans la visionneuse, dossiers, compteurs, recherche par étiquette, par texte, par une étiquette ou une personne seule, onglet Recherche (étiquettes vérifiées) |
+| `TimelineScrollLoadTest` | pages Paging de la timeline (continu et sauts, `initialKey`, nombre total de chaque source), en-têtes (`insertSeparators`), histogramme de la bulle et position dans la grille (comparés aux en-têtes, sur dix et trente ans), position dans la visionneuse, dossiers, compteurs, recherche par étiquette, par texte, par nom de fichier, par mois de toutes les années, par une étiquette ou une personne seule (résultats vérifiés), onglet Recherche (étiquettes vérifiées) |
 | `AnalysisQueueLoadTest` | sélection et enregistrement des 2 078 lots de l'analyse principale, sélection des lots des étapes (texte, visages, empreintes) et compteurs d'avancement, au fil de l'avancement ; compteur affiché pendant 40 lots écrits en 2 s, relu à chaque lot ou échantillonné (§ 5.6) |
 | `AnalysisComputeLoadTest` | calculs par photo exécutables sur la JVM : dHash et netteté, géocodage, alignement et SFace, prétraitement et TinyCLIP, recherche par le sens, regroupement des visages |
 | `DataBackupLoadTest` | sauvegarde des données de toute la bibliothèque (20 000 visages et leurs empreintes, albums, historique), vérification de l'archive, restauration sur un autre téléphone (autres `_ID`, dossiers en partie déplacés) : durées et mémoire retenue |
@@ -75,6 +75,10 @@ le sens est mesurée en mémoire (§ 4.4).
   dont 2 sur le code fusionné avec les lieux traduits, le redressement et la sauvegarde
   automatique du coffre (3 pour les compteurs d'avancement, modifiés en dernier). Corrections
   des § 5.5 à 5.9 (version 7) : 2 passages sur la 1.9.0 (« 1.9.0 » ci-dessous), 3 après.
+  Corrections des § 5.10 à 5.13 (version 8) : 3 passages sur la 1.10.0 (« 1.10.0 » ci-dessous),
+  alternés avec 3 après, la machine étant plus chargée (charge moyenne de 3 à 7) : les durées
+  absolues varient davantage, les rapports peu ; la recherche, 3 passages alternés de plus sur
+  une machine moins chargée (charge de 1,4 à 2,6), dont les médianes sont reprises ici.
 - Les temps sont ceux d'une JVM de bureau, pas d'un téléphone : voir les limites (§ 8).
 
 ---
@@ -85,15 +89,17 @@ le sens est mesurée en mémoire (§ 4.4).
 
 | Opération | Avant | Après |
 |---|---|---|
-| Complète, 50 000 médias (premier lancement) | 1,5 s (0,8 à 2,3) | 0,9 s (0,8 à 1,2) |
+| Complète, 50 000 médias (premier lancement) | 1,5 s (0,8 à 2,3) | 1,25 s (1,17 à 1,30 ; 1.10.0 : 0,84 à 0,92, sans les mots des noms, § 5.11) |
 | Incrémentale : 300 modifiés, 150 ajoutés, 50 supprimés | 300 ms | 295 ms (270 à 660) |
 | Sans changement (retour au premier plan) | 81 ms | 66 ms |
 
 La synchronisation n'avait pas de point chaud : l'incrémentale lit les seules lignes modifiées
 (`GENERATION_MODIFIED`), puis les 50 000 identifiants pour les suppressions, et purge les
 métadonnées orphelines (`NOT IN`, par la clé primaire). Les nouveaux index composés ne la
-ralentissent pas de façon mesurable. Le coût de MediaStore lui-même (IPC, `CursorWindow`) n'est
-pas mesuré.
+ralentissent pas de façon mesurable ; les mots des noms de fichiers (§ 5.11), écrits avec chaque
+média, ajoutent 0,35 s à l'indexation complète, rien de mesurable à l'incrémentale, et les comptes
+des étiquettes (§ 5.10) rien sans étiquette. Le coût de MediaStore lui-même (IPC, `CursorWindow`)
+n'est pas mesuré.
 
 ### 4.2 Défilement, grilles et recherche
 
@@ -110,13 +116,16 @@ pas mesuré.
 | Compteur de la timeline / du filtre Vidéos | 2,2 / 9,4 ms | 2,1 / 0,6 ms |
 | Histogramme mensuel (bulle de date, § 5.7) | 124 ms | **4,5 ms** (1.9.0 : 91 à 101) |
 | Position d'un média (ouverture de la visionneuse) | 11 ms | 3,6 ms |
-| Position dans la grille avec en-têtes de jour (retour de la visionneuse, § 5.7) ; média le plus ancien | 180 ms | **11 ms** ; 21 ms (1.9.0 : 134 à 149) |
+| Position dans la grille avec en-têtes de jour (retour de la visionneuse, § 5.7) ; média le plus ancien (§ 5.13) | 180 ms | **11 ms** ; 14 ms (1.9.0 : 134 à 149 ; 1.10.0 : 12 à 19 pour le plus ancien) |
+| … média le plus ancien d'une bibliothèque de trente ans, vingt premières années clairsemées (§ 5.13) | — | **20 ms** (1.10.0 : 34 à 40) |
 | En-têtes de jour (`insertSeparators`) sur 50 000 médias | 25 à 50 ms | (inchangé) |
 | Conversion de 50 000 `MediaEntity` en `MediaItem` | ≈ 50 ms | (inchangé) |
-| Recherche « chien » (races comprises, 5 004 résultats) : nombre / première page (§ 5.9) | 75 / 170 ms | 71 / 124 ms (1.9.0 : 96 à 107 / 164 à 200) |
-| Recherche « facture » (nom de fichier ou texte reconnu) : nombre / première page | 68 / 162 ms | 67 / 100 ms (1.9.0 : 108 à 139 / 146 à 149) |
+| Recherche « chien » (races comprises, 5 004 résultats) : nombre / première page (§ 5.9, 5.11) | 75 / 170 ms | **37 / 90 ms** (1.9.0 : 96 à 107 / 164 à 200 ; 1.10.0 : 60 à 94 / 106 à 135) |
+| Recherche « facture » (nom de fichier ou texte reconnu) : nombre / première page | 68 / 162 ms | **31 / 60 ms** (1.9.0 : 108 à 139 / 146 à 149 ; 1.10.0 : 60 à 87 / 93 à 100) |
+| Recherche « shot » (« Screenshot_… », nom de fichier ou texte reconnu, 4 023 résultats) : nombre / première page (§ 5.11) | — | 33 / 55 ms (1.10.0 : 45 à 56 / 70 à 81) |
+| Recherche « juillet » (mois de toutes les années, 3 767 résultats) : nombre / première page (§ 5.12) | — | **12 / 18 ms** (1.10.0 : 73 à 85 / 84 à 100) |
 | Étiquette seule (ouverte depuis l'onglet Recherche) / personne : nombre, `Flow` compris | — | 24 / 12 ms (SQL seul : 24 → 11 ms) |
-| Onglet Recherche : étiquettes les plus présentes / lieux (§ 5.8) | 376 / 96 ms | **125** / 31 ms (1.9.0 : 364 à 426 / 28 à 39), au plus une fois par 5 s |
+| Onglet Recherche : étiquettes les plus présentes / lieux (§ 5.8, 5.10) | 376 / 96 ms | **1,2** / 30 ms (1.9.0 : 364 à 426 / 28 à 39 ; 1.10.0 : 90 à 106 / 29 à 38), au plus une fois par 5 s |
 
 En-têtes et conversion des pages s'exécutent sur le fil principal (transformations de
 `PagingData` collectées dans `viewModelScope`) : 0,1 ms environ par page de 120 médias.
@@ -129,7 +138,7 @@ Analyse principale, 2 078 lots de 24 (`AnalysisWorker.BATCH_SIZE`) sur toute la 
 |---|---|---|
 | Sélection d'un lot, au début / à la fin de l'analyse | 23 / 17 ms (tri de toute la bibliothèque à chaque lot) | **0,8 / 0,6 ms** |
 | Sélection des 2 078 lots | ≈ 42 s (estimé, 2 078 × 20 ms) | **1,5 s** (mesuré) |
-| Enregistrement d'un lot (analyse et étiquettes) | (inchangé) | 2,1 ms (4,8 s pour les 2 078) |
+| Enregistrement d'un lot (analyse et étiquettes) | (inchangé) | 3,1 ms, comptes des étiquettes compris (7,3 s pour les 2 078 ; 1.10.0 : 2,3 ms, 5,0 s ; § 5.10) |
 | Premier lot d'un passage (sans curseur), à 0 / 49 / 94 % | 23 / 19 / 17 ms | 2,6 / 31 / 87 ms |
 | Compteur d'avancement (`pendingCount`), une lecture, à 0 / 49 / 94 % | 9 / 19 / 25 ms | 13 / 17 / 15 ms |
 | Compteur affiché pendant 40 lots écrits en 2 s (§ 5.6) : lectures, temps de lecture | 41 lectures, 595 à 661 ms (1.9.0, une par lot) | **2 lectures, 25 à 35 ms** |
@@ -363,6 +372,84 @@ des identifiants : « chien » 96 à 107 → 71 ms, « facture » 108 à 139 →
 qui comptait aussi, passe de 146 à 200 ms à 100 à 124 ms. Les pages gardent l'index des dates.
 Tests : `QueryPlanTest`, `MediaQueryBuilderTest`.
 
+### 5.10 Étiquettes de l'onglet Recherche : des comptes tenus à jour
+
+Après le § 5.8, le comptage parcourait encore l'index des étiquettes en vérifiant, pour chacune des
+157 000 lignes, que son média est présent et hors corbeille (liste de leurs identifiants) : 90 ms,
+dont 10 pour le parcours lui-même. Correction (version 8 de la base, `MIGRATION_7_8`) : la table
+`label_count` (étiquette → nombre de médias de l'index, hors corbeille), tenue à jour dans la
+transaction de chaque écriture des médias (`MediaDao.upsert`, `deleteByIds` : synchronisation,
+corbeille, accès partiel) et des étiquettes (`AnalysisDao.save`).
+`LabelCountQueries.withLabelCounts` retire des comptes les étiquettes visibles des médias écrits
+avant l'écriture, puis ajoute celles d'après : deux `INSERT OR REPLACE … SELECT … GROUP BY label`,
+depuis la clé primaire de `media_label` (« + » écarte l'index de la corbeille, qui ferait lire
+toute la timeline à chaque lot) ; rien sans aucune étiquette (première synchronisation). L'onglet
+lit les 60 premières de `label_count`, puis leur couverture comme avant : 90 à 106 ms → 0,9 à 3 ms
+(médiane 1,2). Coût : un lot de l'analyse s'enregistre en 3,1 ms au lieu de 2,3 (7,3 s au lieu de
+5,0 pour les 2 078 lots, à côté d'heures de ML Kit). Écartée : soustraire du total les étiquettes
+des médias absents ou dans la corbeille (fusion `EXCEPT` des deux index par identifiant) : 41 ms,
+mais 165 ms quand l'index ne garde qu'une partie de la bibliothèque (accès partiel d'Android 14).
+Tests : `LabelCountTest` (comptes égaux au recalcul complet après chaque type d'écriture),
+`QueryPlanTest`, `DatabaseMigrationsTest` (7 → 8 depuis `7.json`), `TimelineScrollLoadTest`
+(résultat comparé à un comptage en Kotlin, budget 20 ms).
+
+### 5.11 Recherche par mot : les noms de fichiers par un index plein texte
+
+Chaque mot cherche aussi dans le nom de fichier (`display_name LIKE '%…%'`), une alternative
+qu'aucun index ne sert : le nombre de résultats lisait toute la table `media` (23 ms pour ce seul
+`LIKE`), la première page l'évaluait pour chaque média parcouru. Correction (version 8) : l'index
+plein texte FTS4 `media_name` (FTS5 n'est ni garanti dans le SQLite d'Android ni pris en charge par
+Room), tokenizer `simple`, qui ne replie que la casse ASCII comme `LIKE`. FTS ne trouve que des
+débuts de mots : chaque suite de lettres du nom y figure avec ses suffixes d'au moins trois lettres
+(« Screenshot » : « Screenshot creenshot … shot hot », 2,6 mots par nom), si bien qu'un mot d'au
+moins trois lettres ASCII contenu dans un nom commence l'un d'eux (`MATCH '"shot*"'`). Les
+candidats sont revérifiés par le `LIKE` d'avant : aucun résultat perdu ni ajouté. Un texte plus
+court, avec un chiffre, un séparateur ou une lettre non ASCII garde le `LIKE` sur chaque nom (les
+mots de la saisie sont normalisés : `[a-z0-9]`). Toutes les alternatives d'un mot passent alors par
+les médias de leur critère (`MULTI-INDEX OR`, clé primaire) : nombre de résultats de « chien »,
+« facture » et « shot » : 62, 63 et 48 → 37, 31 et 33 ms ; première page, nombre compris : 119, 95
+et 76 → 90, 60 et 55 ms. L'index suit `media` dans les mêmes écritures que `label_count` (§ 5.10) :
+la synchronisation complète de 50 000 médias (premier lancement) passe de 0,9 à 1,25 s,
+l'incrémentale ne change pas de façon mesurable ; la migration calcule les mots des médias déjà
+indexés.
+Tests : `MediaNameSearchTest` (mêmes résultats que `LIKE` pour les 667 mots de lettres des noms
+d'essai : majuscules, accents, chiffres, longues suites de lettres ; renommage et retrait),
+`QueryPlanTest`, `MediaQueryBuilderTest`, `TimelineScrollLoadTest` (« shot », comparé à un comptage
+en Kotlin).
+
+### 5.12 Mois de toutes les années : bornes calculées en Kotlin
+
+Un mois de toutes les années (« juillet ») comparait `strftime('%m', …, 'localtime')`, calculé pour
+chaque média : 73 à 85 ms pour le nombre de résultats de « juillet », 84 à 100 ms pour la première
+page. Correction : comme au § 5.7, les bornes du mois de chaque année de 1900 à 2049 sont calculées
+en Kotlin dans le fuseau courant (minuit local du premier jour, comme les en-têtes), puis cherchées
+par dichotomie (`CASE` imbriqués, 9 comparaisons) sur la date lue dans l'index de la requête ; hors
+de ces années (photos très anciennes, dates aberrantes), le mois local de SQLite, évalué pour ces
+seuls médias. Nombre : 10 à 27 ms (médiane 12) ; première page : 16 à 23 ms (médiane 18). Écartées : une
+alternative par année (`OR`, évaluées une à une : 63 ms pour 58 ans, 182 ms pour 200), une
+sous-requête sur une table de valeurs (5 ms pour le nombre, mais la requête ne lirait plus
+seulement `media`, § 5.3).
+Tests : `MediaPeriodsTest` (fuseau de Paris, autour de minuit et des changements d'heure, aux deux
+bouts des années bornées et au-delà), `MediaQueryBuilderTest`, `QueryPlanTest`,
+`TimelineScrollLoadTest` (comparé au mois local de chaque média, budgets 50 et 60 ms).
+
+### 5.13 Position du média le plus ancien : des suites de périodes, les mois d'abord
+
+Au retour de la visionneuse, les en-têtes de jour avant un média étaient comptés par une recherche
+dans l'index par jour, vide ou non, jusqu'au début de la grille : pour le plus ancien, 3 650 jours
+en huit tables de valeurs de 500 lignes, plus longues à préparer (5 ms) qu'à parcourir.
+Correction : les périodes sont regroupées en suites de même durée (`MediaQueryBuilder.periodRuns` :
+une suite pour dix ans de jours en temps universel, 41 avec les changements d'heure de Paris)
+qu'une table récursive (`WITH RECURSIVE`, SQLite 3.8.3 et plus : Android 10 a la 3.22) déroule :
+une requête courte, 3 650 jours sondés en 5 ms.
+Au-delà de deux mois de jours, les mois sans média sont écartés d'abord (une requête, 1 ms pour
+121 mois) et seuls les jours des autres sont sondés : sans gain sur la bibliothèque de synthèse,
+dense, mais une bibliothèque de trente ans aux vingt premières années clairsemées (deux photos par
+an) n'a plus 7 300 jours vides à chercher. Plus ancien des 50 000 : 12 à 19 → 11 à 16 ms ; sur
+trente ans : 34 à 40 → 20 à 24 ms.
+Tests : `MediaPeriodsTest` (positions égales à celles de la grille, mois d'abord compris),
+`MediaQueryBuilderTest`, `QueryPlanTest`, `TimelineScrollLoadTest` (dix et trente ans).
+
 ---
 
 ## 6. Plans d'exécution surveillés
@@ -378,15 +465,23 @@ presque vide. Assertions :
   seul (sous-requête corrélée sans tri) ;
 - compteurs de la timeline et des filtres, position : index seul (`COVERING INDEX`) ;
 - histogramme et en-têtes avant un média : dates extrêmes puis chaque période par sa plage de
-  dates dans l'index seul (`date_taken>? AND date_taken<?`), sans `strftime` ni tri ;
+  dates dans l'index seul (`date_taken>? AND date_taken<?`), sans `strftime` ni tri ; avant un
+  média lointain, mois puis jours non vides, chacun d'une requête à table récursive (`WITH
+  RECURSIVE`) ;
+- mois de toutes les années : index de la timeline (seul pour le nombre), sans tri, `strftime`
+  seulement pour les dates hors des années bornées en Kotlin ;
 - files de l'analyse : index de la timeline ou des types, sans tri ; reprise par une borne sur la
   date (`date_taken<?`) ;
 - compteurs d'avancement : `media` dans l'ordre des identifiants, table de l'étape par sa clé ;
 - recherche par étiquette : index (`label`, `confidence`, `media_id`) seul, jamais de parcours
-  complet de `media_label` ; nombre de résultats depuis les médias du critère (clé primaire), ou
-  `media` dans l'ordre des identifiants avec un nom de fichier ;
-- étiquettes de l'onglet Recherche : comptage dans l'ordre de cet index, sans regroupement
-  temporaire ; couverture par ce même index, sans trier toutes les photos d'une étiquette ;
+  complet de `media_label` ; nombre de résultats depuis les médias du critère (clé primaire) ;
+- recherche par mot : noms de fichiers par l'index plein texte `media_name`, nombre de résultats
+  sans parcours de `media`, pages par l'index des dates sans tri ; `media` dans l'ordre des
+  identifiants pour un texte que cet index ne sert pas (chiffre, séparateur) ;
+- étiquettes de l'onglet Recherche : nombres lus dans `label_count`, sans relire `media_label` ;
+  couverture par l'index des étiquettes, sans trier toutes les photos d'une étiquette ; comptes
+  d'une écriture (lot de l'analyse, synchronisation) depuis les étiquettes de ses médias (clé
+  primaire), jamais toute la timeline ;
 - sauvegarde des données : chaque tranche par la clé primaire de sa table (`rowid>?`), le contenu
   des albums par sa clé composée (`(album_id,media_id)>(?,?)`), sans `TEMP B-TREE`.
 
@@ -397,22 +492,19 @@ protège le SQL de Focale, pas le choix de chaque version.
 
 ## 7. Coûts restants et pistes
 
-Les cinq pistes de la 1.9.0 sont traitées (§ 5.5 à 5.9). Restent :
+Les quatre pistes de la 1.10.0 sont traitées (§ 5.10 à 5.13). Restent :
 
-- **Étiquettes de l'onglet Recherche** (≈ 100 à 130 ms, au plus une fois par 5 s pendant
-  l'analyse) : le comptage vérifie encore, pour chacune des 157 000 lignes, que son média est hors
-  de la corbeille et présent (l'accès partiel d'Android 14 garde les étiquettes des médias non
-  sélectionnés). Un compte tenu à jour par étiquette supprimerait ce parcours, au prix d'une
-  écriture de plus par lot.
-- **Recherche par mot** : chaque mot cherche aussi dans le nom de fichier (`LIKE '%…%'`), ce qui
-  oblige à lire toute la table `media` (≈ 65 ms pour le nombre, 100 à 125 ms pour la première
-  page, qui parcourt l'index des dates jusqu'à 360 résultats). Un index plein texte (FTS) des noms
-  de fichier et du texte reconnu le permettrait sans parcours.
-- **Mois de toutes les années** (« juillet ») : `strftime('%m', …, 'localtime')` pour chaque média ;
-  comme au § 5.7, une plage de dates par année, bornée en Kotlin, le remplacerait.
-- **Position dans la grille du média le plus ancien** : une recherche dans l'index par jour, vide
-  ou non, jusqu'au début de la grille (21 ms pour 3 650 jours) ; à l'échelle de 30 ans de photos,
-  sonder d'abord les mois écarterait les jours vides.
+- **Texte reconnu dans la recherche par mot** : chaque mot lit toute la table `media_text`
+  (`LIKE '%…%'` sur la clé normalisée de 47 000 lignes, 17 à 22 ms), avant la première page comme
+  pour le nombre de résultats : c'est désormais l'essentiel d'une recherche. Les suffixes de
+  chaque mot, comme pour les noms (§ 5.11), feraient un index trop gros (des dizaines de mots par
+  capture d'écran) ; FTS4 ne trouverait que des débuts de mots (« fi » dans « wifi » ne serait
+  plus trouvé), un changement de comportement à décider.
+- **Lieux dans la recherche par mot** : `(' ' || place_key) LIKE` sur les 50 000 lignes de
+  `media_analysis` (5 ms par mot) pour quelques dizaines de lieux distincts ; chercher d'abord
+  parmi les clés distinctes (une table des lieux) l'éviterait.
+- **Index des noms à la première synchronisation** : les mots des 50 000 noms ajoutent environ
+  0,35 s (+ 40 %) à l'indexation complète (§ 4.1), une fois.
 
 ---
 

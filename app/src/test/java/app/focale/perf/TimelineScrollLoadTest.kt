@@ -16,10 +16,12 @@ import app.focale.core.model.MediaFilter
 import app.focale.core.model.MediaQuery
 import app.focale.core.model.SearchTerm
 import app.focale.data.AlbumRepository
+import app.focale.data.DateGrouping
 import app.focale.data.MediaRepository
 import app.focale.data.toGridItems
 import app.focale.data.toModel
 import app.focale.ml.SearchQueryParser
+import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -183,6 +185,24 @@ class TimelineScrollLoadTest {
     }
 
     @Test
+    fun `position du média le plus ancien d'une bibliothèque de trente ans`() = runBlocking<Unit> {
+        // Vingt ans de plus avant les dix de la bibliothèque, deux photos par an (albums numérisés,
+        // anciens téléphones) : 7 300 jours de plus jusqu'au début de la grille, presque tous vides.
+        val model = library.timelineOrder.first()
+        val older = (1..40).map { i -> model.copy(id = OLDER_FIRST_ID + i, dateTaken = SyntheticLibrary.START_MS - i * 182L * DAY_MS) }
+        database.mediaDao().upsert(older)
+        val zone = ZoneId.systemDefault()
+        val timeline = library.timelineOrder + older
+        val days = timeline.mapTo(HashSet()) { DateGrouping.periodKey(it.dateTaken, GroupLevel.DAY, zone) }.size
+        val oldest = older.last()
+        val samples = report.samples(repeat = 3) {
+            // Index dans la grille : les médias qui le précèdent, plus un en-tête par jour jusqu'au sien.
+            assertEquals(timeline.size - 1 + days, repository.gridPositionOf(MediaQuery.Timeline, oldest.id, GroupLevel.DAY, zone))
+        }
+        report.check("position dans la grille, média le plus ancien sur trente ans", samples, budgetMs = 2 * GRID_POSITION_BUDGET_MS, detail = "$days jours non vides")
+    }
+
+    @Test
     fun `dossiers, compteurs et recherche`() = runBlocking<Unit> {
         val expected = library.timelineOrder
         val albums = AlbumRepository(database.albumDao(), database.mediaDao(), repository, Dispatchers.IO)
@@ -221,7 +241,7 @@ class TimelineScrollLoadTest {
             val page = TestPager(MediaRepository.PAGING_CONFIG, repository.pagingSource(dog)).refresh()
             assertEquals(expected.filter { it.id in dogIds }.take(360).map { it.id }, (page as LoadResult.Page).data.map { it.id })
         }
-        report.check("recherche « chien » : première page", dogPage, budgetMs = 800.0)
+        report.check("recherche « chien » : première page", dogPage, budgetMs = SEARCH_PAGE_BUDGET_MS)
 
         // Recherche par texte : nom de fichier et texte reconnu (« facture »).
         val invoice = SearchQueryParser.parse("facture")
@@ -232,7 +252,33 @@ class TimelineScrollLoadTest {
         val textPage = report.samples(repeat = 3) {
             TestPager(MediaRepository.PAGING_CONFIG, repository.pagingSource(invoice)).refresh()
         }
-        report.check("recherche « facture » : première page", textPage, budgetMs = 750.0)
+        report.check("recherche « facture » : première page", textPage, budgetMs = SEARCH_PAGE_BUDGET_MS)
+
+        // Nom de fichier : « shot » (« Screenshot_… »), cherché dans le nom et le texte reconnu ;
+        // résultat comparé à un comptage en Kotlin, sans résultat perdu.
+        val shot = MediaQuery(terms = listOf(SearchTerm(text = "shot")))
+        val textKeys = library.texts.associate { it.mediaId to it.textKey }
+        val shots = expected.filter { it.displayName.contains("shot", ignoreCase = true) || textKeys[it.id]?.contains("shot") == true }
+        val shotCount = report.samples(repeat = 3) { assertEquals(shots.size, repository.observeCount(shot).first()) }
+        report.check("recherche « shot » (nom de fichier) : nombre de résultats", shotCount, budgetMs = SEARCH_COUNT_BUDGET_MS, detail = "${shots.size} résultats")
+        val shotPage = report.samples(repeat = 3) {
+            val page = TestPager(MediaRepository.PAGING_CONFIG, repository.pagingSource(shot)).refresh()
+            assertEquals(shots.take(360).map { it.id }, (page as LoadResult.Page).data.map { it.id })
+        }
+        report.check("recherche « shot » (nom de fichier) : première page", shotPage, budgetMs = SEARCH_PAGE_BUDGET_MS)
+
+        // Mois de toutes les années (« juillet ») : mois local de chaque média, comme les en-têtes.
+        val zone = ZoneId.systemDefault()
+        val july = SearchQueryParser.parse("juillet")
+        assertEquals(7, july.month)
+        val julyMedia = expected.filter { Instant.ofEpochMilli(it.dateTaken).atZone(zone).monthValue == 7 }
+        val julyCount = report.samples(repeat = 3) { assertEquals(julyMedia.size, repository.observeCount(july).first()) }
+        report.check("recherche « juillet » : nombre de résultats", julyCount, budgetMs = MONTH_COUNT_BUDGET_MS, detail = "${julyMedia.size} résultats")
+        val julyPage = report.samples(repeat = 3) {
+            val page = TestPager(MediaRepository.PAGING_CONFIG, repository.pagingSource(july)).refresh()
+            assertEquals(julyMedia.take(360).map { it.id }, (page as LoadResult.Page).data.map { it.id })
+        }
+        report.check("recherche « juillet » : première page", julyPage, budgetMs = MONTH_PAGE_BUDGET_MS)
 
         // Critère d'une autre table seul (étiquette ouverte depuis l'onglet Recherche, personne) :
         // le compte part de ses médias, par la clé primaire.
@@ -271,7 +317,16 @@ class TimelineScrollLoadTest {
         const val JUMP_BUDGET_MS = 60.0
         const val HISTOGRAM_BUDGET_MS = 30.0
         const val GRID_POSITION_BUDGET_MS = 70.0
-        const val SEARCH_COUNT_BUDGET_MS = 350.0
-        const val THINGS_BUDGET_MS = 600.0
+        const val SEARCH_COUNT_BUDGET_MS = 150.0
+        const val SEARCH_PAGE_BUDGET_MS = 500.0
+
+        // Étiquettes lues dans leurs comptes : 1 à 2 ms, 90 ms à les recompter. Mois de toutes les
+        // années borné en Kotlin : 10 et 18 ms, 76 et 91 ms avec strftime pour chaque média.
+        const val THINGS_BUDGET_MS = 20.0
+        const val MONTH_COUNT_BUDGET_MS = 50.0
+        const val MONTH_PAGE_BUDGET_MS = 60.0
+
+        const val DAY_MS = 86_400_000L
+        const val OLDER_FIRST_ID = 10_000_000L
     }
 }

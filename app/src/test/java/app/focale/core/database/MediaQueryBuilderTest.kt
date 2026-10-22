@@ -89,9 +89,23 @@ class MediaQueryBuilderTest {
         )
         assertTrue(where.contains("m.id IN (SELECT media_id FROM face WHERE person_id IN (4,12))"))
         // Étiquettes, nom de fichier, texte reconnu ou personne : une seule voie suffit.
-        assertTrue(where.contains("label IN (?)) OR m.display_name LIKE ?"))
+        assertTrue(where.contains("label IN (?)) OR (m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ?) AND m.display_name LIKE ?"))
         assertTrue(where.contains(" OR m.id IN (SELECT media_id FROM face WHERE person_id IN (4,12)))"))
-        assertEquals(listOf<Any?>("Beach", "%marie%", "%marie%"), args)
+        assertEquals(listOf<Any?>("Beach", "\"marie*\"", "%marie%", "%marie%"), args)
+    }
+
+    @Test
+    fun `un mot de lettres est cherché dans les noms par l'index plein texte, revérifié par LIKE`() {
+        val args = mutableListOf<Any?>()
+        val where = MediaQueryBuilder.where(MediaQuery(terms = listOf(SearchTerm(text = " Facture "))), args)
+        assertTrue(where, where.contains("(m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ?) AND m.display_name LIKE ? ESCAPE '\\')"))
+        assertEquals(listOf<Any?>("\"Facture*\"", "%Facture%", "%facture%"), args)
+        // Chiffre, séparateur ou lettre non ASCII : LIKE sur chaque nom, comme avant.
+        for (text in listOf("img2024", "img_1", "été")) {
+            val other = MediaQueryBuilder.where(MediaQuery(terms = listOf(SearchTerm(text = text))), mutableListOf())
+            assertFalse(other, other.contains("media_name"))
+            assertTrue(other, other.contains("m.display_name LIKE ? ESCAPE"))
+        }
     }
 
     @Test
@@ -103,11 +117,15 @@ class MediaQueryBuilderTest {
     }
 
     @Test
-    fun `le filtre de mois compare le mois local sur deux chiffres`() {
+    fun `le filtre de mois borne le mois de chaque année en Kotlin, le mois de SQLite hors de ces années`() {
         val args = mutableListOf<Any?>()
         val where = MediaQueryBuilder.where(MediaQuery(month = 7), args)
-        assertTrue(where.contains("strftime('%m'"))
+        // Années de FIRST_MONTH_YEAR à LAST_MONTH_YEAR : dichotomie sur les bornes, sans strftime.
+        val (outside, inside) = where.substringAfter("CASE WHEN ").split(" THEN ", limit = 2)
+        assertTrue(outside, outside.startsWith("m.date_taken < ") && " OR m.date_taken >= " in outside)
+        assertTrue(inside, inside.startsWith("strftime('%m'") && "strftime" !in inside.substringAfter(" ELSE "))
         assertEquals(listOf<Any?>("07"), args)
+        assertTrue(MediaQueryBuilder.readsOnlyMedia(MediaQuery(month = 7)))
     }
 
     @Test
@@ -144,8 +162,26 @@ class MediaQueryBuilderTest {
         assertTrue(sql, sql.contains("VALUES (0,100),(100,250)"))
         assertTrue(sql, sql.contains("m.date_taken >= p.column1 AND m.date_taken < p.column2"))
         assertFalse(sql, sql.contains("strftime"))
-        val periods = MediaQueryBuilder.periodsWithMedia(MediaQuery(), listOf(0L, 100L)).sql
-        assertTrue(periods, periods.contains("WHERE EXISTS (SELECT 1 FROM media m WHERE m.is_trashed = 0 AND m.date_taken >= p.column1"))
+    }
+
+    @Test
+    fun `les périodes sondées sont des suites déroulées par une table récursive`() {
+        val day = 86_400_000L
+        // Jours de 24 heures, un jour de 23 heures (changement d'heure), puis un trou (mois écarté).
+        val periods = listOf(0L to day, day to 2 * day, 2 * day to 3 * day, 3 * day to 4 * day - 3_600_000, 10 * day to 11 * day)
+        val runs = MediaQueryBuilder.periodRuns(periods)
+        assertEquals(
+            listOf(
+                MediaQueryBuilder.PeriodRun(0, day, 3),
+                MediaQueryBuilder.PeriodRun(3 * day, day - 3_600_000, 1),
+                MediaQueryBuilder.PeriodRun(10 * day, day, 1),
+            ),
+            runs,
+        )
+        val sql = MediaQueryBuilder.periodsWithMedia(MediaQuery(), runs).sql
+        assertTrue(sql, sql.startsWith("WITH RECURSIVE r(s, step, n) AS (VALUES (0,$day,3),"))
+        assertTrue(sql, sql.contains("WHERE EXISTS (SELECT 1 FROM media m WHERE m.is_trashed = 0 AND m.date_taken >= d.s + d.k * d.step"))
+        assertTrue(MediaQueryBuilder.nonEmptyPeriods(MediaQuery(), runs).sql.contains("SELECT d.s + d.k * d.step AS period_start FROM d"))
     }
 
     @Test

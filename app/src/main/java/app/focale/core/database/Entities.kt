@@ -3,6 +3,7 @@ package app.focale.core.database
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Fts4
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -172,6 +173,31 @@ data class MediaLabelEntity(
     @ColumnInfo(name = "media_id") val mediaId: Long,
     val label: String,
     val confidence: Float,
+)
+
+/**
+ * Nombre de médias hors corbeille (présents dans `media`) qui portent chaque étiquette : les
+ * étiquettes de l'onglet Recherche sans relire les 150 000 lignes de `media_label`. Tenu à jour
+ * dans la transaction de chaque écriture des médias ou des étiquettes ([LabelCountQueries]) ;
+ * recalculable, il n'entre pas dans la sauvegarde des données (docs/PERFORMANCE.md).
+ */
+@Entity(tableName = "label_count")
+data class LabelCountEntity(
+    @PrimaryKey val label: String,
+    val count: Int,
+)
+
+/**
+ * Mots des noms de fichiers (index plein texte FTS4) : chaque suite de lettres du nom et ses
+ * suffixes ([MediaNames.document]), d'où la recherche d'un mot dans les noms par l'index au lieu
+ * d'un `LIKE` sur toute la table `media`. Tenu à jour avec l'index des médias ([MediaDao.upsert]).
+ */
+@Fts4
+@Entity(tableName = "media_name")
+data class MediaNameEntity(
+    /** `_ID` MediaStore du média. */
+    @PrimaryKey @ColumnInfo(name = "rowid") val mediaId: Long,
+    val words: String,
 )
 
 /** Élément de la corbeille applicative (Android 10 uniquement). */

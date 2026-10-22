@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.Flow
 data class LabelStat(
     val label: String,
     val count: Int,
-    @ColumnInfo(name = "cover_id") val coverId: Long,
+    @ColumnInfo(name = "cover_id") val coverId: Long?,
 )
 
 /** Lieu et nombre de médias pris sur place, avec le plus récent. */
@@ -47,7 +47,7 @@ data class PlaceKeyRow(
 )
 
 @Dao
-interface AnalysisDao {
+interface AnalysisDao : LabelCountQueries {
 
     /**
      * Médias à analyser (jamais analysés, modifiés depuis, ou analysés par une ancienne version),
@@ -105,13 +105,27 @@ interface AnalysisDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLabels(labels: List<MediaLabelEntity>)
 
-    /** Enregistre un lot d'analyses et remplace les étiquettes correspondantes. */
+    /**
+     * Enregistre un lot d'analyses et remplace les étiquettes correspondantes, reportées dans
+     * `label_count` : une écriture de plus par lot, pour ne plus relire toutes les étiquettes.
+     */
     @Transaction
-    suspend fun save(analysis: List<MediaAnalysisEntity>, labels: List<MediaLabelEntity>) {
-        deleteLabels(analysis.map { it.mediaId })
-        upsert(analysis)
-        insertLabels(labels)
+    suspend fun save(analysis: List<MediaAnalysisEntity>, labels: List<MediaLabelEntity>) =
+        withLabelCounts(analysis.map { it.mediaId } + labels.map { it.mediaId }) {
+            deleteLabels(analysis.map { it.mediaId })
+            upsert(analysis)
+            insertLabels(labels)
+        }
+
+    /** Recalcule `label_count` depuis toutes les étiquettes (contrôle des tests). */
+    @Transaction
+    suspend fun rebuildLabelCounts() {
+        clearLabelCounts()
+        countAllLabels()
     }
+
+    @Query("SELECT label, count FROM label_count WHERE count != 0 ORDER BY label")
+    suspend fun labelCounts(): List<LabelTally>
 
     @Query("SELECT * FROM media_analysis WHERE media_id = :mediaId")
     fun observe(mediaId: Long): Flow<MediaAnalysisEntity?>
@@ -121,11 +135,10 @@ interface AnalysisDao {
 
     /**
      * Les [limit] étiquettes les plus présentes hors corbeille (onglet Recherche), avec leur photo
-     * la plus sûre. Comptage dans l'ordre de l'index (`label`, `confidence`, `media_id`), qui
-     * suffit seul : chaque ligne compte si son média est dans la liste des médias hors corbeille
-     * (« + » : SQLite ne part pas des médias, ce qui l'obligeait à regrouper 150 000 lignes dans
-     * un arbre temporaire). Couverture cherchée pour les étiquettes retenues seulement : la
-     * première de l'index par confiance décroissante (docs/PERFORMANCE.md). À égalité, par nom.
+     * la plus sûre. Nombres lus dans `label_count`, tenu à jour à chaque écriture : compter les
+     * 150 000 lignes de `media_label` en vérifiant le média de chacune coûtait 90 ms. Couverture
+     * cherchée pour les étiquettes retenues seulement : la première de l'index (`label`,
+     * `confidence`, `media_id`) par confiance décroissante (docs/PERFORMANCE.md). À égalité, par nom.
      */
     @Query(
         """
@@ -133,13 +146,7 @@ interface AnalysisDao {
                (SELECT l2.media_id FROM media_label l2 JOIN media m2 ON m2.id = l2.media_id
                 WHERE l2.label = s.label AND m2.is_trashed = 0
                 ORDER BY l2.confidence DESC, m2.date_taken DESC LIMIT 1) AS cover_id
-        FROM (
-            SELECT l.label AS label, COUNT(*) AS count FROM media_label l
-            WHERE +l.media_id IN (SELECT id FROM media WHERE is_trashed = 0)
-            GROUP BY l.label
-            ORDER BY count DESC, l.label
-            LIMIT :limit
-        ) s
+        FROM (SELECT label, count FROM label_count WHERE count > 0 ORDER BY count DESC, label LIMIT :limit) s
         ORDER BY s.count DESC, s.label
         """,
     )

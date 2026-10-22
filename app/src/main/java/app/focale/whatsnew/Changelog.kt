@@ -4,10 +4,17 @@ import androidx.compose.runtime.Immutable
 import app.focale.update.AppVersion
 import app.focale.update.ReleaseNotes
 
-/** Journal des versions (CHANGELOG.md, embarqué dans les assets de l'application). */
+/**
+ * Journal des versions, embarqué dans les assets de l'application : CHANGELOG.md en français,
+ * CHANGELOG.en.md en anglais, aux mêmes sections.
+ */
 object Changelog {
 
     const val ASSET = "CHANGELOG.md"
+    const val ENGLISH_ASSET = "CHANGELOG.en.md"
+
+    /** Journal de la langue [language] (code ISO 639) : l'anglais pour toute autre que le français. */
+    fun asset(language: String): String = if (language == "fr") ASSET else ENGLISH_ASSET
 
     @Immutable
     data class Release(val version: String, val blocks: List<ReleaseNotes.Block>)

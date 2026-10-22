@@ -148,7 +148,9 @@ class MediaRepository @Inject constructor(
      * En-têtes avant celui de la période de [anchor] : périodes non vides plus récentes (ordre
      * décroissant) ou plus anciennes (croissant), bornées en Kotlin dans le fuseau [zone] puis
      * cherchées une à une dans l'index (`MediaQueryBuilder.periodsWithMedia`), sans lire les
-     * médias qui précèdent.
+     * médias qui précèdent. Les jours de plus de deux mois ne sont sondés que dans les mois non
+     * vides, écartés d'abord : une longue bibliothèque aux premières années clairsemées n'a pas
+     * tous ses jours à chercher.
      */
     private suspend fun periodsBefore(query: MediaQuery, anchor: MediaEntity, level: GroupLevel, zone: ZoneId): Int {
         val range = dao.dateRange(MediaQueryBuilder.dateRange(query))
@@ -163,7 +165,20 @@ class MediaRepository @Inject constructor(
             if (last < end) return 0
             DateGrouping.bounds(end, last, level, zone)
         }
-        return chunks(bounds).sumOf { dao.count(MediaQueryBuilder.periodsWithMedia(query, it)) }
+        var periods = bounds.zipWithNext()
+        if (level == GroupLevel.DAY && periods.size > MONTHS_FIRST_DAYS) {
+            val months = DateGrouping.bounds(bounds.first(), bounds.last() - 1, GroupLevel.MONTH, zone).zipWithNext()
+            val filled = MediaQueryBuilder.periodRuns(months).chunked(MediaQueryBuilder.MAX_PERIODS)
+                .flatMapTo(HashSet()) { dao.periodStarts(MediaQueryBuilder.nonEmptyPeriods(query, it)) }
+            // Jours et mois croissants : un seul passage associe chaque jour à son mois.
+            var month = 0
+            periods = periods.filter { (start, _) ->
+                while (month + 1 < months.size && months[month + 1].first <= start) month++
+                months[month].first in filled
+            }
+        }
+        return MediaQueryBuilder.periodRuns(periods).chunked(MediaQueryBuilder.MAX_PERIODS)
+            .sumOf { dao.count(MediaQueryBuilder.periodsWithMedia(query, it)) }
     }
 
     /** [bounds] par tranches d'au plus `MAX_PERIODS` périodes (une borne commune entre deux tranches). */
@@ -181,6 +196,9 @@ class MediaRepository @Inject constructor(
             jumpThreshold = 720,
         )
         const val MAX_SQL_ARGS = 500
+
+        /** Au-delà de ce nombre de jours à sonder (deux mois), les mois sans média sont écartés d'abord. */
+        private const val MONTHS_FIRST_DAYS = 62
     }
 }
 
