@@ -95,6 +95,18 @@ class TvSessionTest {
         runCurrent()
     }
 
+    /**
+     * Laisse passer les interrogations de la TV, d'intervalle [pollMs], jusqu'à la fin de la
+     * session : au plus [TvSession.MAX_FAILURES] échecs, plus une interrogation de marge, car
+     * la première ne part qu'une fois le média envoyé, dont l'instant dépend de la machine.
+     */
+    private fun TestScope.waitForEnd(pollMs: Long) {
+        repeat(TvSession.MAX_FAILURES + 1) {
+            if (ended.isNotEmpty()) return
+            wait(pollMs)
+        }
+    }
+
     @Test
     fun `une vidéo refusée passe au téléphone, la diffusion continue pour les médias suivants`() = sessionTest {
         fake.refuses = { it.endsWith(".mkv") }
@@ -186,7 +198,7 @@ class TvSessionTest {
         assertEquals(fake.positionMs, last.positionMs)
 
         fake.tv.unplug()
-        wait(TvSession.MAX_FAILURES * TvSession.VIDEO_POLL_MS)
+        waitForEnd(TvSession.VIDEO_POLL_MS)
         assertEquals(listOf(true), ended)
         assertEquals(listOf<CastEvent>(CastEvent.Lost("Salon", videoOnPhone = true)), events)
         // Dernière position mesurée gardée : la page du téléphone la reprend (RemotePlayer).
@@ -198,7 +210,7 @@ class TvSessionTest {
         content.value = photo(1)
         start()
         fake.tv.unplug()
-        wait(TvSession.MAX_FAILURES * TvSession.PHOTO_POLL_MS)
+        waitForEnd(TvSession.PHOTO_POLL_MS)
         assertEquals(listOf(true), ended)
         assertEquals(listOf<CastEvent>(CastEvent.Lost("Salon", videoOnPhone = false)), events)
     }
