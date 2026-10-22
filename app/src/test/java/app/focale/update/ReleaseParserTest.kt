@@ -62,6 +62,23 @@ class ReleaseParserTest {
     }
 
     @Test
+    fun `les notes d'une version sont affichées dans la langue de Focale`() {
+        // Description écrite par la CI (corps rendu par GitHub avec des fins de ligne CRLF).
+        val body = "## Nouveautés\r\n\r\n- Collages de 2 à 9 photos\r\n\r\n${ReleaseNotes.ENGLISH_MARKER}\r\n\r\n## What's new\r\n\r\n- Collages of 2 to 9 photos\r\n"
+        assertEquals(
+            listOf(ReleaseNotes.Block.Heading("Nouveautés"), ReleaseNotes.Block.Bullet("Collages de 2 à 9 photos")),
+            ReleaseNotes.parse(ReleaseNotes.forLanguage(body, "fr")),
+        )
+        val english = listOf(ReleaseNotes.Block.Heading("What's new"), ReleaseNotes.Block.Bullet("Collages of 2 to 9 photos"))
+        assertEquals(english, ReleaseNotes.parse(ReleaseNotes.forLanguage(body, "en")))
+        assertEquals(english, ReleaseNotes.parse(ReleaseNotes.forLanguage(body, "de")))
+        // Sans partie anglaise (versions antérieures, notes écrites sur GitHub) : les notes entières.
+        assertEquals("## Nouveautés\n\n- Dessins", ReleaseNotes.forLanguage("## Nouveautés\n\n- Dessins", "en"))
+        // Partie de la langue vide : l'autre.
+        assertEquals("- Only English", ReleaseNotes.forLanguage("${ReleaseNotes.ENGLISH_MARKER}\n- Only English", "fr"))
+    }
+
+    @Test
     fun `l'APK universel sert aux autres architectures, jamais la variante strict`() {
         val update = ReleaseParser.updateFrom(release, current = "1.1.0", abis = listOf("riscv64"))!!
         assertEquals("https://github.com/Karelisio/Focale/releases/download/v1.2.0/app-standard-universal-release.apk", update.apkUrl)

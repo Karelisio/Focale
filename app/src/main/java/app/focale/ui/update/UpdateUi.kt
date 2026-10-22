@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -163,11 +164,12 @@ fun UpdateBanner(state: UpdateState, onCheck: () -> Unit, onInstall: (AppUpdate)
     }
 }
 
-/** Nouveautés de la version proposée, lues dans l'application. */
+/** Nouveautés de la version proposée, lues dans l'application, dans sa langue (français, sinon anglais). */
 @Composable
 private fun ReleaseNotesSheet(update: AppUpdate, canInstall: Boolean, onInstall: () -> Unit, onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
-    val blocks = remember(update.notes) { ReleaseNotes.parse(update.notes) }
+    val language = LocalConfiguration.current.locales[0].language
+    val blocks = remember(update.notes, language) { ReleaseNotes.parse(ReleaseNotes.forLanguage(update.notes, language)) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             verticalArrangement = Arrangement.spacedBy(8.dp),
