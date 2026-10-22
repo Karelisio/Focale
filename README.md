@@ -21,7 +21,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   Google et Samsung, appui long pour les lire), GIF animés, photos Ultra HDR affichées
   en HDR (Android 14+), rotation à deux doigts (enregistrée sans perte dans l'orientation
   EXIF des JPEG et WebP, et dans leur orientation XMP que lisent Lightroom et d'autres
-  logiciels), panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
+  logiciels ; dans la propriété `irot` des HEIF / HEIC et AVIF, sans réencodage, EXIF et XMP
+  mis d'accord), panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
   copiable. Photos 360° (métadonnées GPano des JPEG, WebP et HEIF, sphères complètes ou
   partielles) en vue immersive OpenGL : glisser pour regarder autour, pincer pour le champ,
   « Bouger le téléphone » (capteur de rotation), retour à la vue initiale du fichier ; panoramas
@@ -69,17 +70,21 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 - **Édition** : recadrage libre ou au format, rotation, miroir, redressement à angle libre
   (règle graduée ou deux doigts, recadré automatiquement sans coin vide), filtres,
   luminosité / contraste / saturation / chaleur, dessin (stylo, surligneur, ligne, flèche,
-  rectangle, ellipse, gomme), texte (plusieurs lignes, déplacé au doigt, agrandi et tourné à
-  deux doigts ; couleur, taille, fond encadré ou contour, gras), zones floutées pour cacher un
-  visage ou une plaque (rectangle, ellipse ou pinceau ; flou fort ou mosaïque, irréversibles ;
-  « Visages » floute ceux que détecte ML Kit) ; enregistrement en copie ou à la place de
+  rectangle, ellipse, gomme), texte (plusieurs lignes, affiché sur la photo à mesure qu'on le
+  tape, réglages compris, la saisie restant au-dessus du clavier ; déplacé au doigt, agrandi et
+  tourné à deux doigts ; couleur, taille, fond encadré ou contour, gras), zones floutées pour
+  cacher un visage ou une plaque (rectangle, ellipse ou pinceau ; flou fort ou mosaïque,
+  irréversibles ; « Visages » floute ceux que détecte ML Kit) ; annuler / rétablir, et « Tout
+  annuler » qui rend l'original d'un coup (confirmation au-delà de quelques modifications, lui
+  aussi annulable) ; enregistrement en copie ou à la place de
   l'original. Vidéos : coupe du début et de la fin, son coupé, enregistrées en copie (Media3
   Transformer). Collages de 2 à 9 photos depuis la sélection multiple (vidéos ignorées) :
   plusieurs dispositions par nombre de photos (grilles, une grande et des petites, mosaïques
   décalées, moulinet), format 1:1, 4:5, 3:4, 9:16 ou 16:9, espacement, coins arrondis, fond blanc,
   noir ou aux couleurs Material You ; chaque photo se cadre au doigt et s'agrandit en pinçant, un
   appui long l'échange avec une autre case ; nouveau JPEG de 4 096 px dans `Pictures/Focale`, ouvert
-  dans la visionneuse ou partagé aussitôt.
+  dans la visionneuse ou partagé aussitôt, Ultra HDR si des photos le sont (Android 14+ : gainmap
+  composée case par case, cases SDR au gain neutre).
 - **Coffre-fort** : photos et vidéos chiffrées (Tink, clé dans l'Android Keystore),
   retirées de MediaStore et des autres applications, déverrouillage par code ou
   biométrie, reverrouillage automatique, captures d'écran interdites ; sauvegarde

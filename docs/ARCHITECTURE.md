@@ -780,10 +780,33 @@ application ouvre les photos et proposer de choisir Focale.
   (`tiff:Orientation`, que lit Lightroom) du paquet de l'image principale (APP1 du JPEG,
   bloc « XMP » du WebP ; attribut ou élément, préfixe quelconque) prend la même valeur : un
   chiffre remplacé à longueur égale (`XmpOrientationSlot`), donc aucun décalage MPF ; le XMP
-  de la carte de gain n'est pas lu, une orientation XMP absente n'est pas ajoutée. Autres
-  formats (PNG, dont Android ignore l'orientation EXIF ; HEIF et AVIF) : rendu de
-  l'éditeur, en copie ou à la place. Clé mémoire Coil des images pleine taille liée à
-  `date_modified`.
+  de la carte de gain n'est pas lu, une orientation XMP absente n'est pas ajoutée.
+- HEIF / HEIC et AVIF (`HeifRotation`, même conteneur ISOBMFF) : Android y suit les
+  propriétés `irot` / `imir` de l'image, pas l'EXIF. La boîte `meta` est lue entière (quelques
+  Ko : `hdlr`, `pitm`, `iinf`, `iref`, `iloc`, `iprp/ipco/ipma`), puis chaque image à tourner
+  (l'image principale, grille comprise, et ses miniatures `thmb`) reçoit l'angle qui compose sa
+  transformation actuelle avec le quart de tour (miroirs compris : `imir` mode 0 haut-bas, 1
+  gauche-droite, comme libheif et libavif). Propriété `irot` existante, qui ne sert qu'à ces
+  images ou à leurs images auxiliaires (alpha, profondeur, gainmap Apple) : un octet réécrit sur
+  place (`operations.patch`). Absente, ou partagée avec une autre image (une tuile) : une
+  propriété de 9 octets est ajoutée à la fin de `ipco` et associée en dernier (appliquée après
+  `clap` et `imir`, marquée essentielle) ; `meta` grandit, les tailles des boîtes qui la
+  contiennent et les positions `iloc` des données qui la suivent sont décalées, et le fichier
+  est recopié depuis l'original dans un fichier temporaire, relu (orientation obtenue), puis
+  remplace l'original (`operations.overwrite`, avec copie de secours). Orientation EXIF de
+  l'élément `Exif` et `tiff:Orientation` du XMP (`HeifXmp`, `XmpOrientation`) mis à la valeur
+  affichée, sur place : MediaStore les lit (ExifInterface). Toute structure inattendue renonce
+  et garde le réencodage d'avant : rotation suivie d'un `clap`, élément `tmap` (gainmap ISO
+  21496-1), `irot` en double, et, pour une `meta` qui grandit, boîte de premier niveau autre que
+  `mdat`, `free`, `skip` ou `mpvd` (un `moov` pointerait dans `mdat`), données après la dernière
+  boîte, donnée `iloc` dans la boîte ou position qui ne tient plus dans son champ. Le résultat
+  est revérifié avant écriture (affichage voulu de chaque image, mêmes données aux positions
+  décalées). Les options de la barre (`PhotoRotator.options`, suspendue) lisent cet en-tête en
+  arrière-plan : « Enregistrer la rotation » attend leur réponse. Fichiers de test réels
+  (libheif / x265 et FFmpeg / libaom) produits par `tools/heif/make_fixtures.py`.
+- Autres formats (PNG, dont Android ignore l'orientation EXIF ; HEIF et AVIF à la structure
+  inattendue) : rendu de l'éditeur, en copie ou à la place (jamais un JPEG à la place d'un
+  HEIF). Clé mémoire Coil des images pleine taille liée à `date_modified`.
 - Photos panoramiques (`panorama/`) : détection à l'ouverture dans la visionneuse
   (`PanoramaRepository`), sans analyse en arrière-plan ni colonne dans la base. Propriétés
   GPano lues dans l'en-tête seul (`PanoramaHeaders`) : paquet XMP principal d'un JPEG (APP1)
@@ -840,9 +863,16 @@ application ouvre les photos et proposer de choisir Focale.
   couleurs (mêmes matrices pour l'aperçu et l'export), zones floutées, dessin, textes.
   L'aperçu tourné est rendu en arrière-plan ; le redressement est appliqué à l'affichage,
   instantané. Historique (`EditHistory`, 50 étapes) partagé par tous les outils : une action
-  ponctuelle forme une étape, un geste (glisser, pincer, curseur) une seule, créée à son début ;
-  la remise à zéro (`resetAll`) revient à l'original, textes et zones compris, en une étape
-  annulable. Une sélection (texte, zone) appartient à son outil et disparaît avec l'élément.
+  ponctuelle forme une étape, un geste (glisser, pincer, curseur) une seule, créée à son début.
+  Une sélection (texte, zone) appartient à son outil et disparaît avec l'élément.
+- « Tout annuler » (bouton de la barre du haut, entre le titre et annuler) : `resetAll` rend
+  l'original (recadrage et format, rotation, miroir, redressement, filtre, réglages, traits,
+  textes, zones floutées) en une étape, qu'« Annuler » défait et « Rétablir » refait ; une
+  saisie de texte en cours est d'abord validée, elle revient donc avec le reste. Actif dès une
+  modification (`EditState.changeCount` : géométrie, filtre et chaque réglage pour une, chaque
+  trait, texte et zone aussi) ; à partir de 5, une confirmation légère (`ResetAllDialog` : le
+  nombre de modifications, et qu'« Annuler » les rétablit), en deçà il agit aussitôt. Le titre se
+  réduit au besoin (`TextAutoSize`) pour que les quatre boutons et « Enregistrer » tiennent.
 - Redressement à angle libre (±45°, au dixième de degré) : règle graduée (retour haptique à
   chaque degré, marqué à 0° ; double appui ou valeur affichée pour revenir à 0°) ou rotation
   à deux doigts sur l'aperçu en mode recadrage, rotations parasites d'un pincement ignorées
@@ -859,10 +889,20 @@ application ouvre les photos et proposer de choisir Focale.
 - Texte (`TextItem`, `TextController`, `TextOverlay`, `TextPanel`) : un appui hors des textes
   ouvre la saisie d'un nouveau texte à cet endroit (plusieurs lignes ; vide, il n'est pas
   ajouté), un appui sur un texte la sienne (vidé, il est supprimé), un glisser le déplace, un
-  pincement l'agrandit et le fait tourner ; corbeille du panneau ou « Supprimer » de la saisie.
+  pincement l'agrandit et le fait tourner ; corbeille du panneau.
   Couleur (palette du dessin), taille (curseur en racine carrée), fond (aucun, encadré :
   pavé de la couleur et lettres noires ou blanches selon le contraste, contour), gras ; un
-  réglage changé vaut pour le texte sélectionné et les suivants. Centre normalisé dans le
+  réglage changé vaut pour le texte sélectionné et les suivants.
+- Saisie en place (`TextInputBar`, `TextDraft`) : la saisie remplace la rangée d'outils, au-dessus
+  du clavier (`imePadding` : la photo rapetisse mais reste visible), le panneau Texte au-dessus.
+  Le texte en cours (`TextDraft.preview`) s'affiche sur la photo à chaque frappe
+  (`TextController.displayed` : à la place du texte modifié, ou par-dessus pour un nouveau ;
+  encore vide, son cadre de sélection fait office de curseur), avec les réglages que le panneau
+  change en direct ; il se déplace et se pince aussi. Rien n'entre dans l'historique avant la
+  validation (bouton, appui ailleurs sur la photo, retour, changement d'outil, enregistrement),
+  qui forme une seule étape, réglages compris ; la croix ou « Annuler » l'abandonnent, la
+  corbeille retire le texte. L'identité d'un nouveau texte est réservée à l'ouverture de la
+  saisie. Centre normalisé dans le
   cadre comme les traits, corps en fraction du petit côté, angle propre : un quart de tour le
   tourne avec l'image, un miroir le déplace et inverse son inclinaison sans retourner ses
   lettres, le redressement fait pivoter la photo sous lui.
@@ -969,6 +1009,17 @@ application ouvre les photos et proposer de choisir Focale.
   son cœur arrondi au pixel : aucune couture. Les coins arrondis sont repeints du fond en une fois,
   hors du rectangle arrondi : leur lissage ne dépend pas des bandes. EXIF : dates de création avec
   fuseau horaire (MediaStore en tire la date de prise de vue), logiciel, orientation normale.
+- Collage Ultra HDR (Android 14+, `CollageGainmap`, `CollageGainLayer`) : si des photos portent une
+  gainmap (`UltraHdr.params`, décodage au seizième), le collage en reçoit une, au quart de sa taille
+  (1 024 px pour 4 096), à un seul jeu de paramètres : bornes de gain couvrant celles de toutes les
+  photos et le gain neutre, gamma 1, décalages de la première photo HDR, marges d'écran couvrant
+  celles de toutes. Le gain de chaque photo y est réécrit valeur par valeur (table de 256 entrées
+  par canal : même logarithme de gain), puis peint au même cadrage que ses pixels, bande par bande
+  (le décodeur de zones rend la gainmap de chaque zone, `decodeWithGainmap`) ; cases SDR, fond,
+  espacements et coins arrondis au gain neutre. ALPHA_8 si toutes les gainmaps n'ont qu'un canal,
+  ARGB sinon. `Bitmap.setGainmap` puis la compression JPEG écrivent un JPEG Ultra HDR (MPF, que
+  l'EXIF ajouté ensuite ne décale pas : positions relatives). Avant Android 14 ou sans photo HDR,
+  rien ne change.
 - Enregistrement par `MediaOperations.insertAndWrite` dans `Pictures/Focale/`
   (`Collage_AAAAMMJJ_HHMMSS.jpg` : entrée en attente, écrite puis publiée, comme une copie d'édition ;
   le fichier appartient à l'application, sans consentement à demander sous Android 10 comme 11+),
