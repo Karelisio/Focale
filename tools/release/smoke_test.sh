@@ -22,7 +22,7 @@
 # anglais, de préférence avec un clavier matériel (aucun clavier à l'écran sur les dialogues).
 # Focale (app.focale) y est désinstallé puis réinstallé : ses données sont effacées.
 # Requiert adb, python3 et curl. Variables facultatives : FOCALE_SMOKE_TIMEOUT (attente
-# maximale de l'analyse, 480 s), FOCALE_SMOKE_INTERVAL (sondage, 20 s) et
+# maximale de l'analyse, 480 s), FOCALE_SMOKE_INTERVAL (sondage, 10 s) et
 # FOCALE_SMOKE_ARTEFACTS (dossier où garder captures d'écran et journal de l'émulateur).
 set -euo pipefail
 
@@ -34,7 +34,7 @@ PREFERENCES=/data/data/$PAQUET/files/datastore
 IMAGES=/sdcard/Pictures
 TELECHARGEMENTS=/sdcard/Download
 DELAI=${FOCALE_SMOKE_TIMEOUT:-480}
-INTERVALLE=${FOCALE_SMOKE_INTERVAL:-20}
+INTERVALLE=${FOCALE_SMOKE_INTERVAL:-10}
 JOURNAL='AnalysisWorker|TextRecognitionStep|FaceAnalysisStep|EmbeddingStep|MediaSync|mlkit|ComponentDiscovery|AndroidRuntime|onnxruntime|WM-|PhotoPrint|DataBackup|DataRestore|CastPresentation|CastManager|LocaleChange|AppLocales'
 ICI=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SCHEMAS=$ICI/../../app/schemas/app.focale.core.database.FocaleDatabase
