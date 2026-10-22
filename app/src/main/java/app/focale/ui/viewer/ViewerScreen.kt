@@ -175,6 +175,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
     // Diffusion : bouton, feuille, média proposé à la TV, image sur l'écran externe.
     val cast: CastViewModel = hiltViewModel()
     val castState by cast.state.collectAsStateWithLifecycle()
+    // Vidéos que la TV ne lit pas : lues ici, la diffusion continuant pour les médias suivants.
+    val phoneVideos by cast.phoneVideos.collectAsStateWithLifecycle()
     var castSheet by rememberSaveable { mutableStateOf(false) }
     // Lecteur de la vidéo courante, que l'écran externe affiche.
     var videoPlayer by remember { mutableStateOf<Player?>(null) }
@@ -184,7 +186,9 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
         val name = castTargetName(target)
         when (target) {
             is CastTarget.Screen -> VideoCast.Screen(name)
-            is CastTarget.Tv -> remember(target.renderer.udn, name) { VideoCast.Tv(target.renderer.udn, name, cast::remotePlayer) }
+            is CastTarget.Tv -> remember(target.renderer.udn, name, phoneVideos) {
+                VideoCast.Tv(target.renderer.udn, name, phoneVideos, cast::remotePlayer)
+            }
         }
     }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }

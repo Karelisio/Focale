@@ -1,11 +1,6 @@
 package app.focale.cast.dlna
 
 import java.io.ByteArrayOutputStream
-import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.ServerSocket
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,45 +15,6 @@ import org.junit.Test
  */
 class RendererClientTest {
 
-    private class Request(val line: String, val headers: Map<String, String>, val body: String)
-
-    /** TV factice : une réponse préparée par connexion, requêtes reçues dans [requests]. */
-    private inner class FakeTv {
-        val socket = ServerSocket().apply { bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0)) }
-        val requests = LinkedBlockingQueue<Request>()
-        val responses = LinkedBlockingQueue<String>()
-        val base = "http://127.0.0.1:${socket.localPort}"
-
-        init {
-            Thread {
-                while (!socket.isClosed) {
-                    val client = runCatching { socket.accept() }.getOrNull() ?: break
-                    client.use {
-                        val input = it.getInputStream().buffered()
-                        val line = HttpWire.readLine(input).orEmpty()
-                        val headers = HttpWire.readHeaders(input)
-                        val body = HttpWire.readBody(input, headers, 1 shl 20).decodeToString()
-                        requests += Request(line, headers, body)
-                        it.getOutputStream().write(responses.poll(5, TimeUnit.SECONDS)!!.toByteArray())
-                    }
-                }
-            }.apply { isDaemon = true }.start()
-        }
-
-        fun respond(status: String, body: String, chunked: Boolean = false) {
-            responses += if (chunked) {
-                val half = body.length / 2
-                val chunks = listOf(body.substring(0, half), body.substring(half))
-                "HTTP/1.1 $status\r\nContent-Type: text/xml\r\nTransfer-Encoding: chunked\r\n\r\n" +
-                    chunks.joinToString("") { "${it.toByteArray().size.toString(16)}\r\n$it\r\n" } + "0\r\n\r\n"
-            } else {
-                "HTTP/1.1 $status\r\nContent-Type: text/xml; charset=\"utf-8\"\r\nContent-Length: ${body.toByteArray().size}\r\n\r\n$body"
-            }
-        }
-
-        fun next(): Request = requests.poll(5, TimeUnit.SECONDS)!!
-    }
-
     private val tv = FakeTv()
 
     @After
@@ -66,21 +22,11 @@ class RendererClientTest {
         tv.socket.close()
     }
 
-    private val renderer = DlnaRenderer(
-        udn = "uuid:tv",
-        name = "Salon",
-        manufacturer = null,
-        model = null,
-        location = "${tv.base}/dmr",
-        avTransport = DlnaService("urn:schemas-upnp-org:service:AVTransport:1", "${tv.base}/upnp/control/AVTransport1"),
-        renderingControl = DlnaService("urn:schemas-upnp-org:service:RenderingControl:1", "${tv.base}/upnp/control/RenderingControl1"),
-    )
+    private val renderer = tv.renderer()
 
     private val client = RendererClient(renderer, LanHttpClient(hostAllowed = { it.isLoopbackAddress }))
 
-    private fun envelope(action: String, service: String = "AVTransport", values: String = "") =
-        "<?xml version=\"1.0\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>" +
-            "<u:${action}Response xmlns:u=\"urn:schemas-upnp-org:service:$service:1\">$values</u:${action}Response></s:Body></s:Envelope>"
+    private fun envelope(action: String, service: String = "AVTransport", values: String = "") = FakeTv.envelope(action, service, values)
 
     @Test
     fun `SetAVTransportURI puis Play, en-têtes et corps attendus par la TV`() {

@@ -22,6 +22,9 @@ class CastViewModel @Inject constructor(private val manager: CastManager) : View
     val state: StateFlow<CastState> = manager.state
     val events: Flow<CastEvent> = manager.events
 
+    /** Vidéos que la TV ne lit pas, lues par le téléphone ([CastManager.phoneVideos]). */
+    val phoneVideos: StateFlow<Set<Long>> = manager.phoneVideos
+
     /** Une TV reçoit la diffusion (lu sans abonnement, même en arrière-plan). */
     val tvActive: Boolean get() = manager.tvActive
 

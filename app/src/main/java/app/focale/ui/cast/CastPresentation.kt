@@ -166,9 +166,9 @@ fun castEffects(viewModel: CastViewModel, item: MediaItem?, onMessage: suspend (
         viewModel.events.collect { event ->
             val text = when (event) {
                 is CastEvent.Refused -> resources.getString(if (event.video) R.string.cast_refused_video else R.string.cast_refused_photo)
-                is CastEvent.Lost -> resources.getString(R.string.cast_lost, event.name)
+                is CastEvent.Lost -> resources.getString(if (event.videoOnPhone) R.string.cast_lost_video else R.string.cast_lost, event.name)
                 CastEvent.NoNetwork -> resources.getString(R.string.cast_no_network)
-                CastEvent.Failed -> resources.getString(R.string.cast_failed)
+                is CastEvent.Failed -> resources.getString(if (event.videoOnPhone) R.string.cast_failed_video else R.string.cast_failed)
             }
             currentOnMessage(text)
         }

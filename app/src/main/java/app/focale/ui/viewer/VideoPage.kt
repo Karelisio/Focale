@@ -108,7 +108,16 @@ sealed interface VideoCast {
 
     data class Screen(override val label: String) : VideoCast
 
-    class Tv(val udn: String, override val label: String, val player: (MediaItem) -> Player) : VideoCast
+    /** [onPhone] : vidéos que la TV ne lit pas, lues par le téléphone ([app.focale.cast.CastManager.phoneVideos]). */
+    class Tv(val udn: String, override val label: String, val onPhone: Set<Long>, val player: (MediaItem) -> Player) : VideoCast
+
+    companion object {
+        /**
+         * Diffusion de la vidéo [item] : aucune si la TV l'a rendue au téléphone (refusée, envoi
+         * impossible), qui la lit alors lui-même ; la diffusion continue pour les médias suivants.
+         */
+        fun of(cast: VideoCast?, item: MediaItem): VideoCast? = cast?.takeUnless { it is Tv && item.id in it.onPhone }
+    }
 }
 
 /**
@@ -136,7 +145,8 @@ fun VideoPage(
     cast: VideoCast? = null,
     onPlayer: ((Player?) -> Unit)? = null,
 ) {
-    val tv = cast as? VideoCast.Tv
+    val shown = VideoCast.of(cast, item)
+    val tv = shown as? VideoCast.Tv
     VideoPlayerPage(
         key = item.id,
         isCurrent = isCurrent,
@@ -154,7 +164,7 @@ fun VideoPage(
         // Vers une TV, un autre lecteur : la position passe de l'un à l'autre (PlaybackMemory).
         playerKey = tv?.udn,
         playerFactory = if (tv != null) { _ -> tv.player(item) } else ::galleryPlayer,
-        castLabel = cast?.label,
+        castLabel = shown?.label,
         // La TV continue quand Focale passe en arrière-plan (service au premier plan).
         pauseInBackground = tv == null,
         onPlayerChanged = onPlayer,
@@ -305,7 +315,9 @@ fun VideoPlayerPage(
 /**
  * Position, lecture et son d'une vidéo, conservés par média ([rememberSaveable]). Le lecteur
  * vivant est relevé au moment même de la sauvegarde ; une lecture interrompue par la mise en
- * arrière-plan compte comme en cours, pour reprendre telle quelle après une recréation.
+ * arrière-plan compte comme en cours, pour reprendre telle quelle après une recréation. Un
+ * lecteur qui en remplace un autre (diffusion qui commence, s'arrête, ou TV qui rend la vidéo)
+ * reprend là où en était le précédent, encore branché à ce moment.
  */
 private class PlaybackMemory(
     private var positionMs: Long = 0L,
@@ -317,6 +329,8 @@ private class PlaybackMemory(
 
     /** Applique l'état retenu à un lecteur neuf ; à défaut, les réglages de la visionneuse. */
     fun restoreInto(player: Player, autoplay: Boolean, startMuted: Boolean) {
+        // Relève : le lecteur remplacé, pas encore libéré, passe la main à sa position du moment.
+        capture()
         player.volume = if (muted ?: startMuted) 0f else 1f
         player.playWhenReady = playing ?: autoplay
         if (positionMs > 0) player.seekTo(positionMs)
@@ -347,7 +361,8 @@ private class PlaybackMemory(
     private fun capture() {
         val current = player ?: return
         positionMs = current.currentPosition
-        muted = current.volume == 0f
+        // Sans son à lui (TV), un lecteur ne dit rien du son du téléphone.
+        if (current.isCommandAvailable(Player.COMMAND_GET_VOLUME)) muted = current.volume == 0f
         playing = current.playWhenReady || playingBeforeBackground
     }
 

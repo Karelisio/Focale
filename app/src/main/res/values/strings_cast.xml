@@ -31,11 +31,13 @@
     <string name="cast_playing_on">Playing on %1$s</string>
 
     <!-- Messages -->
-    <string name="cast_refused_video">The TV can\'t play this video format</string>
+    <string name="cast_refused_video">The TV can\'t play this video format: playing on the phone</string>
     <string name="cast_refused_photo">The TV can\'t show this photo</string>
     <string name="cast_lost">Lost connection to %1$s</string>
+    <string name="cast_lost_video">Lost connection to %1$s: the video continues on the phone</string>
     <string name="cast_no_network">Connect to Wi-Fi to cast to a TV</string>
     <string name="cast_failed">Couldn\'t send this to the TV</string>
+    <string name="cast_failed_video">Couldn\'t send this to the TV: playing on the phone</string>
 
     <!-- Notification de la diffusion vers une TV -->
     <string name="cast_channel">Casting</string>

@@ -60,15 +60,15 @@ data class TvPlayback(
 
 /** Messages ponctuels de la diffusion, affichés par l'écran en cours. */
 sealed interface CastEvent {
-    /** La TV refuse ce média (format vidéo, taille…). */
+    /** La TV refuse ce média (format vidéo, taille…) ; une vidéo se lit alors sur le téléphone. */
     data class Refused(val video: Boolean) : CastEvent
 
-    /** La TV ne répond plus : la diffusion s'est arrêtée. */
-    data class Lost(val name: String) : CastEvent
+    /** La TV ne répond plus : la diffusion s'est arrêtée ; [videoOnPhone] : la vidéo en cours reprend sur le téléphone. */
+    data class Lost(val name: String, val videoOnPhone: Boolean = false) : CastEvent
 
     /** Ni Wi-Fi ni Ethernet : impossible de joindre la TV. */
     data object NoNetwork : CastEvent
 
-    /** Échec d'envoi (média illisible, TV qui refuse la commande). */
-    data object Failed : CastEvent
+    /** Échec d'envoi (média illisible, TV injoignable) ; [videoOnPhone] : la vidéo se lit sur le téléphone. */
+    data class Failed(val videoOnPhone: Boolean = false) : CastEvent
 }
