@@ -9,13 +9,34 @@ smoke_db.py base FOCALE_DB [--etiquettes] [--visages] [--details]
     Code de sortie : 0 contrôles réussis, 1 pas encore, 2 base absente ou illisible,
     3 aucune analyse enregistrée pour l'instant.
 
-smoke_db.py preferences FICHIER.preferences_pb...
-    Clés et valeurs de fichiers DataStore Preferences (réglages, état de l'analyse).
+smoke_db.py schema FOCALE_DB SCHEMAS
+    Version de la base (PRAGMA user_version) et empreinte du schéma enregistrée par Room
+    (room_master_table), comparées au dernier schéma exporté dans SCHEMAS (app/schemas/…) :
+    code 0 identiques, 1 différentes (migration pas encore faite ?), 2 base illisible.
+
+smoke_db.py instantane FOCALE_DB
+    Données de l'utilisateur et de l'analyse en JSON : favoris et albums (par nom de fichier),
+    nombres de lignes de l'analyse.
+
+smoke_db.py comparer FOCALE_DB INSTANTANE.json [--donnees]
+    La base garde-t-elle les données de l'instantané ? Favoris et albums identiques et, sauf
+    avec --donnees (données de l'utilisateur seulement), aucun média perdu de l'index (les
+    lignes de l'analyse en baisse sont signalées sans échec). Code 0 oui, 1 non (différences
+    affichées), 2 base illisible.
+
+smoke_db.py media FOCALE_DB NOM
+    Identifiant (MediaStore) du média NOM.
+
+smoke_db.py preferences FICHIER.preferences_pb... [--exiger CLE=VALEUR]...
+    Clés et valeurs de fichiers DataStore Preferences (réglages, état de l'analyse) ;
+    --exiger : code 1 si une clé manque ou n'a pas cette valeur (telle qu'affichée, sans
+    guillemets).
 
 La base est ouverte dans son dossier, avec ses fichiers -wal et -shm s'ils ont été copiés.
 """
 
 import argparse
+import json
 import pathlib
 import sqlite3
 import struct
@@ -113,6 +134,114 @@ def commande_base(args):
     return 3 if c["analyses"] + c["textes"] + c["examens"] == 0 else 1
 
 
+def commande_schema(args):
+    schemas = sorted(pathlib.Path(args.schemas).glob("*.json"), key=lambda f: int(f.stem) if f.stem.isdigit() else -1)
+    if not schemas:
+        print(f"aucun schéma exporté dans {args.schemas}")
+        return 2
+    attendu = json.loads(schemas[-1].read_text(encoding="utf-8"))["database"]
+    try:
+        connexion = ouvrir(args.base)
+        try:
+            version = connexion.execute("PRAGMA user_version").fetchone()[0]
+            ligne = connexion.execute("SELECT identity_hash FROM room_master_table WHERE id = 42").fetchone()
+        finally:
+            connexion.close()
+    except (OSError, sqlite3.Error) as erreur:
+        print(f"base illisible : {erreur}")
+        return 2
+    empreinte = ligne[0] if ligne else None
+    print(
+        f"version {version} (attendue {attendu['version']}) · schéma {empreinte or 'inconnu'}"
+        f" (attendu {attendu['identityHash']})"
+    )
+    return 0 if version == attendu["version"] and empreinte == attendu["identityHash"] else 1
+
+
+def instantane(connexion):
+    favoris = sorted(
+        nom for (nom,) in connexion.execute(
+            "SELECT m.display_name FROM favorite f JOIN media m ON m.id = f.media_id WHERE m.is_trashed = 0"
+        )
+    )
+    albums = {}
+    for nom, media in connexion.execute(
+        """SELECT a.name, m.display_name FROM album a LEFT JOIN album_media am ON am.album_id = a.id
+           LEFT JOIN media m ON m.id = am.media_id ORDER BY a.name, m.display_name"""
+    ):
+        albums.setdefault(nom, [])
+        if media is not None:
+            albums[nom].append(media)
+    comptes = {cle: connexion.execute(sql).fetchone()[0] for cle, sql in COMPTES.items()}
+    return {"favoris": favoris, "albums": albums, "comptes": comptes}
+
+
+def commande_instantane(args):
+    try:
+        connexion = ouvrir(args.base)
+        try:
+            print(json.dumps(instantane(connexion), ensure_ascii=False, sort_keys=True))
+        finally:
+            connexion.close()
+    except (OSError, sqlite3.Error) as erreur:
+        print(f"base illisible : {erreur}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def commande_comparer(args):
+    avant = json.loads(pathlib.Path(args.instantane).read_text(encoding="utf-8"))
+    try:
+        connexion = ouvrir(args.base)
+        try:
+            apres = instantane(connexion)
+        finally:
+            connexion.close()
+    except (OSError, sqlite3.Error) as erreur:
+        print(f"base illisible : {erreur}")
+        return 2
+    ecarts = []
+    if apres["favoris"] != avant["favoris"]:
+        ecarts.append(f"favoris {avant['favoris']} devenus {apres['favoris']}")
+    if apres["albums"] != avant["albums"]:
+        ecarts.append(f"albums {avant['albums']} devenus {apres['albums']}")
+    # Une version peut refaire une étape de l'analyse (nouveau modèle) : ses lignes baissent un
+    # temps sans rien perdre de l'utilisateur, d'où une simple note ; l'index, lui, doit rester.
+    notes = []
+    if not args.donnees:
+        for cle, valeur in avant["comptes"].items():
+            if apres["comptes"].get(cle, 0) < valeur:
+                (ecarts if cle == "medias" else notes).append(f"{cle} : {valeur} avant, {apres['comptes'].get(cle, 0)} après")
+    albums = ", ".join(f"{nom} ({len(medias)})" for nom, medias in apres["albums"].items()) or "aucun"
+    print(f"favoris {', '.join(apres['favoris']) or 'aucun'} · albums {albums}")
+    if not args.donnees:
+        print("analyse : " + " · ".join(f"{cle} {valeur}" for cle, valeur in sorted(apres["comptes"].items())))
+    for ecart in ecarts:
+        print(f"  écart : {ecart}")
+    for note in notes:
+        print(f"  en baisse (étape de l'analyse refaite ?) : {note}")
+    return 1 if ecarts else 0
+
+
+def commande_media(args):
+    try:
+        connexion = ouvrir(args.base)
+        try:
+            ligne = connexion.execute(
+                "SELECT id FROM media WHERE display_name = ? AND is_trashed = 0 ORDER BY id DESC", (args.nom,)
+            ).fetchone()
+        finally:
+            connexion.close()
+    except (OSError, sqlite3.Error) as erreur:
+        print(f"base illisible : {erreur}", file=sys.stderr)
+        return 2
+    if ligne is None:
+        print(f"{args.nom} absent de l'index", file=sys.stderr)
+        return 1
+    print(ligne[0])
+    return 0
+
+
 # Format de DataStore Preferences (protobuf) : PreferenceMap { map<string, Value> preferences = 1 },
 # Value { bool boolean = 1; float = 2; int32 integer = 3; int64 long = 4; string = 5;
 # StringSet string_set = 6; double = 7; bytes = 8 }, StringSet { repeated string strings = 1 }.
@@ -176,6 +305,7 @@ def valeur_preference(message):
 
 def commande_preferences(args):
     code = 0
+    exigences = dict(exigence.split("=", 1) for exigence in args.exiger)
     for chemin in args.fichiers:
         print(f"{pathlib.Path(chemin).name} :")
         try:
@@ -194,9 +324,18 @@ def commande_preferences(args):
                 print(f"  {cle} = {entrees[cle]}")
             if not entrees:
                 print("  (vide)")
+            for cle, valeur in list(exigences.items()):
+                if cle in entrees:
+                    if entrees[cle].strip("'") != valeur:
+                        print(f"  attendu : {cle} = {valeur}")
+                        code = max(code, 1)
+                    del exigences[cle]
         except (OSError, ValueError, struct.error) as erreur:
             print(f"  illisible : {erreur}")
             code = 2
+    for cle, valeur in exigences.items():
+        print(f"attendu : {cle} = {valeur} (clé absente)")
+        code = max(code, 1)
     return code
 
 
@@ -209,8 +348,25 @@ def main():
     base.add_argument("--visages", action="store_true", help="exiger au moins un visage")
     base.add_argument("--details", action="store_true", help="détail par média")
     base.set_defaults(fonction=commande_base)
+    schema = commandes.add_parser("schema", help="version et schéma de la base")
+    schema.add_argument("base")
+    schema.add_argument("schemas", help="dossier des schémas exportés par Room")
+    schema.set_defaults(fonction=commande_schema)
+    capture = commandes.add_parser("instantane", help="favoris, albums et analyse en JSON")
+    capture.add_argument("base")
+    capture.set_defaults(fonction=commande_instantane)
+    comparer = commandes.add_parser("comparer", help="données d'un instantané toujours là ?")
+    comparer.add_argument("base")
+    comparer.add_argument("instantane")
+    comparer.add_argument("--donnees", action="store_true", help="favoris et albums seulement")
+    comparer.set_defaults(fonction=commande_comparer)
+    media = commandes.add_parser("media", help="identifiant d'un média")
+    media.add_argument("base")
+    media.add_argument("nom")
+    media.set_defaults(fonction=commande_media)
     preferences = commandes.add_parser("preferences", help="contenu de fichiers .preferences_pb")
     preferences.add_argument("fichiers", nargs="+")
+    preferences.add_argument("--exiger", action="append", default=[], metavar="CLE=VALEUR", help="valeur attendue")
     preferences.set_defaults(fonction=commande_preferences)
     args = parseur.parse_args()
     sys.exit(args.fonction(args))
