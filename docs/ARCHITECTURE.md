@@ -103,7 +103,7 @@ app/src/main/java/app/focale/
 ├── collage/                    collages : dispositions, géométrie, cadrage, orientation, rendu
 ├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur, texte
 ├── people/                     visages : détection, alignement, SFace, regroupement
-├── panorama/                   GPano (XMP), choix de la vue, sphère OpenGL ES, capteur de rotation
+├── panorama/                   GPano (XMP), vidéos 360° (MP4), choix de la vue, sphère OpenGL ES, capteur de rotation
 ├── print/                      impression : mise en page, document PDF du framework d'impression
 ├── work/                       workers
 ├── vault/                      crypto, stockage, verrouillage
@@ -603,6 +603,19 @@ sauvegarde, chiffrée par un mot de passe, emporte les données de l'application
   corbeille, détachés, reviennent au regroupement). Les photos absentes de la sauvegarde gardent
   leurs visages. Restaurer deux fois donne le même résultat ; restaurer plus tard ajoute les médias
   arrivés entre-temps.
+- **Restauration partielle** (`DataCategory`) : le résumé propose une case par catégorie présente
+  dans la sauvegarde (favoris ; albums ; personnes, avec visages, passages de la détection et
+  refus ; dossiers masqués ; réglages ; historique de recherche ; dates d'origine), toutes cochées
+  d'abord, chacune avec ce que la restauration en fait ; la note sur les photos à copier ne
+  vient que si une catégorie cochée désigne des médias, et « Restaurer » attend au moins une case.
+  `DataRestore` passe sans les décoder les enregistrements des catégories écartées et ne touche
+  à rien de ce qui les concerne (pas même aux personnes vides du téléphone si les personnes ne
+  sont pas restaurées) ; index synchronisé, médias appariés et bibliothèque lue seulement si une
+  catégorie cochée en a besoin. Chaque catégorie s'applique exactement comme dans une restauration
+  complète, dans la même transaction unique ; une recherche de personne restaurée sans les
+  personnes est retrouvée par son nom. Le bilan ne compte que les médias désignés par ce qui est
+  restauré et n'annonce que les catégories choisies. La sauvegarde automatique, elle, emporte
+  toujours tout.
 - **Analyse des visages** : un lot de l'analyse et la restauration ne s'entrecroisent pas
   (`PeopleEditions.writes`) ; ensuite, le regroupement recharge son état. Une photo retrouvée n'est
   pas relue, sauf modifiée depuis son analyse. Sauvegarde d'une version antérieure de l'étape
@@ -659,14 +672,23 @@ les éléments n'ont pas d'URI MediaStore, ne l'est jamais, ni servi ni présent
     et transferts coupés) à la fin. Photo décodée par `ImageDecoder` (orientation EXIF appliquée),
     réduite à 3 840 px et réencodée en JPEG (aucune métadonnée) ; vidéo servie telle quelle depuis
     MediaStore, lue à la position demandée ;
-  - session : média en cours envoyé à chaque changement (`collectLatest`), TV interrogée chaque
-    seconde pendant une vidéo (toutes les 3 s pour une photo) ; trois échecs de suite : « Connexion
-    perdue », diffusion arrêtée. Erreur UPnP 714-716, état `ERROR_OCCURRED` ou vidéo jamais lue en
-    10 s : « La TV ne lit pas ce format ». La page vidéo prend alors un `RemotePlayer`
-    (`SimpleBasePlayer` qui reflète la lecture de la TV) : lecture, pause, curseur et sauts de 10 s
-    inchangés, position passée du lecteur local à la TV et retour (`PlaybackMemory`). Écran quitté :
-    TV arrêtée au bout de 3 s (le temps d'ouvrir le diaporama), diffusion close après 5 min sans
-    média ;
+  - session (`TvSession`, une par diffusion, testée contre une TV factice en boucle locale) :
+    média en cours envoyé à chaque changement (`collectLatest`), TV interrogée chaque seconde
+    pendant une vidéo (toutes les 3 s pour une photo) ; trois échecs de suite : « Connexion
+    perdue », diffusion arrêtée. La page vidéo prend un `RemotePlayer` (`SimpleBasePlayer` qui
+    reflète la lecture de la TV) : lecture, pause, curseur et sauts de 10 s inchangés, position
+    passée du lecteur local à la TV et retour (`PlaybackMemory`, relevée sur le lecteur remplacé
+    au moment même de la relève). Écran quitté : TV arrêtée au bout de 3 s (le temps d'ouvrir le
+    diaporama), diffusion close après 5 min sans média ;
+  - repli sur le téléphone : une vidéo refusée (erreur UPnP, état `ERROR_OCCURRED`, jamais lue en
+    10 s), impossible à préparer ou à envoyer revient au téléphone (`TvSession.phoneVideos`,
+    `CastManager.phoneVideos`) : la TV est arrêtée (elle ne garde pas le média précédent), la page
+    reprend le lecteur du téléphone à la position demandée à la TV (`RemotePlayer` garde position
+    et lecture quand la TV lâche la vidéo), avec « La TV ne lit pas ce format de vidéo : lecture
+    sur le téléphone » ; la diffusion continue pour les médias suivants, et une vidéo refusée n'est
+    plus proposée à la TV de toute la diffusion (un échec d'envoi passager sera retenté). TV perdue
+    en pleine vidéo : la diffusion s'arrête et la vidéo reprend sur le téléphone à la dernière
+    position mesurée sur la TV (« Connexion à … perdue : la vidéo reprend sur le téléphone ») ;
   - arrière-plan : `CastService`, service au premier plan `connectedDevice` démarré depuis
     l'écran, garde le processus actif tant qu'une TV est servie, avec la notification « Diffusion
     sur … » et « Arrêter » ; fermer Focale depuis les applications récentes arrête la diffusion. Le
@@ -841,6 +863,28 @@ application ouvre les photos et proposer de choisir Focale.
   la fois ; `ImageDecoder` si l'orientation EXIF tourne la photo), envoyée au contexte puis
   libérée ; texture et contexte disparaissent avec la vue, rechargés si le contexte est perdu.
   Pas de vue 360° dans le coffre.
+- Vidéos 360° (`SphericalVideos`, `SphericalVideoHeaders`, `SphericalVideoRules`) : détection à
+  l'ouverture comme pour les photos (même `PanoramaRepository`, résultat en mémoire par média et
+  date de modification, LRU de 512, rien dans la base), pour les MP4, MOV et 3GP. Seuls les
+  en-têtes des boîtes menant à la piste vidéo (`hdlr` `vide`) sont lus, `moov` au début ou à la
+  fin, jamais les données : V2 (`st3d` et `sv3d` → `proj` → `prhd`, `equi` / `cbmp` / `mshp` dans
+  l'entrée `stsd`), sinon V1 (boîte `uuid` `ffcc8263-…` de la piste ou de `moov`, XML GSpherical
+  lu par `XmpPanorama.properties`). Fichier mal formé (taille trop petite, qui déborde, fichier
+  tronqué) : rien, sans erreur. Proposée en 360° : projection équirectangulaire aux bornes
+  cohérentes (`equi`, ou recadrage GSpherical façon GPano), sphère complète ou partielle ; vue
+  initiale au cap V1, ou d'après le cap de `prhd` (positif : sphère tournée vers la droite, comme
+  FFmpeg ; inclinaison et roulis de la pose ignorés), sinon au centre. Cube et maillage : pas
+  proposés. Bouton « 360° » au-dessus des commandes de la vidéo (pas pendant une diffusion, qu'il
+  referme) ; la vue s'ouvre dans la page même (`VideoPage`, paramètre `sphere`) : le lecteur de la
+  page dessine dans une texture externe (`SurfaceTexture`, `GL_TEXTURE_EXTERNAL_OES`,
+  `VideoTarget`) au lieu de son cadre, sans être recréé (position, vitesse, son gardés), sur la
+  sphère des photos (`VideoSphereRenderer`, `SphereBuffers`, `SphereCamera`) ; d'une vidéo
+  stéréoscopique, seule l'image de l'œil gauche (`VideoFrame`). Commandes vidéo habituelles
+  (lecture, curseur, vitesse, son, double appui ±10 s), barre « Bouger le téléphone » / « Vue
+  initiale » à la place de la barre d'outils, pager figé (glisser regarde autour). Fichiers de
+  test réels (FFmpeg / libx264, métadonnées injectées comme le fait Spatial Media, ou écrites par
+  FFmpeg, vérifiées par ffprobe) produits par `tools/spherical/make_fixtures.py`. Pas de vidéo 360°
+  dans le coffre : il faudrait relire l'en-tête du fichier chiffré.
 - Vue panoramique (`FlatPanoramaViewer`) : telephoto en `ContentScale.FillHeight`, image à la
   hauteur de l'écran, centrée, parcourue au doigt avec l'inertie et le sous-échantillonnage de
   la visionneuse ; « Bouger le téléphone » fait défiler d'un degré du panorama par degré

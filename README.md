@@ -25,7 +25,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   mis d'accord), panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
   copiable. Photos 360° (métadonnées GPano des JPEG, WebP et HEIF, sphères complètes ou
   partielles) en vue immersive OpenGL : glisser pour regarder autour, pincer pour le champ,
-  « Bouger le téléphone » (capteur de rotation), retour à la vue initiale du fichier ; panoramas
+  « Bouger le téléphone » (capteur de rotation), retour à la vue initiale du fichier ; vidéos 360°
+  (MP4 et MOV aux métadonnées sphériques V1 ou V2, équirectangulaires, mono ou stéréoscopiques)
+  dans la même vue, avec leurs commandes habituelles (lecture, position, vitesse, ±10 s) ; panoramas
   (GPano à plat, ou 2,5:1 et plus) en « Vue panoramique », à la hauteur de l'écran, parcourus
   au doigt ou en tournant sur soi. Impression des photos (aperçu d'Android, une photo par page
   dans son sens, orientation EXIF respectée).
@@ -100,8 +102,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   masqués, réglages et historique de recherche dans un fichier `.focale` chiffré par mot de passe
   (même chiffrement que le coffre), à restaurer sur un nouveau téléphone, où les photos copiées à
   part sont retrouvées par leur dossier et leur nom ; manuelle ou automatique (chaque jour ou
-  chaque semaine, dans un dossier choisi, les 3 dernières gardées). Rien ne part dans la
-  sauvegarde Google.
+  chaque semaine, dans un dossier choisi, les 3 dernières gardées). À la restauration, une case
+  par catégorie (favoris, albums, personnes, dossiers masqués, réglages, historique, dates
+  d'origine) pour n'en reprendre qu'une partie. Rien ne part dans la sauvegarde Google.
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir
@@ -119,7 +122,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   les TV du réseau local (DLNA/UPnP : Samsung, LG, Sony, Kodi…), servies par un petit serveur
   local démarré le temps de la diffusion (photo réduite en JPEG sans métadonnées, vidéo telle
   quelle, lecture, pause, position et volume depuis le téléphone, notification « Arrêter » en
-  arrière-plan). Rien ne sort du réseau local ; le coffre-fort n'est jamais diffusé.
+  arrière-plan). Une vidéo que la TV refuse, ou qu'elle lâche en perdant la connexion, reprend
+  sur le téléphone à la même position, la diffusion continuant pour les médias suivants. Rien ne
+  sort du réseau local ; le coffre-fort n'est jamais diffusé.
 - **Widget** « Souvenir » (Glance, couleurs Material You) : une photo du jour, renouvelée
   toutes les quatre heures, qui s'ouvre dans la visionneuse.
 - **Nouveautés** présentées au premier lancement après chaque mise à jour, tirées de
