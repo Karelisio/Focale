@@ -1,4 +1,4 @@
-package app.focale.vault
+package app.focale.backup
 
 import android.content.ContentResolver
 import android.content.Intent
@@ -43,12 +43,12 @@ internal class BackupFolder(private val resolver: ContentResolver, private val t
 
     /**
      * Crée le document [name], vide ; le fournisseur le renomme si le nom est pris
-     * (« nom (1).fvault »).
+     * (« nom (1).focale »).
      *
      * @throws Exception création impossible.
      */
     fun create(name: String): Uri =
-        DocumentsContract.createDocument(resolver, document(treeId), VaultArchive.MIME_TYPE, name)
+        DocumentsContract.createDocument(resolver, document(treeId), PasswordArchive.MIME_TYPE, name)
             ?: throw FileNotFoundException("Création impossible dans le dossier")
 
     /** Supprime le document [id] ; faux s'il est resté en place. */

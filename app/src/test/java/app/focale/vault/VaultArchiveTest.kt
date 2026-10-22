@@ -1,6 +1,9 @@
 package app.focale.vault
 
-import app.focale.vault.VaultArchiveException.Reason
+import app.focale.backup.ArchiveFormat
+import app.focale.backup.ArchiveKeys
+import app.focale.backup.BackupArchiveException
+import app.focale.backup.BackupArchiveException.Reason
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -142,7 +145,7 @@ class VaultArchiveTest {
         val keys = VaultArchive.deriveKeys(password, iterations)
         val encoded = keys.encode()
         assertFalse(encoded.contains(password.concatToString().toByteArray(Charsets.UTF_8)))
-        val copy = VaultArchiveKeys.decode(encoded)
+        val copy = ArchiveKeys.decode(ArchiveFormat.VAULT, encoded)
         assertArrayEquals(encoded, copy.encode())
         assertEquals(manifest, readAll(archiveWith(copy)).first)
         val damaged = listOf(
@@ -152,7 +155,7 @@ class VaultArchiveTest {
             // Itérations hors bornes.
             encoded.copyOf().also { ByteBuffer.wrap(it).putInt(1, VaultArchive.MAX_ITERATIONS + 1) },
         )
-        for (bytes in damaged) assertThrows(GeneralSecurityException::class.java) { VaultArchiveKeys.decode(bytes) }
+        for (bytes in damaged) assertThrows(GeneralSecurityException::class.java) { ArchiveKeys.decode(ArchiveFormat.VAULT, bytes) }
     }
 
     @Test
@@ -305,7 +308,7 @@ class VaultArchiveTest {
         return output.toByteArray()
     }
 
-    private fun archiveWith(keys: VaultArchiveKeys): ByteArray {
+    private fun archiveWith(keys: ArchiveKeys): ByteArray {
         val output = ByteArrayOutputStream()
         VaultArchive.write(output, keys, manifest) { writer ->
             for ((media, thumbnail) in contents) {
@@ -331,7 +334,7 @@ class VaultArchiveTest {
         try {
             block()
             fail("Archive acceptée à tort $context")
-        } catch (error: VaultArchiveException) {
+        } catch (error: BackupArchiveException) {
             assertEquals(context, expected, error.reason)
         }
     }

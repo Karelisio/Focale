@@ -5,8 +5,8 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.focale.R
+import app.focale.backup.BackupProgress
 import app.focale.core.util.UiText
-import app.focale.vault.BackupProgress
 import app.focale.vault.ExportResult
 import app.focale.vault.RestoreResult
 import app.focale.vault.VaultBackupPrefs
@@ -189,7 +189,7 @@ class VaultBackupViewModel @Inject constructor(
     fun onPickerUnavailable() {
         pendingPassword?.fill('\u0000')
         pendingPassword = null
-        messages.trySend(UiText.Res(R.string.vault_backup_no_picker))
+        messages.trySend(UiText.Res(R.string.backup_no_picker))
     }
 
     /**
@@ -231,7 +231,7 @@ class VaultBackupViewModel @Inject constructor(
         } else {
             BackupFlow.Report(
                 success = true,
-                title = UiText.Res(R.string.vault_backup_done_title),
+                title = UiText.Res(R.string.backup_done_title),
                 lines = listOf(
                     UiText.Plural(R.plurals.vault_backup_saved, result.saved),
                     UiText.Plural(R.plurals.vault_backup_unreadable, result.unreadable),
@@ -241,19 +241,19 @@ class VaultBackupViewModel @Inject constructor(
         is ExportResult.Cancelled -> if (result.partialFileLeft) {
             BackupFlow.Report(
                 success = false,
-                title = UiText.Res(R.string.vault_backup_cancelled),
-                lines = listOf(UiText.Res(R.string.vault_backup_partial_left)),
+                title = UiText.Res(R.string.backup_cancelled),
+                lines = listOf(UiText.Res(R.string.backup_partial_left)),
             )
         } else {
-            messages.trySend(UiText.Res(R.string.vault_backup_cancelled))
+            messages.trySend(UiText.Res(R.string.backup_cancelled))
             BackupFlow.Idle
         }
         is ExportResult.Failed -> BackupFlow.Report(
             success = false,
-            title = UiText.Res(R.string.vault_backup_failed_title),
+            title = UiText.Res(R.string.backup_failed_title),
             lines = listOfNotNull(
-                UiText.Res(R.string.vault_backup_failed_message),
-                UiText.Res(R.string.vault_backup_partial_left).takeIf { result.partialFileLeft },
+                UiText.Res(R.string.backup_failed_message),
+                UiText.Res(R.string.backup_partial_left).takeIf { result.partialFileLeft },
             ),
         )
     }
@@ -265,7 +265,7 @@ class VaultBackupViewModel @Inject constructor(
             RestoreResult.WrongPassword -> BackupFlow.ArchivePassword(wrong = true)
             is RestoreResult.Success -> BackupFlow.Report(
                 success = true,
-                title = UiText.Res(R.string.vault_restore_done_title),
+                title = UiText.Res(R.string.restore_done_title),
                 lines = buildList {
                     add(UiText.Plural(R.plurals.vault_restore_added, result.added))
                     if (result.duplicates > 0) add(UiText.Plural(R.plurals.vault_restore_duplicates, result.duplicates))
@@ -278,12 +278,13 @@ class VaultBackupViewModel @Inject constructor(
             }
             is RestoreResult.Failed -> BackupFlow.Report(
                 success = false,
-                title = UiText.Res(R.string.vault_restore_failed_title),
+                title = UiText.Res(R.string.restore_failed_title),
                 lines = listOf(
                     UiText.Res(
                         when (result.reason) {
                             RestoreResult.Failed.Reason.NOT_AN_ARCHIVE -> R.string.vault_restore_not_archive
-                            RestoreResult.Failed.Reason.UNSUPPORTED -> R.string.vault_restore_unsupported
+                            RestoreResult.Failed.Reason.DATA_BACKUP -> R.string.vault_restore_data_backup
+                            RestoreResult.Failed.Reason.UNSUPPORTED -> R.string.restore_unsupported
                             RestoreResult.Failed.Reason.CORRUPTED -> R.string.vault_restore_corrupted
                             RestoreResult.Failed.Reason.NO_SPACE -> R.string.vault_restore_no_space
                             RestoreResult.Failed.Reason.UNREADABLE -> R.string.vault_restore_unreadable_file

@@ -2,11 +2,11 @@ package app.focale.vault
 
 import android.content.ContentResolver
 import android.net.Uri
-import android.provider.DocumentsContract
-import android.system.ErrnoException
-import android.system.OsConstants
 import android.util.Log
-import androidx.compose.runtime.Immutable
+import app.focale.backup.ArchiveKeys
+import app.focale.backup.BackupArchiveException
+import app.focale.backup.BackupDocuments
+import app.focale.backup.BackupProgress
 import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.database.VaultAlbumEntity
 import app.focale.core.database.VaultDao
@@ -35,31 +35,6 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-
-/** Avancement d'une sauvegarde ou d'une restauration. */
-@Immutable
-data class BackupProgress(
-    val stage: Stage,
-    val done: Int = 0,
-    val total: Int = 0,
-    val bytesDone: Long = 0,
-    val bytesTotal: Long = 0,
-) {
-    enum class Stage {
-        /** Dérivation de la clé et, à la restauration, vérification du mot de passe. */
-        PREPARING,
-        TRANSFERRING,
-        /** Restauration : ajout au coffre des éléments vérifiés, qui ne s'interrompt pas. */
-        FINISHING,
-    }
-
-    val fraction: Float
-        get() = when {
-            bytesTotal > 0 -> (bytesDone.toDouble() / bytesTotal).toFloat().coerceIn(0f, 1f)
-            total > 0 -> done.toFloat() / total
-            else -> 0f
-        }
-}
 
 sealed interface ExportResult {
     /** Archive complète : [saved] éléments ; [unreadable] fichiers du coffre illisibles écartés. */
@@ -132,7 +107,15 @@ sealed interface RestoreResult {
     data object WrongPassword : RestoreResult
     data object Cancelled : RestoreResult
     data class Failed(val reason: Reason) : RestoreResult {
-        enum class Reason { NOT_AN_ARCHIVE, UNSUPPORTED, CORRUPTED, NO_SPACE, UNREADABLE }
+        enum class Reason {
+            NOT_AN_ARCHIVE,
+            /** Sauvegarde des données de Focale, à restaurer depuis les réglages. */
+            DATA_BACKUP,
+            UNSUPPORTED,
+            CORRUPTED,
+            NO_SPACE,
+            UNREADABLE,
+        }
     }
 }
 
@@ -209,7 +192,7 @@ class VaultBackupRepository internal constructor(
      */
     internal suspend fun export(
         target: Uri,
-        keys: VaultArchiveKeys,
+        keys: ArchiveKeys,
         snapshot: VaultSnapshot,
         cancelled: () -> Boolean = { false },
     ): ExportResult = try {
@@ -233,7 +216,7 @@ class VaultBackupRepository internal constructor(
         snapshot: VaultSnapshot?,
         cancelled: () -> Boolean,
         onProgress: (BackupProgress) -> Unit,
-        keys: () -> VaultArchiveKeys,
+        keys: () -> ArchiveKeys,
     ): ExportResult = withContext(io) {
         val result = try {
             val content = snapshot ?: snapshot()
@@ -267,7 +250,7 @@ class VaultBackupRepository internal constructor(
             throw error
         } catch (error: Exception) {
             Log.w(TAG, "Sauvegarde impossible", error)
-            return@withContext ExportResult.Failed(partialFileLeft = !delete(target), noSpace = error.isNoSpace())
+            return@withContext ExportResult.Failed(partialFileLeft = !delete(target), noSpace = BackupDocuments.isNoSpace(error))
         }
         // Archive complète : noter sa date ne doit plus pouvoir la compromettre.
         withContext(NonCancellable) {
@@ -310,12 +293,13 @@ class VaultBackupRepository internal constructor(
             input.buffered(BUFFER).use { stream ->
                 restoreFrom(stream, password, Progress.Factory(cancelled, coroutineContext.job, onProgress))
             }
-        } catch (error: VaultArchiveException) {
+        } catch (error: BackupArchiveException) {
             when (error.reason) {
-                VaultArchiveException.Reason.WRONG_PASSWORD -> RestoreResult.WrongPassword
-                VaultArchiveException.Reason.NOT_AN_ARCHIVE -> RestoreResult.Failed(RestoreResult.Failed.Reason.NOT_AN_ARCHIVE)
-                VaultArchiveException.Reason.UNSUPPORTED -> RestoreResult.Failed(RestoreResult.Failed.Reason.UNSUPPORTED)
-                VaultArchiveException.Reason.CORRUPTED -> {
+                BackupArchiveException.Reason.WRONG_PASSWORD -> RestoreResult.WrongPassword
+                BackupArchiveException.Reason.NOT_AN_ARCHIVE -> RestoreResult.Failed(RestoreResult.Failed.Reason.NOT_AN_ARCHIVE)
+                BackupArchiveException.Reason.OTHER_BACKUP -> RestoreResult.Failed(RestoreResult.Failed.Reason.DATA_BACKUP)
+                BackupArchiveException.Reason.UNSUPPORTED -> RestoreResult.Failed(RestoreResult.Failed.Reason.UNSUPPORTED)
+                BackupArchiveException.Reason.CORRUPTED -> {
                     Log.w(TAG, "Archive refusée", error)
                     RestoreResult.Failed(RestoreResult.Failed.Reason.CORRUPTED)
                 }
@@ -550,23 +534,10 @@ class VaultBackupRepository internal constructor(
     }
 
     /** Flux d'écriture du document, tronqué (« wt ») quand le fournisseur le permet. */
-    private fun openOutput(target: Uri): OutputStream =
-        runCatching { resolver.openOutputStream(target, "wt") }.getOrNull()
-            ?: resolver.openOutputStream(target, "w")
-            ?: throw FileNotFoundException("Écriture impossible : $target")
+    private fun openOutput(target: Uri): OutputStream = BackupDocuments.openOutput(resolver, target)
 
     /** Supprime un fichier de sauvegarde inachevé ; faux s'il est resté en place. */
-    private fun delete(target: Uri): Boolean = try {
-        if (target.scheme == ContentResolver.SCHEME_FILE) {
-            val file = File(requireNotNull(target.path))
-            !file.exists() || file.delete()
-        } else {
-            DocumentsContract.deleteDocument(resolver, target)
-        }
-    } catch (error: Exception) {
-        Log.w(TAG, "Fichier inachevé non supprimé : $target", error)
-        false
-    }
+    private fun delete(target: Uri): Boolean = BackupDocuments.delete(resolver, target)
 
     private fun manifestOf(items: List<VaultItemEntity>, albums: List<VaultAlbumEntity>) = ArchiveManifest(
         createdAt = System.currentTimeMillis(),
@@ -665,8 +636,3 @@ class VaultBackupRepository internal constructor(
 private class CancelledByUser : RuntimeException()
 
 private class NoSpaceLeft : RuntimeException()
-
-/** Plus de place sur le support écrit (ENOSPC), à travers les exceptions qui l'enveloppent. */
-private fun Throwable.isNoSpace(): Boolean = generateSequence(this) { it.cause }.any { error ->
-    (error is ErrnoException && error.errno == OsConstants.ENOSPC) || error.message?.contains("ENOSPC") == true
-}

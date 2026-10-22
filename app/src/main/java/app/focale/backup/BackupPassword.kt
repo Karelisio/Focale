@@ -1,4 +1,4 @@
-package app.focale.vault
+package app.focale.backup
 
 import java.nio.CharBuffer
 import java.text.Normalizer
@@ -9,8 +9,8 @@ import javax.crypto.spec.SecretKeySpec
 enum class PasswordStrength { TOO_SHORT, WEAK, FAIR, STRONG }
 
 /**
- * Mot de passe des sauvegardes du coffre : règles de saisie, indicateur de robustesse et
- * dérivation de clé.
+ * Mot de passe des sauvegardes (coffre-fort et données) : règles de saisie, indicateur de
+ * robustesse et dérivation de clé.
  *
  * Contrairement au code du coffre, qui ne garde qu'un accès local, ce mot de passe protège
  * un fichier destiné à quitter l'appareil : il doit résister à une attaque hors ligne,

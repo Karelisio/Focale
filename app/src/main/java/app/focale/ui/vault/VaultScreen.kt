@@ -109,6 +109,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.withResumed
 import app.focale.R
 import app.focale.core.util.Formatters
+import app.focale.ui.backup.AutoBackupIcon
+import app.focale.ui.backup.KeepScreenOn
 import app.focale.ui.components.EmptyState
 import app.focale.ui.components.rememberNotificationPermission
 import app.focale.ui.components.SelectionIndicator

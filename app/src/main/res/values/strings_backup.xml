@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sauvegardes (coffre-fort et données) : mot de passe, avancement, bilan -->
+    <string name="backup_password">Password</string>
+    <string name="backup_password_confirm">Confirm the password</string>
+    <string name="backup_password_mismatch">The passwords don’t match</string>
+    <plurals name="backup_password_min">
+        <item quantity="one">At least %d character</item>
+        <item quantity="other">At least %d characters</item>
+    </plurals>
+    <string name="backup_strength_weak">Strength: weak</string>
+    <string name="backup_strength_fair">Strength: fair</string>
+    <string name="backup_strength_strong">Strength: strong</string>
+    <string name="backup_show_password">Show password</string>
+    <string name="backup_hide_password">Hide password</string>
+    <string name="backup_choose_location">Choose location</string>
+    <string name="backup_no_picker">No app on this device can choose a file</string>
+    <string name="backup_preparing">Preparing encryption…</string>
+    <string name="backup_progress_bytes">%1$s of %2$s</string>
+    <string name="backup_keep_open">Keep Focale open until it’s finished.</string>
+    <string name="backup_cancelling">Cancelling…</string>
+    <string name="backup_done_title">Backup created</string>
+    <string name="backup_cancelled">Backup cancelled</string>
+    <string name="backup_failed_title">Backup failed</string>
+    <string name="backup_failed_message">The backup file couldn’t be written. Check the free space at the chosen location, then try again.</string>
+    <string name="backup_partial_left">The incomplete file couldn’t be deleted. Delete it yourself: it can’t be restored.</string>
+    <string name="restore_password">Backup password</string>
+    <string name="restore_wrong_password">Wrong password</string>
+    <string name="restore_checking">Checking the password…</string>
+    <string name="restore_done_title">Restore complete</string>
+    <string name="restore_failed_title">Restore failed</string>
+    <string name="restore_unsupported">This backup was created by a newer version of Focale. Update the app to restore it.</string>
+</resources>

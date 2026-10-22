@@ -16,6 +16,8 @@ import androidx.core.content.ContextCompat
 import androidx.work.ForegroundInfo
 import app.focale.MainActivity
 import app.focale.R
+import app.focale.backup.AutoBackupError
+import app.focale.backup.AutoBackupNotifier
 import app.focale.data.OperationResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -29,7 +31,7 @@ import javax.inject.Singleton
 @Singleton
 class VaultNotifications @Inject constructor(
     @ApplicationContext private val context: Context,
-) {
+) : AutoBackupNotifier {
     private val manager = NotificationManagerCompat.from(context)
 
     /** Notification de l'import en cours, qui fait de la tâche un service au premier plan. */
@@ -118,7 +120,7 @@ class VaultNotifications @Inject constructor(
     private fun newMediaId(albumId: Long): Int = NEW_MEDIA_ID + albumId.toInt()
 
     /** Sauvegarde automatique en cours, quand elle peut passer au premier plan : discrète, sans détail. */
-    fun autoBackupForeground(): ForegroundInfo {
+    override fun autoBackupForeground(): ForegroundInfo {
         val notification = builder(CHANNEL_BACKUP)
             .setContentTitle(context.getString(R.string.vault_auto_backup_running))
             .setProgress(0, 0, true)
@@ -131,8 +133,8 @@ class VaultNotifications @Inject constructor(
     }
 
     /** Échec d'une sauvegarde automatique : sa cause seulement ; un toucher ouvre le coffre. */
-    fun autoBackupFailed(error: AutoBackupError) {
-        val text = context.getString(error.message)
+    override fun autoBackupFailed(error: AutoBackupError) {
+        val text = context.getString(error.vaultMessage)
         notify(
             AUTO_BACKUP_FAILED_ID,
             builder(CHANNEL_BACKUP)
@@ -147,7 +149,7 @@ class VaultNotifications @Inject constructor(
         )
     }
 
-    fun cancelAutoBackupFailed() = cancel(AUTO_BACKUP_FAILED_ID)
+    override fun cancelAutoBackupFailed() = cancel(AUTO_BACKUP_FAILED_ID)
 
     /** Ouvre le coffre (verrouillé s'il l'est). */
     private fun openVault(): PendingIntent = PendingIntent.getActivity(

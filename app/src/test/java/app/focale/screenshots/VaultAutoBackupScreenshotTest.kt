@@ -11,13 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
+import app.focale.backup.AutoBackupError
+import app.focale.backup.AutoBackupFrequency
+import app.focale.backup.AutoBackupSettings
 import app.focale.core.settings.AppSettings
 import app.focale.core.settings.ThemeMode
 import app.focale.ui.theme.FocaleTheme
-import app.focale.ui.vault.AutoBackupSettingsContent
-import app.focale.vault.AutoBackupError
-import app.focale.vault.AutoBackupFrequency
-import app.focale.vault.AutoBackupSettings
+import app.focale.ui.vault.VaultAutoBackupSettingsContent
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -79,7 +79,7 @@ class VaultAutoBackupScreenshotTest {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         BottomSheetDefaults.DragHandle()
-                        AutoBackupSettingsContent(
+                        VaultAutoBackupSettingsContent(
                             settings = settings,
                             busy = false,
                             notice = null,

@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import app.focale.backup.BackupProgress
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.database.VaultAlbumEntity

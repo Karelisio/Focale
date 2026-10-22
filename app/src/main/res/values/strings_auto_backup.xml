@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sauvegardes automatiques (coffre-fort et données) : réglage -->
+    <string name="auto_backup_title">Automatic backup</string>
+    <string name="auto_backup_frequency">Frequency</string>
+    <string name="auto_backup_off">Off</string>
+    <string name="auto_backup_daily">Every day</string>
+    <string name="auto_backup_weekly">Every week</string>
+    <string name="auto_backup_destination">Destination</string>
+    <string name="auto_backup_folder">Change folder</string>
+    <string name="auto_backup_folder_unknown">Chosen folder</string>
+    <string name="auto_backup_password">Change password</string>
+    <string name="auto_backup_password_summary">Not stored: only a key derived from it stays on this device</string>
+    <string name="auto_backup_last">Last backup: %1$s</string>
+    <string name="auto_backup_pending">First backup as soon as possible</string>
+    <string name="auto_backup_failed_on">Failed on %1$s</string>
+    <string name="auto_backup_password_message">Choose the password for automatic backups. You’ll need it to restore them, and it can’t be recovered. Focale doesn’t store it: only a key derived from it stays on this device, protected by the Android Keystore.</string>
+    <string name="auto_backup_choose_folder">Choose folder</string>
+    <string name="auto_backup_password_changed">Password changed: the next backups will use it.</string>
+    <string name="auto_backup_folder_refused">This folder can’t receive the backups. Choose another one.</string>
+    <string name="auto_backup_no_picker">No app on this device can choose a folder</string>
+    <string name="auto_backup_error_space">Not enough space left in the backup folder.</string>
+    <string name="auto_backup_error_write">The backup couldn’t be written. It will be retried next time.</string>
+</resources>
