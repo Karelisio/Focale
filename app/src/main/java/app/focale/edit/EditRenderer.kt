@@ -43,9 +43,11 @@ object EditRenderer {
     }
 
     /**
-     * Applique géométrie (quarts de tour, miroir, redressement), recadrage, couleurs puis
-     * dessin ; l'aperçu géométrique se passe du recadrage, des couleurs et du dessin (tracé en
-     * direct par l'écran).
+     * Applique géométrie (quarts de tour, miroir, redressement), recadrage, couleurs, zones
+     * floutées puis dessin et textes ; l'aperçu géométrique se passe du recadrage, des couleurs
+     * et du dessin (tracé en direct par l'écran).
+     *
+     * @param faces police des textes ([TextRenderer.faces] pour celle de l'application).
      */
     fun render(
         source: Bitmap,
@@ -53,15 +55,20 @@ object EditRenderer {
         includeCrop: Boolean = true,
         includeColor: Boolean = true,
         includeDrawing: Boolean = true,
+        faces: TextRenderer.Faces = TextRenderer.Faces.System,
     ): Bitmap {
         val (matrix, size) = geometry(source.width, source.height, state.quarterTurns, state.flipHorizontal)
         val (fullWidth, fullHeight) = size
+        // Redressement seul, autour du centre du cadre : la photo et ses zones floutées le suivent.
+        val straighten = Matrix()
         if (state.straighten != 0f) {
-            // Redressement autour du centre du cadre, image très légèrement agrandie : aucun
-            // pixel à demi couvert dans les coins du recadrage ([StraightenMath.bleed]).
+            // Image très légèrement agrandie : aucun pixel à demi couvert dans les coins du
+            // recadrage ([StraightenMath.bleed]).
             val bleed = StraightenMath.bleed(fullWidth.toFloat(), fullHeight.toFloat())
-            matrix.postRotate(state.straighten, fullWidth / 2f, fullHeight / 2f)
-            matrix.postScale(bleed, bleed, fullWidth / 2f, fullHeight / 2f)
+            for (target in listOf(matrix, straighten)) {
+                target.postRotate(state.straighten, fullWidth / 2f, fullHeight / 2f)
+                target.postScale(bleed, bleed, fullWidth / 2f, fullHeight / 2f)
+            }
         }
         val crop = if (includeCrop) state.crop else NormRect.Full
         val left = (crop.left * fullWidth).roundToInt().coerceIn(0, fullWidth - 1)
@@ -80,9 +87,23 @@ object EditRenderer {
             }
         }
         canvas.withMatrix(matrix) { drawBitmap(source, 0f, 0f, paint) }
-        // Les traits sont exprimés dans le repère pivoté : tracés hors de la matrice de
-        // géométrie, mais sous la translation du recadrage, et sans filtre de couleur.
-        if (includeDrawing) DrawingRenderer.draw(canvas, state.strokes, fullWidth.toFloat(), fullHeight.toFloat())
+        // Zones floutées : calculées zone par zone sur la source en pleine résolution, puis
+        // posées dans le repère pivoté avant redressement, avec le filtre de couleur de la photo.
+        if (state.blurs.isNotEmpty()) {
+            canvas.withMatrix(straighten) {
+                for (region in state.blurs) {
+                    val patch = BlurRenderer.patch(source, state.quarterTurns, state.flipHorizontal, region) ?: continue
+                    BlurRenderer.draw(this, region, patch, fullWidth.toFloat(), fullHeight.toFloat(), paint.colorFilter)
+                    patch.bitmap.recycle()
+                }
+            }
+        }
+        // Les traits et les textes sont exprimés dans le repère pivoté : tracés hors de la
+        // matrice de géométrie, mais sous la translation du recadrage, et sans filtre de couleur.
+        if (includeDrawing) {
+            DrawingRenderer.draw(canvas, state.strokes, fullWidth.toFloat(), fullHeight.toFloat())
+            TextRenderer.draw(canvas, state.texts, faces, fullWidth.toFloat(), fullHeight.toFloat())
+        }
         return output
     }
 }

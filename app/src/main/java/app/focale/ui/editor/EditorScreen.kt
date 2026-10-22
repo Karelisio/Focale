@@ -37,8 +37,10 @@ import androidx.compose.material.icons.automirrored.rounded.Redo
 import androidx.compose.material.icons.automirrored.rounded.RotateRight
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.BlurOn
 import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.Draw
+import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Flip
@@ -60,7 +62,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSliderState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,12 +86,14 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -99,6 +105,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.R
 import app.focale.edit.Adjustment
+import app.focale.edit.BlurPatch
+import app.focale.edit.BlurRenderer
 import app.focale.edit.ColorMatrices
 import app.focale.edit.CropAspect
 import app.focale.edit.DrawingRenderer
@@ -107,8 +115,10 @@ import app.focale.edit.EditState
 import app.focale.edit.FilterPreset
 import app.focale.edit.ImageFrame
 import app.focale.edit.NormRect
+import app.focale.edit.PhotoPlacement
 import app.focale.edit.SaveMode
 import app.focale.edit.StraightenMath
+import app.focale.edit.TextRenderer
 import app.focale.ui.components.Choice
 import app.focale.ui.components.ConnectedChoiceGroup
 import app.focale.ui.theme.PhotoTheme
@@ -129,6 +139,7 @@ fun EditorScreen(onClose: () -> Unit, viewModel: EditorViewModel = hiltViewModel
 @Composable
 private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val preview by viewModel.preview.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val tool by viewModel.tool.collectAsStateWithLifecycle()
@@ -139,6 +150,16 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
     val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
     val canRedo by viewModel.canRedo.collectAsStateWithLifecycle()
     val straightening by viewModel.straightening.collectAsStateWithLifecycle()
+    val textTool = viewModel.textTool
+    val textOptions by textTool.options.collectAsStateWithLifecycle()
+    val selectedText by textTool.selected.collectAsStateWithLifecycle()
+    val textDraft by textTool.draft.collectAsStateWithLifecycle()
+    val blurTool = viewModel.blurTool
+    val blurOptions by blurTool.options.collectAsStateWithLifecycle()
+    val selectedBlur by blurTool.selected.collectAsStateWithLifecycle()
+    val blurPatches by viewModel.blurPatches.collectAsStateWithLifecycle()
+    val detectingFaces by viewModel.detectingFaces.collectAsStateWithLifecycle()
+    val textLayouts = rememberTextLayoutCache()
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var showOriginal by remember { mutableStateOf(false) }
 
@@ -157,8 +178,34 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                     onClose()
                 }
                 EditorEvent.Failed -> Toast.makeText(context, R.string.editor_failed, Toast.LENGTH_LONG).show()
+                is EditorEvent.FacesBlurred -> Toast.makeText(
+                    context,
+                    if (event.count == 0) {
+                        resources.getString(R.string.blur_faces_none)
+                    } else {
+                        resources.getQuantityString(R.plurals.blur_faces_found, event.count, event.count)
+                    },
+                    Toast.LENGTH_SHORT,
+                ).show()
             }
         }
+    }
+
+    // Couleur résolue du prochain texte, et réglages montrés : ceux du texte sélectionné s'il y en a un.
+    val textInk = textOptions.ink.color().toArgb()
+    val shownText = state.texts.firstOrNull { it.id == selectedText }
+    val textInkShown = if (shownText == null) textOptions.ink else InkColor.entries.firstOrNull { it.color().toArgb() == shownText.color }
+    val shownBlur = state.blurs.firstOrNull { it.id == selectedBlur }
+    textDraft?.let { draft ->
+        TextInputDialog(
+            draft = draft,
+            onConfirm = { textTool.confirm(it, textInk) },
+            onDelete = {
+                textTool.cancel()
+                draft.id?.let(textTool::delete)
+            },
+            onDismiss = textTool::cancel,
+        )
     }
 
     if (confirmDiscard) {
@@ -218,7 +265,38 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                     onStroke = viewModel::addStroke,
                     onErase = viewModel::eraseStroke,
                     onCompare = { showOriginal = it },
-                )
+                    blurPatches = blurPatches,
+                    textLayouts = textLayouts,
+                ) { viewport ->
+                    when (tool) {
+                        EditorTool.TEXT -> TextOverlay(
+                            viewport = viewport,
+                            texts = state.texts,
+                            layouts = textLayouts,
+                            selected = selectedText,
+                            onAdd = textTool::startNew,
+                            onEdit = textTool::startEdit,
+                            onSelect = textTool::select,
+                            onGestureStart = textTool::beginGesture,
+                            onTransform = textTool::transform,
+                            onDelete = textTool::delete,
+                        )
+                        EditorTool.BLUR -> BlurOverlay(
+                            viewport = viewport,
+                            regions = state.blurs,
+                            selected = selectedBlur,
+                            shape = blurOptions.shape,
+                            brushSize = blurOptions.brushSize.dp,
+                            accent = MaterialTheme.colorScheme.primary,
+                            onAdd = blurTool::add,
+                            onSelect = blurTool::select,
+                            onMoveStart = blurTool::beginMove,
+                            onMove = blurTool::move,
+                            onDelete = blurTool::delete,
+                        )
+                        else -> Unit
+                    }
+                }
             }
             if (saving) {
                 Box(
@@ -261,13 +339,41 @@ private fun EditorContent(viewModel: EditorViewModel, onClose: () -> Unit) {
                     onInk = viewModel::selectInk,
                     onSize = viewModel::setDrawSize,
                 )
+                EditorTool.TEXT -> {
+                    // Couleur de chaque pastille résolue ici : le contrôleur ne connaît pas le thème.
+                    val inks = InkColor.entries.associateWith { it.color().toArgb() }
+                    TextPanel(
+                        options = shownText?.let { TextOptions(textOptions.ink, it.size, it.background, it.bold) } ?: textOptions,
+                        ink = textInkShown,
+                        hasSelection = shownText != null,
+                        onAdd = textTool::startNewCentered,
+                        onInk = { textTool.setInk(it, inks.getValue(it)) },
+                        onBackground = textTool::setBackground,
+                        onBold = textTool::setBold,
+                        onSizeStart = textTool::beginSize,
+                        onSize = textTool::setSize,
+                        onDelete = textTool::deleteSelected,
+                    )
+                }
+                EditorTool.BLUR -> BlurPanel(
+                    options = shownBlur?.let { blurOptions.copy(style = it.style, intensity = it.intensity) } ?: blurOptions,
+                    hasSelection = shownBlur != null,
+                    detectingFaces = detectingFaces,
+                    onShape = blurTool::setShape,
+                    onStyle = blurTool::setStyle,
+                    onIntensityStart = blurTool::beginIntensity,
+                    onIntensity = blurTool::setIntensity,
+                    onBrushSize = blurTool::setBrushSize,
+                    onFaces = viewModel::blurFaces,
+                    onDelete = blurTool::deleteSelected,
+                )
             }
         }
         EditorToolChoices(tool = tool, onSelect = viewModel::selectTool)
     }
 }
 
-/** Quatre outils : seul l'outil actif affiche son libellé. */
+/** Six outils : seul l'outil actif affiche son libellé. */
 @Composable
 internal fun EditorToolChoices(tool: EditorTool, onSelect: (EditorTool) -> Unit) {
     ConnectedChoiceGroup(
@@ -276,6 +382,8 @@ internal fun EditorToolChoices(tool: EditorTool, onSelect: (EditorTool) -> Unit)
             Choice(EditorTool.FILTERS, stringResource(R.string.editor_filters), Icons.Outlined.AutoFixHigh),
             Choice(EditorTool.ADJUST, stringResource(R.string.editor_adjust), Icons.Outlined.Tune),
             Choice(EditorTool.DRAW, stringResource(R.string.editor_draw), Icons.Outlined.Draw),
+            Choice(EditorTool.TEXT, stringResource(R.string.editor_text), Icons.Outlined.TextFields),
+            Choice(EditorTool.BLUR, stringResource(R.string.editor_blur), Icons.Outlined.BlurOn),
         ),
         selected = tool,
         onSelect = onSelect,
@@ -345,11 +453,21 @@ internal fun EditorTopBar(
 }
 
 /**
+ * Géométrie de l'aperçu transmise aux couches des outils Texte et Flouter : image pivotée
+ * entière à l'écran ([frame]), zone visible (recadrée), et photo redressée ([photo]) où vivent
+ * les zones floutées.
+ */
+@Immutable
+data class EditorViewport(val frame: ImageFrame, val visible: Rect, val photo: PhotoPlacement)
+
+/**
  * Aperçu : en mode recadrage, l'image entière et le cadre ; sinon la zone recadrée. Le
  * redressement est appliqué à l'affichage (même géométrie que l'export), et un geste à deux
- * doigts le règle en mode recadrage. Les traits sont tracés par-dessus avec le rendu de
- * l'export, et l'outil Dessin y pose sa couche de saisie. Un appui long affiche l'original
- * (sans filtre, réglage ni dessin).
+ * doigts le règle en mode recadrage. Les zones floutées (calculées en arrière-plan,
+ * [blurPatches]) pivotent avec la photo et prennent ses couleurs ; traits puis textes sont
+ * tracés par-dessus avec le rendu de l'export. L'outil Dessin y pose sa couche de saisie, les
+ * outils Texte et Flouter la leur ([overlay]). Un appui long affiche l'original (sans filtre,
+ * réglage, zone, dessin ni texte).
  */
 @Composable
 internal fun EditorCanvas(
@@ -369,12 +487,17 @@ internal fun EditorCanvas(
     onStroke: (DrawingStroke) -> Unit,
     onErase: (DrawingStroke) -> Unit,
     onCompare: (Boolean) -> Unit,
+    blurPatches: Map<Long, BlurPatch> = emptyMap(),
+    textLayouts: TextLayoutCache = rememberTextLayoutCache(),
+    overlay: @Composable (EditorViewport) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val image = preview.image
     val cropMode = tool == EditorTool.CROP
     val drawMode = tool == EditorTool.DRAW
+    // Les outils Texte et Flouter captent les gestes : pas de comparaison à l'appui long.
+    val overlayMode = tool == EditorTool.TEXT || tool == EditorTool.BLUR
     val angle = state.straighten
     val currentAngle by rememberUpdatedState(angle)
     // Juste après un miroir, l'aperçu rendu en arrière-plan n'est pas encore retourné : il
@@ -384,6 +507,11 @@ internal fun EditorCanvas(
         val values = state.colorMatrix()
         if (showOriginal || values.contentEquals(ColorMatrices.identity)) null else ColorFilter.colorMatrix(ColorMatrix(values))
     }
+    // Même filtre pour les zones floutées, tracées par le rendu Android de l'export.
+    val blurFilter = remember(colorFilter) {
+        if (colorFilter == null) null else android.graphics.ColorMatrixColorFilter(state.colorMatrix())
+    }
+    SideEffect { textLayouts.retain(state.texts) }
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
@@ -405,9 +533,21 @@ internal fun EditorCanvas(
         val dstOffset = IntOffset(frame.screenX(region.left).roundToInt(), frame.screenY(region.top).roundToInt())
         val dstSize = IntSize((region.width * frame.width).roundToInt(), (region.height * frame.height).roundToInt())
         val visible = Rect(dstOffset.toOffset(), dstSize.toSize())
-        // Juste après une rotation, les traits ont déjà tourné : ils attendent l'aperçu pivoté
-        // plutôt que de s'afficher de travers sur l'ancien.
-        val strokes = if (showOriginal || !preview.matches(state)) emptyList() else state.strokes
+        val bleed = if (angle == 0f) 1f else StraightenMath.bleed(frame.width, frame.height)
+        val viewport = EditorViewport(frame, visible, PhotoPlacement(frame, angle, bleed))
+        // Juste après une rotation, traits, textes et zones ont déjà tourné : ils attendent
+        // l'aperçu pivoté plutôt que de s'afficher de travers sur l'ancien.
+        val hidden = showOriginal || !preview.matches(state)
+        val strokes = if (hidden) emptyList() else state.strokes
+        val texts = if (hidden) emptyList() else state.texts
+        // Zone sans calcul à cette orientation (rotation en cours) : non affichée.
+        val blurs = if (hidden) {
+            emptyList()
+        } else {
+            state.blurs.mapNotNull { zone ->
+                blurPatches[zone.id]?.takeIf { it.quarterTurns == state.quarterTurns && it.flipHorizontal == state.flipHorizontal }?.let { zone to it }
+            }
+        }
         // Chemins en cache, en pixels de l'aperçu : ils ne changent qu'avec les traits, et une
         // simple mise à l'échelle suit la taille à l'écran (animée au changement d'outil).
         val prepared = remember(strokes, image.width, image.height) {
@@ -418,7 +558,7 @@ internal fun EditorCanvas(
             Modifier
                 .fillMaxSize()
                 .then(
-                    if (!cropMode && !drawMode) {
+                    if (!cropMode && !drawMode && !overlayMode) {
                         Modifier.pointerInput(Unit) {
                             detectTapGestures(onPress = {
                                 onCompare(true)
@@ -447,7 +587,6 @@ internal fun EditorCanvas(
                 // Image entière pivotée autour de son centre, découpée à la zone visible ; en mode
                 // recadrage, les coins hors de l'image redressée restent vides.
                 val pivot = Offset(image.width / 2f, image.height / 2f)
-                val bleed = if (angle == 0f) 1f else StraightenMath.bleed(frame.width, frame.height)
                 clipRect(visible.left, visible.top, visible.right, visible.bottom) {
                     withTransform({
                         translate(frame.left, frame.top)
@@ -460,12 +599,40 @@ internal fun EditorCanvas(
                     }
                 }
             }
+            if (blurs.isNotEmpty()) {
+                // Même transformation que la photo (sans le miroir provisoire : les zones sont
+                // déjà dans le repère retourné), en pixels de l'aperçu.
+                val pivot = Offset(image.width / 2f, image.height / 2f)
+                clipRect(visible.left, visible.top, visible.right, visible.bottom) {
+                    withTransform({
+                        translate(frame.left, frame.top)
+                        scale(frame.width / image.width, frame.height / image.height, Offset.Zero)
+                        rotate(angle, pivot)
+                        scale(bleed, bleed, pivot)
+                    }) {
+                        drawIntoCanvas { canvas ->
+                            for ((zone, patch) in blurs) {
+                                BlurRenderer.draw(canvas.nativeCanvas, zone, patch, image.width.toFloat(), image.height.toFloat(), blurFilter)
+                            }
+                        }
+                    }
+                }
+            }
             if (prepared.isNotEmpty()) {
                 clipRect(visible.left, visible.top, visible.right, visible.bottom) {
                     drawIntoCanvas { canvas ->
                         canvas.nativeCanvas.withTranslation(frame.left, frame.top) {
                             scale(frame.width / image.width, frame.height / image.height)
                             prepared.forEach { it.draw(this) }
+                        }
+                    }
+                }
+            }
+            if (texts.isNotEmpty()) {
+                clipRect(visible.left, visible.top, visible.right, visible.bottom) {
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.withTranslation(frame.left, frame.top) {
+                            texts.forEach { TextRenderer.draw(this, textLayouts[it], it, frame.width, frame.height) }
                         }
                     }
                 }
@@ -497,6 +664,7 @@ internal fun EditorCanvas(
                 onErase = onErase,
             )
         }
+        overlay(viewport)
     }
 }
 

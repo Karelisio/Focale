@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Éditeur : outil Flouter -->
+    <string name="editor_blur">Flouter</string>
+    <string name="blur_rectangle">Rectangle</string>
+    <string name="blur_ellipse">Ellipse</string>
+    <string name="blur_brush">Pinceau</string>
+    <string name="blur_style_blur">Flou</string>
+    <string name="blur_style_pixelate">Pixels</string>
+    <string name="blur_intensity">Intensité</string>
+    <string name="blur_brush_size">Taille du pinceau</string>
+    <string name="blur_faces">Visages</string>
+    <string name="blur_faces_description">Flouter les visages détectés</string>
+    <string name="blur_faces_none">Aucun nouveau visage trouvé</string>
+    <plurals name="blur_faces_found">
+        <item quantity="one">%d visage flouté</item>
+        <item quantity="many">%,d visages floutés</item>
+        <item quantity="other">%,d visages floutés</item>
+    </plurals>
+    <string name="blur_delete">Supprimer la zone</string>
+    <string name="blur_zone_description">Zone floutée %1$d (%2$s)</string>
+    <string name="blur_action_select">Sélectionner</string>
+    <string name="blur_action_delete">Supprimer</string>
+</resources>

@@ -37,9 +37,11 @@ enum class Adjustment { BRIGHTNESS, CONTRAST, SATURATION, WARMTH }
  * État complet d'une édition, appliqué dans cet ordre : rotation par quarts de tour,
  * miroir horizontal, redressement, recadrage, filtre puis réglages. Le redressement
  * ([straighten], en degrés, sens horaire, de -45 à 45) fait pivoter l'image autour du
- * centre de son cadre ; [crop] reste dans l'image redressée ([StraightenMath]). Les traits
- * de dessin ([strokes]), exprimés comme [crop] dans ce cadre, sont tracés par-dessus, sans
- * filtre.
+ * centre de son cadre ; [crop] reste dans l'image redressée ([StraightenMath]). Les zones
+ * floutées ([blurs]) remplacent ensuite des pixels de la photo : attachées à elle, elles
+ * pivotent avec son redressement ([BlurArea]) et prennent ses couleurs. Les traits de
+ * dessin ([strokes]) puis les textes ([texts]), exprimés comme [crop] dans le cadre, sont
+ * tracés par-dessus, sans filtre : un texte posé sur une zone floutée reste net.
  */
 @Immutable
 data class EditState(
@@ -54,10 +56,39 @@ data class EditState(
     val saturation: Float = 0f,
     val warmth: Float = 0f,
     val strokes: List<DrawingStroke> = emptyList(),
+    val texts: List<TextItem> = emptyList(),
+    val blurs: List<BlurRegion> = emptyList(),
 ) {
     val isIdentity: Boolean get() = this == EditState(aspect = aspect)
 
     val hasGeometry: Boolean get() = quarterTurns % 4 != 0 || flipHorizontal || straighten != 0f || crop != NormRect.Full
+
+    /**
+     * Quart de tour horaire de l'image affichée. Rotation et miroir ne commutent pas : avec
+     * miroir, il correspond à un quart de tour antihoraire de l'original. Recadrage, traits,
+     * textes et zones, exprimés dans le repère affiché, tournent avec lui ; le redressement,
+     * rotation lui aussi, ne change pas.
+     */
+    fun rotated(): EditState = copy(
+        quarterTurns = Math.floorMod(if (flipHorizontal) quarterTurns - 1 else quarterTurns + 1, 4),
+        crop = CropMath.rotateClockwise(crop),
+        strokes = strokes.map(DrawingStroke::rotateClockwise),
+        texts = texts.map(TextItem::rotateClockwise),
+        blurs = blurs.map(BlurRegion::rotateClockwise),
+    )
+
+    /**
+     * Miroir horizontal de l'image affichée : le redressement tourne alors dans l'autre sens ;
+     * les lettres des textes, elles, ne sont pas retournées ([TextItem.flipHorizontal]).
+     */
+    fun mirrored(): EditState = copy(
+        flipHorizontal = !flipHorizontal,
+        straighten = StraightenMath.clamp(-straighten),
+        crop = CropMath.flipHorizontal(crop),
+        strokes = strokes.map(DrawingStroke::flipHorizontal),
+        texts = texts.map(TextItem::flipHorizontal),
+        blurs = blurs.map(BlurRegion::flipHorizontal),
+    )
 
     fun value(adjustment: Adjustment): Float = when (adjustment) {
         Adjustment.BRIGHTNESS -> brightness

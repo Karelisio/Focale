@@ -11,6 +11,7 @@ import app.focale.core.model.MediaItem
 import app.focale.edit.EditRenderer
 import app.focale.edit.EditState
 import app.focale.edit.SaveMode
+import app.focale.edit.TextRenderer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -74,7 +75,7 @@ class ImageEditor @Inject constructor(
                     width to height
                 }
             }
-            val rendered = EditRenderer.render(source, state)
+            val rendered = EditRenderer.render(source, state, faces = TextRenderer.faces(context))
             source.recycle()
             temp.outputStream().use { rendered.compress(format.compress, QUALITY, it) }
             val (outWidth, outHeight) = rendered.width to rendered.height

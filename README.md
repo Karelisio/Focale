@@ -59,8 +59,12 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
 - **Édition** : recadrage libre ou au format, rotation, miroir, redressement à angle libre
   (règle graduée ou deux doigts, recadré automatiquement sans coin vide), filtres,
   luminosité / contraste / saturation / chaleur, dessin (stylo, surligneur, ligne, flèche,
-  rectangle, ellipse, gomme) ; enregistrement en copie ou à la place de l'original. Vidéos :
-  coupe du début et de la fin, son coupé, enregistrées en copie (Media3 Transformer).
+  rectangle, ellipse, gomme), texte (plusieurs lignes, déplacé au doigt, agrandi et tourné à
+  deux doigts ; couleur, taille, fond encadré ou contour, gras), zones floutées pour cacher un
+  visage ou une plaque (rectangle, ellipse ou pinceau ; flou fort ou mosaïque, irréversibles ;
+  « Visages » floute ceux que détecte ML Kit) ; enregistrement en copie ou à la place de
+  l'original. Vidéos : coupe du début et de la fin, son coupé, enregistrées en copie (Media3
+  Transformer).
 - **Coffre-fort** : photos et vidéos chiffrées (Tink, clé dans l'Android Keystore),
   retirées de MediaStore et des autres applications, déverrouillage par code ou
   biométrie, reverrouillage automatique, captures d'écran interdites ; sauvegarde

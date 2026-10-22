@@ -130,32 +130,55 @@ fun InkColor.color(): Color = when (this) {
 /** Outils en groupe connecté d'icônes ; un appui long en donne le nom. */
 @Composable
 private fun DrawToolGroup(selected: DrawTool, onSelect: (DrawTool) -> Unit, modifier: Modifier = Modifier) {
+    IconToggleGroup(
+        items = DrawTool.entries,
+        selected = selected,
+        label = { drawToolLabel(it) },
+        onSelect = onSelect,
+        modifier = modifier,
+    ) { tool, label ->
+        Icon(drawToolIcon(tool), contentDescription = label, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
+    }
+}
+
+/**
+ * Choix exclusif en groupe connecté de boutons à icône, de même largeur ; un appui long en
+ * donne le nom ([label], que [icon] reçoit pour le décrire à TalkBack).
+ */
+@Composable
+internal fun <T> IconToggleGroup(
+    items: List<T>,
+    selected: T?,
+    label: @Composable (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    icon: @Composable (item: T, label: String) -> Unit,
+) {
     val haptics = LocalHapticFeedback.current
-    val tools = DrawTool.entries
     Row(
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         modifier = modifier
             .fillMaxWidth()
             .selectableGroup(),
     ) {
-        tools.forEachIndexed { index, tool ->
-            val label = drawToolLabel(tool)
+        items.forEachIndexed { index, item ->
+            val text = label(item)
             // Le poids doit porter sur l'enfant direct de la rangée, pas sur l'infobulle.
             Box(Modifier.weight(1f)) {
                 TooltipBox(
                     positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-                    tooltip = { PlainTooltip { Text(label) } },
+                    tooltip = { PlainTooltip { Text(text) } },
                     state = rememberTooltipState(),
                 ) {
                     ToggleButton(
-                        checked = tool == selected,
+                        checked = item == selected,
                         onCheckedChange = {
                             haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                            onSelect(tool)
+                            onSelect(item)
                         },
                         shapes = when (index) {
                             0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                            tools.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                            items.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                             else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                         },
                         contentPadding = PaddingValues(0.dp),
@@ -163,7 +186,7 @@ private fun DrawToolGroup(selected: DrawTool, onSelect: (DrawTool) -> Unit, modi
                             .fillMaxWidth()
                             .semantics { role = Role.RadioButton },
                     ) {
-                        Icon(drawToolIcon(tool), contentDescription = label, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
+                        icon(item, text)
                     }
                 }
             }
@@ -172,7 +195,7 @@ private fun DrawToolGroup(selected: DrawTool, onSelect: (DrawTool) -> Unit, modi
 }
 
 @Composable
-private fun InkPalette(selected: InkColor, enabled: Boolean, onSelect: (InkColor) -> Unit, modifier: Modifier = Modifier) {
+internal fun InkPalette(selected: InkColor?, enabled: Boolean, onSelect: (InkColor) -> Unit, modifier: Modifier = Modifier) {
     val haptics = LocalHapticFeedback.current
     Row(
         modifier
@@ -339,5 +362,5 @@ private val EraserIcon: ImageVector by lazy {
         .build()
 }
 
-private val PREVIEW_SIZE = 52.dp
-private const val DISABLED_ALPHA = 0.38f
+internal val PREVIEW_SIZE = 52.dp
+internal const val DISABLED_ALPHA = 0.38f

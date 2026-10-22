@@ -617,8 +617,12 @@ application ouvre les photos et proposer de choisir Focale.
 
 ### 7.5 Éditeur
 - `EditState` appliqué dans l'ordre : quarts de tour, miroir, redressement, recadrage,
-  couleurs (mêmes matrices pour l'aperçu et l'export), dessin. L'aperçu tourné est rendu en
-  arrière-plan ; le redressement est appliqué à l'affichage, instantané.
+  couleurs (mêmes matrices pour l'aperçu et l'export), zones floutées, dessin, textes.
+  L'aperçu tourné est rendu en arrière-plan ; le redressement est appliqué à l'affichage,
+  instantané. Historique (`EditHistory`, 50 étapes) partagé par tous les outils : une action
+  ponctuelle forme une étape, un geste (glisser, pincer, curseur) une seule, créée à son début ;
+  la remise à zéro (`resetAll`) revient à l'original, textes et zones compris, en une étape
+  annulable. Une sélection (texte, zone) appartient à son outil et disparaît avec l'élément.
 - Redressement à angle libre (±45°, au dixième de degré) : règle graduée (retour haptique à
   chaque degré, marqué à 0° ; double appui ou valeur affichée pour revenir à 0°) ou rotation
   à deux doigts sur l'aperçu en mode recadrage, rotations parasites d'un pincement ignorées
@@ -632,6 +636,52 @@ application ouvre les photos et proposer de choisir Focale.
 - Export (`EditRenderer`, `ImageEditor`) : même rotation autour du centre du cadre, image
   agrandie de 3 px (`bleed`) pour qu'aucun coin ne soit à demi transparent. Les traits
   restent alignés sur le cadre : une forme tracée sur la photo redressée reste droite.
+- Texte (`TextItem`, `TextController`, `TextOverlay`, `TextPanel`) : un appui hors des textes
+  ouvre la saisie d'un nouveau texte à cet endroit (plusieurs lignes ; vide, il n'est pas
+  ajouté), un appui sur un texte la sienne (vidé, il est supprimé), un glisser le déplace, un
+  pincement l'agrandit et le fait tourner ; corbeille du panneau ou « Supprimer » de la saisie.
+  Couleur (palette du dessin), taille (curseur en racine carrée), fond (aucun, encadré :
+  pavé de la couleur et lettres noires ou blanches selon le contraste, contour), gras ; un
+  réglage changé vaut pour le texte sélectionné et les suivants. Centre normalisé dans le
+  cadre comme les traits, corps en fraction du petit côté, angle propre : un quart de tour le
+  tourne avec l'image, un miroir le déplace et inverse son inclinaison sans retourner ses
+  lettres, le redressement fait pivoter la photo sous lui.
+- Rendu des textes (`TextRenderer`, `TextMath`) : Google Sans Flex de l'application (axes
+  `wght` 500 ou 800, `ROND` 100), lignes centrées composées une fois au corps de référence
+  (100 px, `StaticLayout` sans coupure automatique) puis mises à l'échelle : l'aperçu (canevas
+  natif, mises en page en cache tant que texte, couleur, fond et graisse ne changent pas) et
+  l'export pleine résolution ont la même mise en page.
+- Flou (`BlurRegion`, `BlurController`, `BlurOverlay`, `BlurPanel`) : rectangle ou ellipse du
+  point de départ au doigt, ou trait de pinceau (épaisseur en dp à l'écran convertie en
+  fraction de l'image) ; un appui sélectionne une zone, un glisser parti de la zone
+  sélectionnée la déplace (une zone nouvelle n'est pas sélectionnée : un second trait peut
+  partir d'elle) ; style « Flou » ou « Pixels » et intensité pour la zone sélectionnée et les
+  suivantes. Les zones sont attachées à la photo (`BlurArea` : repère du cadre avant
+  redressement, inclinaison propre) : contrairement aux traits, elles pivotent avec le
+  redressement, et ce qu'elles cachent reste caché à tout angle ; un cadre tracé sur une photo
+  redressée est droit à l'écran (`PhotoPlacement`).
+- Irréversibilité (`BlurMath`, `BlurRenderer`) : la zone est découpée en blocs égaux sur sa
+  boîte (entre 8 blocs dans son petit côté à l'intensité minimale et 3 à la maximale, jamais
+  sous 0,6 % du petit côté de l'image ni 3 px) ; seule la moyenne de chaque bloc est gardée,
+  affichée telle quelle (mosaïque) ou interpolée puis floutée sur une grille quatre fois plus
+  fine (flou) : rien de plus fin qu'un bloc ne subsiste. La taille des blocs suit celle de la
+  zone : un visage, petit ou grand, ne compte jamais plus de 8 blocs de large. Tracé sans
+  lissage ni fondu, en mode `SRC` (opacité comprise) : un pixel dont le centre est dans la zone
+  est entièrement remplacé, les autres restent intacts. Filtre et réglages de la photo
+  appliqués aux zones ; traits et textes par-dessus, nets.
+- Mémoire : la source n'est lue que dans la boîte de chaque zone, par bandes de 64 lignes,
+  vers des sommes par bloc ; la grille des blocs (quelques dizaines, seize fois plus de cellules
+  pour le flou lissé) est étirée par un `BitmapShader` : aucune copie de l'image entière, même
+  pour une zone qui la couvre (photo de
+  50 Mpx décodée à 24 Mpx au plus, comme avant). L'aperçu calcule ses zones en arrière-plan
+  sur l'image réduite, seulement les zones nouvelles ou modifiées ; une zone qu'on déplace
+  garde sa grille, qui la suit, jusqu'au calcul suivant.
+- « Visages » (`FaceLocator`) : détection ML Kit seule (modèle embarqué, sans repères ni filtre
+  de qualité, visages dès 2 % de la largeur) sur l'aperçu de l'original ; une ellipse par
+  visage (cadre agrandi de 40 %) que ne couvre pas déjà une zone, en une étape d'historique.
+- Accessibilité : outils, formes, styles, fonds, gras et curseurs nommés ; chaque texte et
+  chaque zone est un élément TalkBack placé sur l'aperçu (activer : modifier le texte ou
+  sélectionner la zone ; action « Supprimer »), atteignable au clavier (Entrée, Suppr).
 
 ### 7.6 Options des albums
 - Appui long sur la carte d'un album de l'application ou d'un dossier (onglet Albums) : feuille
