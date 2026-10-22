@@ -55,7 +55,27 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+    /**
+     * Version 8 : comptes des étiquettes (`label_count`) et mots des noms de fichiers (`media_name`,
+     * FTS4), calculés pour les médias et les étiquettes déjà là ; recalculables, sans sauvegarde.
+     */
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            CHANGES_V8.forEach(db::execSQL)
+            // Mots des noms calculés en Kotlin, comme à la synchronisation (MediaNames.document).
+            db.compileStatement("INSERT INTO `media_name` (`rowid`, `words`) VALUES (?, ?)").use { insert ->
+                db.query("SELECT id, display_name FROM media").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        insert.bindLong(1, cursor.getLong(0))
+                        insert.bindString(2, MediaNames.document(cursor.getString(1)))
+                        insert.executeInsert()
+                    }
+                }
+            }
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
 
     private val CREATE_V2 = listOf(
         "CREATE TABLE IF NOT EXISTS `media_text` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `text` TEXT NOT NULL, `text_key` TEXT NOT NULL, PRIMARY KEY(`media_id`))",
@@ -104,5 +124,13 @@ object DatabaseMigrations {
         // Étiquettes de l'onglet Recherche par l'index seul (docs/PERFORMANCE.md).
         "DROP INDEX IF EXISTS `index_media_label_label`",
         "CREATE INDEX IF NOT EXISTS `index_media_label_label_confidence_media_id` ON `media_label` (`label`, `confidence`, `media_id`)",
+    )
+
+    private val CHANGES_V8 = listOf(
+        // Étiquettes de l'onglet Recherche et noms de fichiers sans parcourir leurs tables (docs/PERFORMANCE.md).
+        "CREATE TABLE IF NOT EXISTS `label_count` (`label` TEXT NOT NULL, `count` INTEGER NOT NULL, PRIMARY KEY(`label`))",
+        "INSERT INTO `label_count` (`label`, `count`) SELECT l.label, COUNT(*) FROM media_label l " +
+            "WHERE +l.media_id IN (SELECT id FROM media WHERE is_trashed = 0) GROUP BY l.label",
+        "CREATE VIRTUAL TABLE IF NOT EXISTS `media_name` USING FTS4(`words` TEXT NOT NULL)",
     )
 }

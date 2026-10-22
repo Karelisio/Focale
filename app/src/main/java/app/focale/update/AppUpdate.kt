@@ -105,6 +105,27 @@ object ReleaseNotes {
     private val attribution = Regex("""\s+by @\S+ in https?://\S+$""")
 
     /**
+     * Ligne qui sépare, dans la description d'une version GitHub, les notes en français de leur
+     * traduction anglaise (CHANGELOG.en.md), ajoutée dessous par la CI (`.github/workflows/android.yml`).
+     * Commentaire HTML : invisible sur GitHub.
+     */
+    const val ENGLISH_MARKER = "<!-- en -->"
+
+    /**
+     * Notes de [markdown] dans la langue [language] (code ISO 639) : la partie française, avant
+     * [ENGLISH_MARKER], ou l'anglaise, après, pour toute autre langue ; l'autre si la sienne est
+     * vide. Sans marque (versions antérieures, notes écrites sur GitHub), les notes entières.
+     */
+    fun forLanguage(markdown: String, language: String): String {
+        val lines = markdown.lines()
+        val marker = lines.indexOfFirst { it.trim() == ENGLISH_MARKER }
+        if (marker < 0) return markdown
+        val french = lines.subList(0, marker).joinToString("\n").trim()
+        val english = lines.subList(marker + 1, lines.size).joinToString("\n").trim()
+        return if (language == "fr") french.ifEmpty { english } else english.ifEmpty { french }
+    }
+
+    /**
      * Les lignes consécutives forment un même bloc (paragraphe ou puce continuée sur la
      * ligne suivante) ; une ligne vide, un titre ou une nouvelle puce le terminent.
      */

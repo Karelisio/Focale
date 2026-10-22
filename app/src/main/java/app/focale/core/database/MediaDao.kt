@@ -2,8 +2,11 @@ package app.focale.core.database
 
 import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
+import androidx.room.Transaction
 import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
@@ -23,9 +26,12 @@ data class SummaryRow(
  * toutes celles qui peuvent apparaître dans une clause WHERE, de sorte que la grille
  * se rafraîchit dès qu'un favori, un album ou une étiquette change. Les pages des grilles
  * ([MediaPagingSource]) et leur histogramme suivent les mêmes tables (`MediaRepository`).
+ *
+ * Toute écriture de l'index passe par [upsert] et [deleteByIds], qui tiennent à jour avec lui les
+ * mots des noms de fichiers ([MediaNames]) et les comptes des étiquettes ([LabelCountQueries]).
  */
 @Dao
-interface MediaDao {
+interface MediaDao : LabelCountQueries {
 
     @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class])
     fun observeList(query: SupportSQLiteQuery): Flow<List<MediaEntity>>
@@ -94,12 +100,40 @@ interface MediaDao {
     @Query("SELECT id, date_modified, generation, is_trashed FROM media")
     suspend fun syncKeys(): List<MediaSyncKey>
 
-    @Upsert
-    suspend fun upsert(items: List<MediaEntity>)
+    /**
+     * Ajoute ou réécrit [items] dans l'index, avec les mots de leur nom et les comptes de leurs
+     * étiquettes (un média qui entre dans la corbeille, en sort ou revient dans l'index).
+     */
+    @Transaction
+    suspend fun upsert(items: List<MediaEntity>) = withLabelCounts(items.map { it.id }) {
+        upsertRows(items)
+        upsertNames(items.map(MediaNames::entity))
+    }
 
-    /** À appeler avec au plus 500 identifiants. */
+    /** Lignes seules : passer par [upsert]. */
+    @Upsert
+    suspend fun upsertRows(items: List<MediaEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertNames(names: List<MediaNameEntity>)
+
+    /** Retire de l'index les médias [ids] (au plus 500), leurs mots et leurs étiquettes des comptes. */
+    @Transaction
+    suspend fun deleteByIds(ids: List<Long>) = withLabelCounts(ids) {
+        deleteRows(ids)
+        deleteNames(ids)
+    }
+
+    /** Lignes seules : passer par [deleteByIds]. */
     @Query("DELETE FROM media WHERE id IN (:ids)")
-    suspend fun deleteByIds(ids: List<Long>)
+    suspend fun deleteRows(ids: List<Long>)
+
+    @Query("DELETE FROM media_name WHERE rowid IN (:ids)")
+    suspend fun deleteNames(ids: List<Long>)
+
+    /** Débuts des périodes non vides ([MediaQueryBuilder.nonEmptyPeriods]). */
+    @RawQuery
+    suspend fun periodStarts(query: SupportSQLiteQuery): List<Long>
 
     @Query("SELECT COUNT(*) FROM media WHERE is_trashed = 0")
     fun observeTotalCount(): Flow<Int>

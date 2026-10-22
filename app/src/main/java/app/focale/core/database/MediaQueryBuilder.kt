@@ -9,6 +9,8 @@ import app.focale.core.model.SortField
 import app.focale.core.model.TextCriteria
 import app.focale.ml.LabelDictionary
 import app.focale.ml.PlaceTranslations
+import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * Traduit une [MediaQuery] en SQL pour Room.
@@ -74,8 +76,9 @@ object MediaQueryBuilder {
      * (recherche, personne, album, favoris), « + » écarte l'index de la corbeille, que SQLite croit
      * sélectif faute de statistiques et qui lui faisait parcourir toute la timeline dans l'ordre
      * des dates (lignes lues au hasard) : il part alors des médias du critère (`m.id IN (…)`, par la
-     * clé primaire), ou, quand une alternative l'exige (nom de fichier), parcourt `media` dans
-     * l'ordre des identifiants (docs/PERFORMANCE.md).
+     * clé primaire, mots des noms de fichiers par leur index plein texte), ou, quand une alternative
+     * l'exige (nom de fichier d'un texte avec chiffre ou séparateur, `MediaNames.searchable`),
+     * parcourt `media` dans l'ordre des identifiants (docs/PERFORMANCE.md).
      */
     fun count(query: MediaQuery): SimpleSQLiteQuery {
         val args = mutableListOf<Any?>()
@@ -128,15 +131,52 @@ object MediaQueryBuilder {
     }
 
     /**
-     * Nombre de périodes [bounds] (voir [histogram]) qui contiennent au moins un média de [query] :
-     * les en-têtes de la grille avant un média, sans lire les médias de chaque période.
+     * Suite de [count] périodes consécutives de même durée [step] (ms), la première commençant à
+     * [start] : des jours de 24 heures, entre deux changements d'heure.
      */
-    fun periodsWithMedia(query: MediaQuery, bounds: List<Long>): SimpleSQLiteQuery {
+    data class PeriodRun(val start: Long, val step: Long, val count: Int)
+
+    /** [periods] (début, fin exclue ; croissantes) regroupées en suites ([PeriodRun]). */
+    fun periodRuns(periods: List<Pair<Long, Long>>): List<PeriodRun> {
+        val runs = mutableListOf<PeriodRun>()
+        for ((start, end) in periods) {
+            val last = runs.lastOrNull()
+            if (last != null && end - start == last.step && start == last.start + last.count * last.step) {
+                runs[runs.lastIndex] = last.copy(count = last.count + 1)
+            } else {
+                runs += PeriodRun(start, end - start, 1)
+            }
+        }
+        return runs
+    }
+
+    /**
+     * Nombre des périodes de [runs] qui contiennent au moins un média de [query] : les en-têtes de la
+     * grille avant un média, sans lire les médias de chaque période (une recherche dans l'index par
+     * période, arrêtée au premier média).
+     */
+    fun periodsWithMedia(query: MediaQuery, runs: List<PeriodRun>): SimpleSQLiteQuery = probe(query, runs, "SELECT COUNT(*)")
+
+    /** Débuts (`period_start`) des périodes de [runs] qui contiennent au moins un média de [query]. */
+    fun nonEmptyPeriods(query: MediaQuery, runs: List<PeriodRun>): SimpleSQLiteQuery =
+        probe(query, runs, "SELECT d.s + d.k * d.step AS period_start")
+
+    /**
+     * [select] sur les périodes de [runs] (au plus [MAX_PERIODS] suites) non vides. Les périodes
+     * naissent d'une table récursive qui déroule chaque suite : une requête courte, même pour les
+     * 3 650 jours de dix ans, là où une table de valeurs d'une ligne par jour coûtait plus à préparer
+     * qu'à parcourir (docs/PERFORMANCE.md).
+     */
+    private fun probe(query: MediaQuery, runs: List<PeriodRun>, select: String): SimpleSQLiteQuery {
+        require(runs.size in 1..MAX_PERIODS)
         val args = mutableListOf<Any?>()
         val where = where(query, args)
+        val values = runs.joinToString(",") { "(${it.start},${it.step},${it.count})" }
         return SimpleSQLiteQuery(
-            "SELECT COUNT(*) FROM (${periods(bounds)}) p WHERE EXISTS (SELECT 1 FROM media m WHERE $where " +
-                "AND m.date_taken >= p.column1 AND m.date_taken < p.column2)",
+            "WITH RECURSIVE r(s, step, n) AS (VALUES $values), " +
+                "d(s, step, k, n) AS (SELECT s, step, 0, n FROM r UNION ALL SELECT s, step, k + 1, n FROM d WHERE k + 1 < n) " +
+                "$select FROM d WHERE EXISTS (SELECT 1 FROM media m WHERE $where " +
+                "AND m.date_taken >= d.s + d.k * d.step AND m.date_taken < d.s + (d.k + 1) * d.step)",
             args.toTypedArray(),
         )
     }
@@ -223,10 +263,7 @@ object MediaQueryBuilder {
             clauses += "m.date_taken < ?"
             args += it
         }
-        query.month?.let {
-            clauses += "strftime('%m', m.date_taken / 1000, 'unixepoch', 'localtime') = ?"
-            args += it.toString().padStart(2, '0')
-        }
+        query.month?.let { clauses += monthClause(it, args) }
         query.mediaIds?.let { ids ->
             // Identifiants numériques : insérés littéralement pour éviter la limite de
             // 999 paramètres de SQLite sur les anciennes versions d'Android.
@@ -234,6 +271,45 @@ object MediaQueryBuilder {
         }
         query.terms.forEach { term -> clauses += termClause(term, args) }
         return clauses.joinToString(" AND ")
+    }
+
+    /**
+     * Médias du mois [month] (1-12) de toutes les années (« juillet »), dans le fuseau courant. Comme
+     * pour les périodes ([histogram]), les bornes du mois de chaque année de [FIRST_MONTH_YEAR] à
+     * [LAST_MONTH_YEAR] sont calculées en Kotlin, comme celles des en-têtes (minuit local du premier
+     * jour, `DateGrouping.bounds`), puis cherchées par dichotomie sur la date, lue dans l'index
+     * ([monthTree]) : `strftime(…, 'localtime')` pour chaque média coûtait 80 ms sur 50 000. Hors de
+     * ces années (dates très anciennes ou aberrantes), le mois local de SQLite, comme avant.
+     */
+    private fun monthClause(month: Int, args: MutableList<Any?>): String {
+        val zone = ZoneId.systemDefault()
+        fun millis(day: LocalDate) = day.atStartOfDay(zone).toInstant().toEpochMilli()
+        val from = millis(LocalDate.of(FIRST_MONTH_YEAR, 1, 1))
+        val to = millis(LocalDate.of(LAST_MONTH_YEAR + 1, 1, 1))
+        // Bornes croissantes : début des années, puis début et fin du mois de chacune. Entre une borne
+        // de rang impair et la suivante, le mois ; ailleurs, le reste de l'année.
+        val bounds = buildList {
+            add(from)
+            for (year in FIRST_MONTH_YEAR..LAST_MONTH_YEAR) {
+                val first = LocalDate.of(year, month, 1)
+                add(millis(first))
+                add(millis(first.plusMonths(1)))
+            }
+            add(to)
+        }
+        args += month.toString().padStart(2, '0')
+        return "(CASE WHEN m.date_taken < $from OR m.date_taken >= $to " +
+            "THEN strftime('%m', m.date_taken / 1000, 'unixepoch', 'localtime') = ? ELSE ${monthTree(bounds, 0, bounds.size - 1)} END)"
+    }
+
+    /**
+     * Vrai (1) si `m.date_taken`, compris entre `bounds[from]` et `bounds[to]`, tombe entre une borne
+     * de rang impair et la suivante : une comparaison par niveau de l'arbre, 9 pour 150 ans.
+     */
+    private fun monthTree(bounds: List<Long>, from: Int, to: Int): String {
+        if (to - from == 1) return if (from % 2 == 1) "1" else "0"
+        val middle = (from + to) / 2
+        return "CASE WHEN m.date_taken < ${bounds[middle]} THEN ${monthTree(bounds, from, middle)} ELSE ${monthTree(bounds, middle, to)} END"
     }
 
     private fun termClause(term: SearchTerm, args: MutableList<Any?>): String {
@@ -261,7 +337,16 @@ object MediaQueryBuilder {
             args.addAll(term.countries)
         }
         term.text?.takeIf { it.isNotBlank() }?.let { text ->
-            alternatives += "m.display_name LIKE ? ESCAPE '\\'"
+            val word = text.trim()
+            alternatives += if (MediaNames.searchable(word)) {
+                // Mot de lettres : noms candidats par l'index plein texte, revérifiés par le même LIKE
+                // (MediaNames) ; sans quoi le LIKE, évalué sur chaque ligne, oblige à lire toute la
+                // table (docs/PERFORMANCE.md).
+                args += MediaNames.match(word)
+                "(m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ?) AND m.display_name LIKE ? ESCAPE '\\')"
+            } else {
+                "m.display_name LIKE ? ESCAPE '\\'"
+            }
             args += likePattern(text)
             // Texte reconnu dans la photo, comparé sous forme normalisée (sans accents).
             alternatives += "m.id IN (SELECT media_id FROM media_text WHERE text_key LIKE ? ESCAPE '\\')"
@@ -336,6 +421,13 @@ object MediaQueryBuilder {
     const val MEDIA_TYPE_IMAGE = 1
     const val MEDIA_TYPE_VIDEO = 3
 
-    /** Périodes par requête de [histogram] et [periodsWithMedia] (500 jours, 41 ans de mois). */
+    /**
+     * Périodes par requête de [histogram] (41 ans de mois), suites par requête de [periodsWithMedia] :
+     * lignes d'une table de valeurs, limitées à 500 par SQLite.
+     */
     const val MAX_PERIODS = 500
+
+    /** Années dont les bornes du mois sont calculées en Kotlin ([monthClause]). */
+    const val FIRST_MONTH_YEAR = 1900
+    const val LAST_MONTH_YEAR = 2049
 }

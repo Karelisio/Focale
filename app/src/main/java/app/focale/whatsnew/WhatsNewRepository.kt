@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import app.focale.BuildConfig
 import app.focale.core.di.IoDispatcher
 import app.focale.core.di.StateStore
+import app.focale.core.locale.AppLocales
 import app.focale.update.AppVersion
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
@@ -21,23 +22,28 @@ import kotlinx.coroutines.withContext
 /**
  * « Nouveautés » : au premier lancement après une mise à jour, les sections du journal
  * plus récentes que la version installée auparavant ; rien après une première installation.
+ * Le journal est celui de la langue de Focale ([AppLocales]) : français, sinon anglais.
  */
 @Singleton
 class WhatsNewRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     @StateStore private val stateStore: DataStore<Preferences>,
+    private val locales: AppLocales,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
     private val current: String = BuildConfig.VERSION_NAME
 
-    /** Toutes les versions du journal (écran À propos). */
+    /** Toutes les versions du journal (écran À propos), dans la langue de Focale. */
     suspend fun all(): List<Changelog.Release> = withContext(io) {
-        try {
-            context.assets.open(Changelog.ASSET).bufferedReader().use { Changelog.parse(it.readText()) }
-        } catch (error: IOException) {
-            Log.w(TAG, "Journal des versions illisible", error)
-            emptyList()
-        }
+        // Journal de la langue illisible : celui en français, toujours embarqué.
+        listOf(Changelog.asset(locales.locale.language), Changelog.ASSET).distinct().firstNotNullOfOrNull { asset ->
+            try {
+                context.assets.open(asset).bufferedReader().use { Changelog.parse(it.readText()) }
+            } catch (error: IOException) {
+                Log.w(TAG, "Journal des versions illisible : $asset", error)
+                null
+            }
+        }.orEmpty()
     }
 
     /** Versions à présenter maintenant (une seule fois : voir [markSeen]). */

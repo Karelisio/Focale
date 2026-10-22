@@ -12,8 +12,10 @@ import app.focale.core.model.GroupLevel
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
 import app.focale.core.model.MediaSort
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.util.TimeZone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -78,6 +80,34 @@ class MediaPeriodsTest {
         }
         // Aucun média pour la requête : aucune période.
         assertEquals(emptyList<Any>(), repository.histogram(MediaQuery(bucketId = 404L), GroupLevel.DAY, zone))
+    }
+
+    @Test
+    fun `mois de toutes les années, mois local de chaque média autour de minuit et des changements d'heure`() = runBlocking<Unit> {
+        // Bornes du mois calculées dans le fuseau de l'appareil, celui de la JVM.
+        val previous = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone(zone))
+        try {
+            // Premier et dernier instants des années bornées en Kotlin ; au-delà, le mois local de
+            // SQLite (milieu de mois : le même quel que soit son fuseau).
+            database.mediaDao().upsert(
+                listOf(
+                    media(50, at(1900, 1, 1, 0, 30)), media(51, at(2049, 12, 31, 23, 30)),
+                    media(52, at(1850, 3, 15, 12, 0)), media(53, at(2077, 10, 15, 12, 0)),
+                ),
+            )
+            val all = repository.list(MediaQuery())
+            for (month in 1..12) {
+                val expected = all.filter { Instant.ofEpochMilli(it.dateTaken).atZone(zone).monthValue == month }.map { it.id }
+                val query = MediaQuery(month = month)
+                assertEquals("mois $month", expected, repository.list(query).map { it.id })
+                assertEquals("mois $month", expected.size, repository.observeCount(query).first())
+            }
+            // 1er avril 2023 à minuit à Paris : 31 mars en temps universel, mais avril dans la grille.
+            assertEquals(listOf(7L), repository.list(MediaQuery(month = 4)).map { it.id })
+        } finally {
+            TimeZone.setDefault(previous)
+        }
     }
 
     private suspend fun kotlinx.coroutines.flow.Flow<PagingData<MediaItem>>.gridOf(level: GroupLevel): List<GridItem> =

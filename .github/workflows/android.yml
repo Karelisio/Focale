@@ -168,11 +168,16 @@ jobs:
           name: focale-apk-${{ github.sha }}
           path: apk
       # Section de CHANGELOG.md pour cette version, à défaut la liste des commits depuis
-      # la version précédente ; affichées par l'application (« Nouveautés »).
+      # la version précédente ; dessous, après la marque « <!-- en --> », celle de
+      # CHANGELOG.en.md si elle existe. L'application affiche la partie de sa langue
+      # (ReleaseNotes.forLanguage), les notes entières sans marque.
       - name: Notes de version
         run: |
           heading="## ${TAG#v}"
-          changes=$(awk -v h="$heading" 'index($0, h) == 1 && substr($0, length(h) + 1, 1) !~ /[0-9.]/ { f = 1; next } /^## / { f = 0 } f' CHANGELOG.md)
+          section() {
+            awk -v h="$heading" 'index($0, h) == 1 && substr($0, length(h) + 1, 1) !~ /[0-9.]/ { f = 1; next } /^## / { f = 0 } f' "$1"
+          }
+          changes=$(section CHANGELOG.md)
           if [ -z "$(echo "$changes" | tr -d '[:space:]')" ]; then
             previous=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_SHA^" 2>/dev/null || true)
             changes=$(git log --no-merges --pretty='%s' "${previous:+$previous..}$GITHUB_SHA" \
@@ -180,6 +185,10 @@ jobs:
               | sed -E 's/^[a-z]+(\([^)]*\))?!?: *//; s/^(.)/\U\1/; s/^/- /' || true)
           fi
           printf '## Nouveautés\n\n%s\n' "$changes" > notes.md
+          english=$(section CHANGELOG.en.md 2>/dev/null || true)
+          if [ -n "$(echo "$english" | tr -d '[:space:]')" ]; then
+            printf "\n<!-- en -->\n\n## What's new\n\n%s\n" "$english" >> notes.md
+          fi
       # Version créée depuis le site GitHub : on y ajoute les APK (et les notes si elle
       # n'en a pas) ; sinon (tag poussé, lancement manuel) on la crée.
       - name: Publication des APK
