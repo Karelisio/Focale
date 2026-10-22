@@ -5,6 +5,20 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.9.0
+
+- Sauvegarde des données (Réglages) : favoris, albums, personnes et leurs visages, dossiers
+  masqués et réglages dans un fichier chiffré par un mot de passe, à restaurer sur un nouveau
+  téléphone une fois les photos copiées. Aussi automatique, chaque jour ou chaque semaine,
+  dans le dossier de votre choix (les 3 dernières sont gardées).
+- Éditeur : ajoutez du texte sur une photo (couleur, taille, fond encadré ou contour, gras ;
+  déplacé au doigt, agrandi et tourné à deux doigts), et floutez une zone pour cacher un
+  visage ou une plaque (rectangle, ellipse ou pinceau, en flou ou en mosaïque, de façon
+  irréversible). « Visages » floute d'un appui tous les visages détectés.
+- Vidéos : vitesse de lecture de 0,25× à 2×, d'un appui sur « 1× » au bout de la barre de
+  lecture ; le son garde sa hauteur, et la vitesse vaut pour les vidéos suivantes jusqu'à la
+  fermeture de la visionneuse.
+
 ## 1.8.0
 
 - Recherche : combinez le texte et des pastilles (personnes, lieu, période, type) ; les
