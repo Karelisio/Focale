@@ -11,18 +11,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Backup
-import androidx.compose.material.icons.outlined.Face
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.SettingsBackupRestore
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -36,11 +33,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,6 +48,7 @@ import app.focale.backup.AutoBackupFrequency
 import app.focale.backup.AutoBackupSettings
 import app.focale.backup.BackupProgress
 import app.focale.backup.DataBackupSummary
+import app.focale.backup.DataCategory
 import app.focale.backup.PasswordArchive
 import app.focale.backup.dataMessage
 import app.focale.core.util.Formatters
@@ -210,7 +209,13 @@ private fun DataBackupDialogs(viewModel: DataBackupViewModel, onPickTarget: () -
             checkingText = R.string.data_restore_checking,
         )
         is DataBackupFlow.Summary -> BasicAlertDialog(onDismissRequest = viewModel::dismiss) {
-            RestoreSummaryCard(current.summary, onConfirm = viewModel::restore, onDismiss = viewModel::dismiss)
+            RestoreSummaryCard(
+                summary = current.summary,
+                chosen = current.chosen,
+                onToggle = viewModel::toggle,
+                onConfirm = viewModel::restore,
+                onDismiss = viewModel::dismiss,
+            )
         }
         is DataBackupFlow.Running -> {
             val progress = current.progress
@@ -234,13 +239,19 @@ private fun DataBackupDialogs(viewModel: DataBackupViewModel, onPickTarget: () -
 }
 
 /**
- * Résumé d'une sauvegarde vérifiée, à confirmer avant de la restaurer : sa date, ce qu'elle
- * contient, et ce que la restauration fusionne ou remplace. Carte du dialogue, séparée pour les
- * captures de référence ; mêmes forme, couleurs et marges qu'un `AlertDialog`.
+ * Résumé d'une sauvegarde vérifiée, à confirmer avant de la restaurer : sa date, puis une case
+ * par catégorie qu'elle contient ([DataBackupSummary.categories], toutes cochées d'abord), avec ce
+ * que la restauration en fait (fusion ou remplacement) ; la note sur les photos à copier ne vient
+ * que si une catégorie cochée désigne des médias. Carte du dialogue, séparée pour les captures de
+ * référence ; mêmes forme, couleurs et marges qu'un `AlertDialog`.
+ *
+ * @param chosen catégories cochées ; [onToggle] coche ou décoche, « Restaurer » attend au moins une case.
  */
 @Composable
 internal fun RestoreSummaryCard(
     summary: DataBackupSummary,
+    chosen: Set<DataCategory>,
+    onToggle: (DataCategory) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -275,51 +286,90 @@ internal fun RestoreSummaryCard(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .weight(1f, fill = false)
-                    .padding(top = 16.dp)
+                    .padding(top = 12.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 4.dp)) {
-                    SummaryLine(Icons.Outlined.FavoriteBorder, pluralStringResource(R.plurals.data_backup_favorites, summary.favorites, summary.favorites))
-                    SummaryLine(Icons.Outlined.PhotoLibrary, pluralStringResource(R.plurals.data_backup_albums, summary.albums, summary.albums))
-                    SummaryLine(Icons.Outlined.Face, pluralStringResource(R.plurals.data_backup_people, summary.people, summary.people))
-                    SummaryLine(
-                        Icons.Outlined.VisibilityOff,
-                        pluralStringResource(R.plurals.data_backup_hidden_folders, summary.hiddenFolders, summary.hiddenFolders),
+                for (category in DataCategory.entries) {
+                    if (category !in summary.categories) continue
+                    CategoryChoice(
+                        label = categoryLabel(category, summary),
+                        explanation = categoryExplanation(category, summary),
+                        checked = category in chosen,
+                        onToggle = { onToggle(category) },
                     )
                 }
-                Explanation(stringResource(R.string.data_restore_summary_merge))
-                Explanation(
-                    if (summary.existingPeople > 0) {
-                        pluralStringResource(R.plurals.data_restore_summary_replace_people, summary.existingPeople, summary.existingPeople)
-                    } else {
-                        stringResource(R.string.data_restore_summary_new_people)
-                    },
-                )
-                Explanation(stringResource(R.string.data_restore_summary_media))
+                if (chosen.any { it.needsMedia }) {
+                    Text(
+                        text = stringResource(R.string.data_restore_summary_media),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AlertDialogDefaults.textContentColor,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
             ) {
                 TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-                TextButton(onClick = onConfirm) { Text(stringResource(R.string.action_restore)) }
+                TextButton(onClick = onConfirm, enabled = chosen.isNotEmpty()) { Text(stringResource(R.string.action_restore)) }
             }
         }
     }
 }
 
+/** Ce que contient la sauvegarde pour [category] (« 12 albums », « Réglages »). */
 @Composable
-private fun SummaryLine(icon: ImageVector, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-        Text(text, style = MaterialTheme.typography.titleSmall, color = AlertDialogDefaults.titleContentColor)
+private fun categoryLabel(category: DataCategory, summary: DataBackupSummary): String = when (category) {
+    DataCategory.FAVORITES -> pluralStringResource(R.plurals.data_backup_favorites, summary.favorites, summary.favorites)
+    DataCategory.ALBUMS -> pluralStringResource(R.plurals.data_backup_albums, summary.albums, summary.albums)
+    DataCategory.PEOPLE -> if (summary.people > 0) {
+        pluralStringResource(R.plurals.data_backup_people, summary.people, summary.people)
+    } else {
+        pluralStringResource(R.plurals.data_restore_faces, summary.faces, summary.faces)
     }
+    DataCategory.HIDDEN_FOLDERS -> pluralStringResource(R.plurals.data_backup_hidden_folders, summary.hiddenFolders, summary.hiddenFolders)
+    DataCategory.SETTINGS -> stringResource(R.string.data_restore_settings_label)
+    DataCategory.SEARCH_HISTORY -> pluralStringResource(R.plurals.data_restore_searches, summary.searches, summary.searches)
+    DataCategory.ORIGINAL_DATES -> pluralStringResource(R.plurals.data_restore_dates, summary.dates, summary.dates)
 }
 
+/** Ce que la restauration fait de [category] : ajout, réunion ou remplacement. */
 @Composable
-private fun Explanation(text: String) {
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = AlertDialogDefaults.textContentColor)
+private fun categoryExplanation(category: DataCategory, summary: DataBackupSummary): String = when (category) {
+    DataCategory.FAVORITES, DataCategory.HIDDEN_FOLDERS -> stringResource(R.string.data_restore_choice_added)
+    DataCategory.ALBUMS -> stringResource(R.string.data_restore_choice_albums)
+    DataCategory.PEOPLE -> if (summary.existingPeople > 0) {
+        pluralStringResource(R.plurals.data_restore_choice_people_replace, summary.existingPeople, summary.existingPeople)
+    } else {
+        stringResource(R.string.data_restore_choice_people_new)
+    }
+    DataCategory.SETTINGS -> stringResource(R.string.data_restore_choice_settings)
+    DataCategory.SEARCH_HISTORY -> stringResource(R.string.data_restore_choice_searches)
+    DataCategory.ORIGINAL_DATES -> stringResource(R.string.data_restore_choice_dates)
+}
+
+/** Case d'une catégorie : toute la ligne la coche ou la décoche (TalkBack : case à cocher). */
+@Composable
+private fun CategoryChoice(label: String, explanation: String, checked: Boolean, onToggle: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() }),
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(12.dp))
+        Column(Modifier.padding(top = 12.dp, end = 4.dp, bottom = 10.dp)) {
+            Text(label, style = MaterialTheme.typography.titleSmall, color = AlertDialogDefaults.titleContentColor)
+            Text(
+                text = explanation,
+                style = MaterialTheme.typography.bodySmall,
+                color = AlertDialogDefaults.textContentColor,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
 }

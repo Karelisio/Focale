@@ -11,6 +11,7 @@ import app.focale.backup.DataAutoBackup
 import app.focale.backup.DataBackupFailure
 import app.focale.backup.DataBackupRepository
 import app.focale.backup.DataBackupSummary
+import app.focale.backup.DataCategory
 import app.focale.backup.DataExportResult
 import app.focale.backup.DataInspectResult
 import app.focale.backup.DataRestoreReport
@@ -45,8 +46,11 @@ sealed interface DataBackupFlow {
     /** Mot de passe de la sauvegarde choisie : [wrong] après un refus, [checking] pendant la vérification. */
     data class BackupPassword(val wrong: Boolean = false, val checking: Boolean = false) : DataBackupFlow
 
-    /** Sauvegarde vérifiée : son résumé et ce que la restauration fusionne ou remplace, à confirmer. */
-    data class Summary(val summary: DataBackupSummary) : DataBackupFlow
+    /**
+     * Sauvegarde vérifiée : son résumé et ce que la restauration fusionne ou remplace, à confirmer ;
+     * [chosen] : catégories à restaurer, toutes celles de la sauvegarde d'abord.
+     */
+    data class Summary(val summary: DataBackupSummary, val chosen: Set<DataCategory> = summary.categories) : DataBackupFlow
 
     data class Running(val restoring: Boolean, val progress: BackupProgress, val cancelling: Boolean = false) : DataBackupFlow
 
@@ -146,13 +150,23 @@ class DataBackupViewModel @Inject constructor(
         )
     }
 
-    /** Restauration confirmée depuis le résumé. */
+    /** Catégorie cochée ou décochée dans le résumé. */
+    fun toggle(category: DataCategory) {
+        _flow.update { current ->
+            if (current !is DataBackupFlow.Summary || category !in current.summary.categories) return@update current
+            current.copy(chosen = if (category in current.chosen) current.chosen - category else current.chosen + category)
+        }
+    }
+
+    /** Restauration confirmée depuis le résumé, des seules catégories cochées. */
     fun restore() {
         val backup = inspected
-        if (backup == null || _flow.value !is DataBackupFlow.Summary) return
+        val summary = _flow.value as? DataBackupFlow.Summary
+        if (backup == null || summary == null || summary.chosen.isEmpty()) return
+        val categories = summary.chosen
         launchOperation(
             initial = DataBackupFlow.Running(restoring = true, BackupProgress(BackupProgress.Stage.PREPARING)),
-            operation = { onProgress -> backups.restore(backup, ::isCancelRequested, onProgress) },
+            operation = { onProgress -> backups.restore(backup, categories, ::isCancelRequested, onProgress) },
             outcome = ::restoreOutcome,
         )
     }
@@ -303,13 +317,35 @@ class DataBackupViewModel @Inject constructor(
             UiText.Plural(R.plurals.data_backup_hidden_folders, hiddenFolders).takeIf { hiddenFolders > 0 },
         )
 
-        /** Bilan d'une restauration : médias retrouvés, éléments restaurés, médias introuvables. */
+        /**
+         * Bilan d'une restauration, des seules catégories choisies : médias concernés retrouvés,
+         * éléments restaurés, médias introuvables, réglages en échec.
+         */
         internal fun reportLines(report: DataRestoreReport): List<UiText> = buildList {
-            if (report.media > 0) add(UiText.Plural(R.plurals.data_restore_found, report.media, listOf(report.matched, report.media)))
-            val contents = contentsOf(report.favorites, report.albums, report.people, report.hiddenFolders)
-            add(if (contents.isEmpty()) UiText.Res(R.string.data_restore_restored_settings) else UiText.Joined(R.string.data_restore_restored, contents))
-            if (report.missing > 0) add(UiText.Plural(R.plurals.data_restore_missing, report.missing))
-            if (!report.settings) add(UiText.Res(R.string.data_restore_settings_failed))
+            val chosen = report.categories
+            val media = chosen.any { it.needsMedia }
+            if (media && report.media > 0) add(UiText.Plural(R.plurals.data_restore_found, report.media, listOf(report.matched, report.media)))
+            val contents = buildList {
+                if (DataCategory.FAVORITES in chosen && report.favorites > 0) add(UiText.Plural(R.plurals.data_backup_favorites, report.favorites))
+                if (DataCategory.ALBUMS in chosen && report.albums > 0) add(UiText.Plural(R.plurals.data_backup_albums, report.albums))
+                if (DataCategory.PEOPLE in chosen) {
+                    // Visages restaurés sans personne de la liste (inconnus sur une ou deux photos) : comptés à part.
+                    if (report.people > 0) {
+                        add(UiText.Plural(R.plurals.data_backup_people, report.people))
+                    } else if (report.faces > 0) {
+                        add(UiText.Plural(R.plurals.data_restore_faces, report.faces))
+                    }
+                }
+                if (DataCategory.HIDDEN_FOLDERS in chosen && report.hiddenFolders > 0) {
+                    add(UiText.Plural(R.plurals.data_backup_hidden_folders, report.hiddenFolders))
+                }
+                if (DataCategory.SEARCH_HISTORY in chosen && report.searches > 0) add(UiText.Plural(R.plurals.data_restore_searches, report.searches))
+                if (DataCategory.ORIGINAL_DATES in chosen && report.dates > 0) add(UiText.Plural(R.plurals.data_restore_dates, report.dates))
+                if (DataCategory.SETTINGS in chosen && report.settings == true) add(UiText.Res(R.string.data_restore_settings_item))
+            }
+            add(if (contents.isEmpty()) UiText.Res(R.string.data_restore_restored_nothing) else UiText.Joined(R.string.data_restore_restored, contents))
+            if (media && report.missing > 0) add(UiText.Plural(R.plurals.data_restore_missing, report.missing))
+            if (DataCategory.SETTINGS in chosen && report.settings == false) add(UiText.Res(R.string.data_restore_settings_failed))
         }
     }
 }

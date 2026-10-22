@@ -48,13 +48,33 @@
     <string name="data_restore_checking">Vérification de la sauvegarde…</string>
     <string name="data_restore_summary_title">Restaurer la sauvegarde du %1$s ?</string>
     <string name="data_restore_summary_version">Créée par Focale %1$s</string>
-    <string name="data_restore_summary_merge">Les favoris, les albums (réunis par nom) et les dossiers masqués s\'ajoutent à ceux de ce téléphone. Les réglages sont remplacés par ceux de la sauvegarde.</string>
-    <plurals name="data_restore_summary_replace_people">
-        <item quantity="one">Personnes : sur les photos retrouvées, les visages et les personnes de la sauvegarde remplacent ceux de ce téléphone (%1$d personne). Celles qui n\'ont plus de photo disparaissent.</item>
-        <item quantity="many">Personnes : sur les photos retrouvées, les visages et les personnes de la sauvegarde remplacent ceux de ce téléphone (%1$,d personnes). Celles qui n\'ont plus de photo disparaissent.</item>
-        <item quantity="other">Personnes : sur les photos retrouvées, les visages et les personnes de la sauvegarde remplacent ceux de ce téléphone (%1$,d personnes). Celles qui n\'ont plus de photo disparaissent.</item>
+    <string name="data_restore_settings_label">Réglages</string>
+    <plurals name="data_restore_searches">
+        <item quantity="one">%d recherche</item>
+        <item quantity="many">%,d recherches</item>
+        <item quantity="other">%,d recherches</item>
     </plurals>
-    <string name="data_restore_summary_new_people">Les personnes et leurs visages sont recréés sur les photos retrouvées.</string>
+    <plurals name="data_restore_dates">
+        <item quantity="one">%d date d\'origine</item>
+        <item quantity="many">%,d dates d\'origine</item>
+        <item quantity="other">%,d dates d\'origine</item>
+    </plurals>
+    <plurals name="data_restore_faces">
+        <item quantity="one">%d visage</item>
+        <item quantity="many">%,d visages</item>
+        <item quantity="other">%,d visages</item>
+    </plurals>
+    <string name="data_restore_choice_added">S\'ajoutent à ceux de ce téléphone</string>
+    <string name="data_restore_choice_albums">Réunis par nom à ceux de ce téléphone</string>
+    <plurals name="data_restore_choice_people_replace">
+        <item quantity="one">Sur les photos retrouvées, visages et personnes remplacent ceux de ce téléphone (%1$d personne) ; celles qui n\'ont plus de photo disparaissent</item>
+        <item quantity="many">Sur les photos retrouvées, visages et personnes remplacent ceux de ce téléphone (%1$,d personnes) ; celles qui n\'ont plus de photo disparaissent</item>
+        <item quantity="other">Sur les photos retrouvées, visages et personnes remplacent ceux de ce téléphone (%1$,d personnes) ; celles qui n\'ont plus de photo disparaissent</item>
+    </plurals>
+    <string name="data_restore_choice_people_new">Recréées avec leurs visages sur les photos retrouvées</string>
+    <string name="data_restore_choice_settings">Remplacent ceux de ce téléphone</string>
+    <string name="data_restore_choice_searches">S\'ajoutent à l\'historique de recherche de ce téléphone</string>
+    <string name="data_restore_choice_dates">Dates de prise de vue retrouvées pour des photos qui n\'en avaient pas</string>
     <string name="data_restore_summary_media">Les photos et vidéos ne sont pas dans la sauvegarde : Focale les retrouve sur ce téléphone par leur dossier et leur nom. Copiez-les d\'abord ; restaurer de nouveau plus tard ajoute celles trouvées entre-temps.</string>
     <string name="data_restore_progress_title">Restauration des données</string>
     <string name="data_restore_preparing">Recherche des photos sur ce téléphone…</string>
@@ -65,11 +85,12 @@
         <item quantity="other">%1$,d sur %2$,d photos et vidéos retrouvées sur ce téléphone</item>
     </plurals>
     <string name="data_restore_restored">Restaurés : %1$s</string>
-    <string name="data_restore_restored_settings">Réglages restaurés</string>
+    <string name="data_restore_settings_item">réglages</string>
+    <string name="data_restore_restored_nothing">Rien n\'a été restauré</string>
     <plurals name="data_restore_missing">
-        <item quantity="one">%,d photo ou vidéo n\'est pas sur ce téléphone : ses favoris, albums et visages n\'ont pas été restaurés. Restaurez de nouveau la sauvegarde une fois la photo copiée.</item>
-        <item quantity="many">%,d photos et vidéos ne sont pas sur ce téléphone : leurs favoris, albums et visages n\'ont pas été restaurés. Restaurez de nouveau la sauvegarde une fois les photos copiées.</item>
-        <item quantity="other">%,d photos et vidéos ne sont pas sur ce téléphone : leurs favoris, albums et visages n\'ont pas été restaurés. Restaurez de nouveau la sauvegarde une fois les photos copiées.</item>
+        <item quantity="one">%,d photo ou vidéo n\'est pas sur ce téléphone : ce qui la concerne n\'a pas été restauré. Restaurez de nouveau la sauvegarde une fois la photo copiée.</item>
+        <item quantity="many">%,d photos et vidéos ne sont pas sur ce téléphone : ce qui les concerne n\'a pas été restauré. Restaurez de nouveau la sauvegarde une fois les photos copiées.</item>
+        <item quantity="other">%,d photos et vidéos ne sont pas sur ce téléphone : ce qui les concerne n\'a pas été restauré. Restaurez de nouveau la sauvegarde une fois les photos copiées.</item>
     </plurals>
     <string name="data_restore_settings_failed">Les réglages n\'ont pas pu être restaurés.</string>
     <string name="data_restore_cancelled">Restauration annulée : rien n\'a été modifié</string>

@@ -5,6 +5,12 @@ import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -15,6 +21,7 @@ import app.focale.backup.AutoBackupError
 import app.focale.backup.AutoBackupFrequency
 import app.focale.backup.AutoBackupSettings
 import app.focale.backup.DataBackupSummary
+import app.focale.backup.DataCategory
 import app.focale.core.settings.AppSettings
 import app.focale.ui.theme.FocaleTheme
 import org.junit.Assert.assertEquals
@@ -26,7 +33,7 @@ import org.robolectric.annotation.Config
 
 /**
  * Section « Sauvegarde des données » des réglages : ses trois actions et l'état de la sauvegarde
- * automatique ; résumé d'une sauvegarde vérifiée, avant sa restauration.
+ * automatique ; résumé d'une sauvegarde vérifiée, avant sa restauration, et choix des catégories.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w400dp-h800dp-xxhdpi")
@@ -72,21 +79,38 @@ class DataBackupSectionTest {
         compose.onNodeWithText("Every week · Sauvegardes").assertDoesNotExist()
     }
 
-    @Test
-    fun `le résumé annonce le contenu de la sauvegarde et les personnes remplacées, puis restaure`() {
-        var confirmed = 0
-        var dismissed = 0
+    /** Résumé de [summary], cases cochées d'abord toutes, comme le fait l'écran ; renvoie les cases cochées. */
+    private fun summary(summary: DataBackupSummary = SUMMARY, onConfirm: () -> Unit = {}, onDismiss: () -> Unit = {}): MutableState<Set<DataCategory>> {
+        val chosen = mutableStateOf(summary.categories)
         compose.setContent {
             FocaleTheme(AppSettings(dynamicColor = false)) {
-                RestoreSummaryCard(SUMMARY, onConfirm = { confirmed++ }, onDismiss = { dismissed++ })
+                RestoreSummaryCard(
+                    summary = summary,
+                    chosen = chosen.value,
+                    onToggle = { category -> chosen.value = if (category in chosen.value) chosen.value - category else chosen.value + category },
+                    onConfirm = onConfirm,
+                    onDismiss = onDismiss,
+                )
             }
         }
+        return chosen
+    }
+
+    @Test
+    fun `le résumé propose chaque catégorie de la sauvegarde, cochée, avec ce que la restauration en fait`() {
+        var confirmed = 0
+        var dismissed = 0
+        summary(onConfirm = { confirmed++ }, onDismiss = { dismissed++ })
         compose.onNodeWithText("Created by Focale 1.9.0").assertExists()
-        for (line in listOf("1,284 favorites", "12 albums", "37 people", "1 hidden folder")) compose.onNodeWithText(line).assertExists()
-        compose.onNodeWithText(context.getString(R.string.data_restore_summary_merge)).assertExists()
-        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.data_restore_summary_replace_people, 4, 4))
+        for (line in listOf("1,284 favorites", "12 albums", "37 people", "1 hidden folder", "Settings", "25 searches", "3 original dates")) {
+            compose.onNode(hasText(line).and(isToggleable())).performScrollTo().assertIsOn()
+        }
+        compose.onNodeWithText(context.getString(R.string.data_restore_choice_albums)).performScrollTo().assertExists()
+        compose.onNodeWithText(context.resources.getQuantityString(R.plurals.data_restore_choice_people_replace, 4, 4))
             .performScrollTo()
             .assertExists()
+        compose.onNodeWithText(context.getString(R.string.data_restore_choice_settings)).performScrollTo().assertExists()
+        compose.onNodeWithText(context.getString(R.string.data_restore_summary_media)).performScrollTo().assertExists()
         compose.onNodeWithText(context.getString(R.string.action_cancel)).performClick()
         compose.onNodeWithText(context.getString(R.string.action_restore)).performClick()
         assertEquals(1, confirmed)
@@ -94,13 +118,40 @@ class DataBackupSectionTest {
     }
 
     @Test
-    fun `sans personne sur ce téléphone, le résumé annonce leur création`() {
-        compose.setContent {
-            FocaleTheme(AppSettings(dynamicColor = false)) {
-                RestoreSummaryCard(SUMMARY.copy(existingPeople = 0), onConfirm = {}, onDismiss = {})
-            }
+    fun `décocher une catégorie la retire, sans médias à retrouver la note sur les photos disparaît`() {
+        val chosen = summary()
+        compose.onNodeWithText("1,284 favorites").performScrollTo().performClick()
+        assertEquals(DataCategory.ALL - DataCategory.FAVORITES, chosen.value)
+        compose.onNode(hasText("1,284 favorites").and(isToggleable())).assertIsOff()
+
+        // Plus que les réglages, l'historique et les dossiers masqués : aucune photo à retrouver.
+        for (label in listOf("12 albums", "37 people", "3 original dates")) compose.onNodeWithText(label).performScrollTo().performClick()
+        assertEquals(setOf(DataCategory.HIDDEN_FOLDERS, DataCategory.SETTINGS, DataCategory.SEARCH_HISTORY), chosen.value)
+        compose.onNodeWithText(context.getString(R.string.data_restore_summary_media)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.action_restore)).assertIsEnabled()
+    }
+
+    @Test
+    fun `rien de coché, rien à restaurer`() {
+        var confirmed = 0
+        val chosen = summary(onConfirm = { confirmed++ })
+        for (label in listOf("1,284 favorites", "12 albums", "37 people", "1 hidden folder", "Settings", "25 searches", "3 original dates")) {
+            compose.onNodeWithText(label).performScrollTo().performClick()
         }
-        compose.onNodeWithText(context.getString(R.string.data_restore_summary_new_people)).performScrollTo().assertExists()
+        assertEquals(emptySet<DataCategory>(), chosen.value)
+        compose.onNodeWithText(context.getString(R.string.action_restore)).assertIsNotEnabled().performClick()
+        assertEquals(0, confirmed)
+    }
+
+    @Test
+    fun `seules les catégories présentes sont proposées, et sans personne sur ce téléphone, leur création`() {
+        summary(SUMMARY.copy(existingPeople = 0, favorites = 0, searches = 0, dates = 0, people = 0, faces = 3))
+        compose.onNodeWithText("favorites", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("searches", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("original date", substring = true).assertDoesNotExist()
+        // Visages sans personne de la liste : proposés quand même.
+        compose.onNode(hasText("3 faces").and(isToggleable())).performScrollTo().assertIsOn()
+        compose.onNodeWithText(context.getString(R.string.data_restore_choice_people_new)).performScrollTo().assertExists()
         compose.onNodeWithText("replace those of this phone", substring = true).assertDoesNotExist()
     }
 
@@ -119,6 +170,7 @@ class DataBackupSectionTest {
             searches = 25,
             existingPeople = 4,
             records = 60_000,
+            dates = 3,
         )
     }
 }

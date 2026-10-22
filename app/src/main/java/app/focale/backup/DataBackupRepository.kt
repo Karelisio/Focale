@@ -49,7 +49,9 @@ import kotlinx.coroutines.withContext
  * remplacées (visages des médias retrouvés à la place de ceux du téléphone, personnes recréées,
  * refus reportés, personnes vidées supprimées). Réglages (liste blanche, remplacés) et dossiers
  * masqués (réunion) suivent, dans le DataStore. Restaurer deux fois donne le même résultat ;
- * restaurer plus tard ajoute les médias arrivés entre-temps.
+ * restaurer plus tard ajoute les médias arrivés entre-temps. Une restauration peut se limiter à
+ * certaines catégories ([DataCategory]) : chacune s'applique comme dans une restauration complète,
+ * dans la même transaction unique, et les autres ne sont pas touchées.
  */
 @Singleton
 class DataBackupRepository internal constructor(
@@ -340,6 +342,8 @@ class DataBackupRepository internal constructor(
     /** Lit tout le contenu, fin comprise, en ne décodant que ce que résume [DataBackupSummary]. */
     private suspend fun summarize(reader: DataArchiveReader, progress: Progress): DataBackupSummary {
         var header: HeaderRecord? = null
+        var settings = false
+        var dates = 0
         var favorites = 0
         var albums = 0
         var people = 0
@@ -353,7 +357,9 @@ class DataBackupRepository internal constructor(
             if ((header == null) != (raw.type == RecordType.HEADER)) throw BackupArchiveException(Reason.CORRUPTED)
             when (raw.type) {
                 RecordType.HEADER -> header = raw.decode() as HeaderRecord
+                RecordType.SETTINGS -> settings = true
                 RecordType.HIDDEN_FOLDER -> hiddenFolders++
+                RecordType.MEDIA_DATE -> dates++
                 RecordType.MEDIA -> media++
                 RecordType.FAVORITE -> favorites++
                 RecordType.ALBUM -> albums++
@@ -380,20 +386,23 @@ class DataBackupRepository internal constructor(
             searches = searches,
             existingPeople = existing,
             records = reader.records,
+            dates = dates,
+            settings = settings,
         )
     }
 
     // ── Restauration ─────────────────────────────────────────────────────────────────
 
     /**
-     * Restaure la sauvegarde vérifiée [backup] (ses clés ne sont pas effacées) : tout ou rien, la
-     * transaction n'étant validée qu'une fois l'archive relue jusqu'à sa fin. Réglages et dossiers
-     * masqués suivent la validation.
+     * Restaure les [categories] de la sauvegarde vérifiée [backup] (ses clés ne sont pas effacées) :
+     * tout ou rien, la transaction n'étant validée qu'une fois l'archive relue jusqu'à sa fin.
+     * Réglages et dossiers masqués suivent la validation.
      *
      * @param cancelled consulté entre deux enregistrements : vrai pour annuler (rien n'est modifié).
      */
     suspend fun restore(
         backup: InspectedBackup,
+        categories: Set<DataCategory> = DataCategory.ALL,
         cancelled: () -> Boolean = { false },
         onProgress: (BackupProgress) -> Unit = {},
     ): DataRestoreResult = try {
@@ -401,13 +410,15 @@ class DataBackupRepository internal constructor(
             withContext(io) {
                 onProgress(BackupProgress(BackupProgress.Stage.PREPARING))
                 // Photos tout juste copiées : l'index doit les connaître avant l'appariement.
-                syncMedia()
+                if (categories.any { it.needsMedia } || DataCategory.HIDDEN_FOLDERS in categories) syncMedia()
                 val progress = Progress(backup.summary.records, cancelled, coroutineContext.job, onProgress)
                 val applied = read(backup.source) { archive ->
                     DataArchive.read(archive, backup.keys).use { reader ->
                         // Ni l'analyse des visages ni l'utilisateur n'écrivent pendant le remplacement.
                         editions.writes.withLock {
-                            database.withTransaction { DataRestore(database, mediaStoreDates, progress::checkpoint, progress::record).run(reader) }
+                            database.withTransaction {
+                                DataRestore(database, mediaStoreDates, progress::checkpoint, progress::record, categories).run(reader)
+                            }
                         }
                     }
                 }
@@ -421,9 +432,12 @@ class DataBackupRepository internal constructor(
         DataRestoreResult.Cancelled
     }
 
-    /** Après la validation : réglages et dossiers masqués (DataStore), personnes à recharger par l'analyse. */
+    /**
+     * Après la validation : réglages et dossiers masqués (DataStore) s'ils sont restaurés,
+     * personnes à recharger par l'analyse.
+     */
     private suspend fun finish(applied: DataRestoreApplied): DataRestoreResult {
-        editions.bump()
+        if (DataCategory.PEOPLE in applied.report.categories) editions.bump()
         val settingsRestored = applied.settings?.let { record ->
             try {
                 settings.restoreBackup(record.values, record.keys)
@@ -432,12 +446,16 @@ class DataBackupRepository internal constructor(
                 Log.w(TAG, "Réglages non restaurés", error)
                 false
             }
-        } ?: true
-        val hidden = try {
-            settings.hideFolders(applied.hiddenFolders)
-        } catch (error: IOException) {
-            Log.w(TAG, "Dossiers masqués non restaurés", error)
+        }
+        val hidden = if (applied.hiddenFolders.isEmpty()) {
             0
+        } else {
+            try {
+                settings.hideFolders(applied.hiddenFolders)
+            } catch (error: IOException) {
+                Log.w(TAG, "Dossiers masqués non restaurés", error)
+                0
+            }
         }
         return DataRestoreResult.Success(applied.report.copy(hiddenFolders = hidden, settings = settingsRestored))
     }

@@ -43,12 +43,29 @@
     <string name="data_restore_checking">Checking the backup…</string>
     <string name="data_restore_summary_title">Restore the backup from %1$s?</string>
     <string name="data_restore_summary_version">Created by Focale %1$s</string>
-    <string name="data_restore_summary_merge">Favorites, albums (matched by name) and hidden folders are added to those on this phone. Settings are replaced by those of the backup.</string>
-    <plurals name="data_restore_summary_replace_people">
-        <item quantity="one">People: on the photos found, the faces and people of the backup replace those of this phone (%1$d person). Those left without photos disappear.</item>
-        <item quantity="other">People: on the photos found, the faces and people of the backup replace those of this phone (%1$,d people). Those left without photos disappear.</item>
+    <string name="data_restore_settings_label">Settings</string>
+    <plurals name="data_restore_searches">
+        <item quantity="one">%d search</item>
+        <item quantity="other">%,d searches</item>
     </plurals>
-    <string name="data_restore_summary_new_people">People and their faces are recreated on the photos found.</string>
+    <plurals name="data_restore_dates">
+        <item quantity="one">%d original date</item>
+        <item quantity="other">%,d original dates</item>
+    </plurals>
+    <plurals name="data_restore_faces">
+        <item quantity="one">%d face</item>
+        <item quantity="other">%,d faces</item>
+    </plurals>
+    <string name="data_restore_choice_added">Added to those on this phone</string>
+    <string name="data_restore_choice_albums">Merged by name with those on this phone</string>
+    <plurals name="data_restore_choice_people_replace">
+        <item quantity="one">On the photos found, faces and people replace those of this phone (%1$d person); those left without photos disappear</item>
+        <item quantity="other">On the photos found, faces and people replace those of this phone (%1$,d people); those left without photos disappear</item>
+    </plurals>
+    <string name="data_restore_choice_people_new">Recreated with their faces on the photos found</string>
+    <string name="data_restore_choice_settings">Replace those on this phone</string>
+    <string name="data_restore_choice_searches">Added to this phone’s search history</string>
+    <string name="data_restore_choice_dates">Capture dates found for photos that had none</string>
     <string name="data_restore_summary_media">Photos and videos aren’t in the backup: Focale finds them on this phone by their folder and name. Copy them first; restoring again later adds the ones found since.</string>
     <string name="data_restore_progress_title">Restoring data</string>
     <string name="data_restore_preparing">Finding the photos on this phone…</string>
@@ -58,10 +75,11 @@
         <item quantity="other">%1$,d of %2$,d photos and videos found on this phone</item>
     </plurals>
     <string name="data_restore_restored">Restored: %1$s</string>
-    <string name="data_restore_restored_settings">Settings restored</string>
+    <string name="data_restore_settings_item">settings</string>
+    <string name="data_restore_restored_nothing">Nothing was restored</string>
     <plurals name="data_restore_missing">
-        <item quantity="one">%,d photo or video isn’t on this phone: its favorites, albums and faces weren’t restored. Restore the backup again once it’s copied.</item>
-        <item quantity="other">%,d photos and videos aren’t on this phone: their favorites, albums and faces weren’t restored. Restore the backup again once they’re copied.</item>
+        <item quantity="one">%,d photo or video isn’t on this phone: what concerns it wasn’t restored. Restore the backup again once it’s copied.</item>
+        <item quantity="other">%,d photos and videos aren’t on this phone: what concerns them wasn’t restored. Restore the backup again once they’re copied.</item>
     </plurals>
     <string name="data_restore_settings_failed">The settings couldn’t be restored.</string>
     <string name="data_restore_cancelled">Restore cancelled: nothing was changed</string>

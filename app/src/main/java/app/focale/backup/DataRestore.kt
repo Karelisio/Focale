@@ -41,6 +41,11 @@ private class Library(
  * [DataBackupRepository.restore] : appariement des médias puis enregistrement de chaque
  * enregistrement, en lots ; rien n'est validé si une exception l'interrompt.
  *
+ * Seules les [categories] choisies sont appliquées : les enregistrements des autres sont passés
+ * sans être décodés, et rien de ce qui les concerne sur le téléphone n'est touché (pas même les
+ * personnes vides, si les personnes ne sont pas restaurées). Médias et bibliothèque ne sont lus
+ * que si une catégorie en a besoin.
+ *
  * @param checkpoint point d'annulation, appelé entre deux enregistrements.
  * @param recorded appelé après chaque enregistrement lu (avancement).
  */
@@ -50,6 +55,7 @@ internal class DataRestore(
     private val mediaStoreDates: (Collection<Long>) -> Map<Long, Long>,
     private val checkpoint: () -> Unit,
     private val recorded: () -> Unit,
+    private val categories: Set<DataCategory> = DataCategory.ALL,
 ) {
     private val dao = database.backupDao()
     private val faceDao = database.faceDao()
@@ -66,6 +72,10 @@ internal class DataRestore(
 
     /** Média du téléphone (position dans [library]) retrouvé pour chaque média de la sauvegarde, -1 sinon. */
     private var matches: IntArray? = null
+
+    /** Médias de la sauvegarde désignés par ce qui est restauré : le bilan ne compte qu'eux. */
+    private var referenced = BooleanArray(0)
+    private val needsMedia = categories.any { it.needsMedia }
     private var embeddingsUsable = true
 
     private val favorites = ArrayList<FavoriteEntity>()
@@ -92,20 +102,53 @@ internal class DataRestore(
     private var faceCount = 0
 
     suspend fun run(reader: DataArchiveReader): DataRestoreApplied {
-        library = loadLibrary()
+        library = if (needsMedia || DataCategory.HIDDEN_FOLDERS in categories) loadLibrary() else EMPTY_LIBRARY
         replaced = BooleanArray(library.ids.size)
-        for (album in dao.albumNames()) albumsByName.putIfAbsent(albumKey(album.name), album.id to (album.coverMediaId == null))
+        if (DataCategory.ALBUMS in categories) {
+            for (album in dao.albumNames()) albumsByName.putIfAbsent(albumKey(album.name), album.id to (album.coverMediaId == null))
+        }
         while (true) {
             checkpoint()
             val raw = reader.next() ?: break
-            val record = raw.decode()
-            if (record != null) apply(record)
+            // En-tête d'abord, même pour une restauration partielle.
+            if ((header == null) != (raw.type == RecordType.HEADER)) throw BackupArchiveException(Reason.CORRUPTED)
+            if (wanted(raw.type)) raw.decode()?.let { apply(it) }
             recorded()
         }
         if (header == null) throw BackupArchiveException(Reason.CORRUPTED)
-        val matched = matches()
+        val matched = if (needsMedia) matches() else IntArray(0)
         flushFavorites()
         flushMembers()
+        val people = if (DataCategory.PEOPLE in categories) finishPeople() else 0
+        applyDates()
+        applySearches()
+        return DataRestoreApplied(
+            report = DataRestoreReport(
+                media = referenced.count { it },
+                matched = matched.indices.count { referenced[it] && matched[it] >= 0 },
+                favorites = favoriteCount,
+                albums = albumCount,
+                people = people,
+                faces = faceCount,
+                hiddenFolders = 0,
+                searches = searches.size,
+                settings = settings?.let { true },
+                dates = dates.size,
+                categories = categories,
+            ),
+            settings = settings,
+            hiddenFolders = hiddenFolderIds(),
+        )
+    }
+
+    /** Enregistrement à décoder : structure de l'archive, médias si besoin, catégories choisies. */
+    private fun wanted(type: RecordType?): Boolean = when (val category = type?.category) {
+        null -> type == RecordType.HEADER || (type == RecordType.MEDIA && needsMedia)
+        else -> category in categories
+    }
+
+    /** Fin des personnes : vignettes, photos à relire, personnes vidées ; nombre de personnes listées recréées. */
+    private suspend fun finishPeople(): Int {
         flushScans()
         flushDeletes()
         flushFaces()
@@ -117,25 +160,8 @@ internal class DataRestore(
         touched.toList().chunked(MediaRepositoryLimits.MAX_SQL_ARGS).forEach { dao.detachLeftovers(it) }
         // Personnes recréées sans visage retrouvé, ou du téléphone vidées par le remplacement.
         faceDao.deleteEmptyPersons()
-        val people = persons.values.chunked(MediaRepositoryLimits.MAX_SQL_ARGS)
+        return persons.values.chunked(MediaRepositoryLimits.MAX_SQL_ARGS)
             .sumOf { dao.listedPeople(it, PeopleRepository.MIN_PHOTOS) }
-        applyDates()
-        applySearches()
-        return DataRestoreApplied(
-            report = DataRestoreReport(
-                media = backupMedia.size,
-                matched = matched.count { it >= 0 },
-                favorites = favoriteCount,
-                albums = albumCount,
-                people = people,
-                faces = faceCount,
-                hiddenFolders = 0,
-                searches = searches.size,
-                settings = settings != null,
-            ),
-            settings = settings,
-            hiddenFolders = hiddenFolderIds(),
-        )
     }
 
     private suspend fun apply(record: DataRecord) {
@@ -256,11 +282,15 @@ internal class DataRestore(
         pendingDeletes += library.ids[index]
     }
 
-    private fun matches(): IntArray = matches ?: MediaMatcher.match(backupMedia.build(), library.keys).also { matches = it }
+    private fun matches(): IntArray = matches ?: MediaMatcher.match(backupMedia.build(), library.keys).also {
+        matches = it
+        referenced = BooleanArray(it.size)
+    }
 
     private fun libraryIndex(media: Int): Int? {
         val matched = matches()
         if (media !in matched.indices) throw BackupArchiveException(Reason.CORRUPTED)
+        referenced[media] = true
         return matched[media].takeIf { it >= 0 }
     }
 
@@ -364,6 +394,9 @@ internal class DataRestore(
     }
 
     private companion object {
+        /** Bibliothèque non lue : aucune catégorie choisie n'en a besoin. */
+        val EMPTY_LIBRARY = Library(MediaKeyTable.Builder().build(), LongArray(0), LongArray(0), emptySet(), emptyMap())
+
         const val LIBRARY_PAGE = 2_000
         const val BATCH = 500
         const val FACE_BATCH = 500
@@ -376,3 +409,16 @@ internal class DataRestore(
         fun albumKey(name: String): String = Normalizer.normalize(name.trim(), Normalizer.Form.NFC).lowercase(Locale.ROOT)
     }
 }
+
+/** Catégorie d'un type d'enregistrement ; null pour la structure de l'archive (en-tête, médias). */
+internal val RecordType.category: DataCategory?
+    get() = when (this) {
+        RecordType.HEADER, RecordType.MEDIA -> null
+        RecordType.SETTINGS -> DataCategory.SETTINGS
+        RecordType.HIDDEN_FOLDER -> DataCategory.HIDDEN_FOLDERS
+        RecordType.MEDIA_DATE -> DataCategory.ORIGINAL_DATES
+        RecordType.FAVORITE -> DataCategory.FAVORITES
+        RecordType.ALBUM, RecordType.ALBUM_MEMBER -> DataCategory.ALBUMS
+        RecordType.PERSON, RecordType.REFUSAL, RecordType.FACE_SCAN, RecordType.FACE -> DataCategory.PEOPLE
+        RecordType.SEARCH -> DataCategory.SEARCH_HISTORY
+    }

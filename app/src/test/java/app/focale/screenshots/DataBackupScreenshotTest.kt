@@ -17,6 +17,7 @@ import app.focale.backup.AutoBackupError
 import app.focale.backup.AutoBackupFrequency
 import app.focale.backup.AutoBackupSettings
 import app.focale.backup.DataBackupSummary
+import app.focale.backup.DataCategory
 import app.focale.core.settings.AppSettings
 import app.focale.core.settings.ThemeMode
 import app.focale.ui.settings.DataBackupActions
@@ -35,9 +36,10 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Captures de référence de la sauvegarde des données : section des réglages, sauvegarde
  * automatique active (français, thème clair) ou en échec (anglais, thème sombre) ; résumé d'une
- * sauvegarde vérifiée avant sa restauration, avec des personnes à remplacer (français, thème
- * clair) ou sans (anglais, thème sombre). Le résumé est reproduit sans sa fenêtre, sur le voile
- * des dialogues. Régénérer avec `./gradlew recordRoborazziStandardDebug` quand le changement est voulu.
+ * sauvegarde vérifiée avant sa restauration, une case par catégorie : toutes cochées, avec des
+ * personnes à remplacer (français, thème clair) ou sans (anglais, thème sombre), puis quelques-unes
+ * seulement (français, thème sombre). Le résumé est reproduit sans sa fenêtre, sur le voile des
+ * dialogues. Régénérer avec `./gradlew recordRoborazziStandardDebug` quand le changement est voulu.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -68,6 +70,7 @@ class DataBackupScreenshotTest {
         searches = 25,
         existingPeople = 4,
         records = 60_000,
+        dates = 12,
     )
 
     @Test
@@ -85,7 +88,16 @@ class DataBackupScreenshotTest {
     fun resumeRestaurationClair() = summary(dark = false, summary = summary)
 
     @Test
-    fun resumeRestaurationSansPersonneSombre() = summary(dark = true, summary = summary.copy(existingPeople = 0, hiddenFolders = 1))
+    fun resumeRestaurationSansPersonneSombre() = summary(dark = true, summary = summary.copy(existingPeople = 0, hiddenFolders = 1, dates = 0))
+
+    /** Favoris, réglages et historique seulement : la note sur les photos à copier reste (favoris). */
+    @Test
+    @Config(qualifiers = "fr-w400dp-h800dp-xxhdpi")
+    fun resumeRestaurationPartielleSombre() = summary(
+        dark = true,
+        summary = summary,
+        chosen = setOf(DataCategory.FAVORITES, DataCategory.SETTINGS, DataCategory.SEARCH_HISTORY),
+    )
 
     private fun section(dark: Boolean, settings: AutoBackupSettings) {
         compose.setContent {
@@ -98,7 +110,7 @@ class DataBackupScreenshotTest {
         compose.onRoot().captureRoboImage(roborazziOptions = options)
     }
 
-    private fun summary(dark: Boolean, summary: DataBackupSummary) {
+    private fun summary(dark: Boolean, summary: DataBackupSummary, chosen: Set<DataCategory> = summary.categories) {
         compose.setContent {
             FocaleTheme(AppSettings(themeMode = if (dark) ThemeMode.DARK else ThemeMode.LIGHT, dynamicColor = false)) {
                 Box(
@@ -109,7 +121,7 @@ class DataBackupScreenshotTest {
                         .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
                         .padding(24.dp),
                 ) {
-                    RestoreSummaryCard(summary, onConfirm = {}, onDismiss = {})
+                    RestoreSummaryCard(summary, chosen = chosen, onToggle = {}, onConfirm = {}, onDismiss = {})
                 }
             }
         }

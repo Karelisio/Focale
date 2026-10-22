@@ -35,6 +35,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -91,6 +92,9 @@ class DataBackupRepositoryTest {
         assertEquals(11, summary.media)
         assertEquals(10, summary.faces)
         assertEquals(2, summary.searches)
+        assertEquals(1, summary.dates)
+        assertTrue(summary.settings)
+        assertEquals("tout est proposé, et coché d'office", DataCategory.ALL, summary.categories)
         // « Inconnu », nommé sur le nouveau téléphone : ses visages des photos retrouvées seront remplacés.
         assertEquals(1, summary.existingPeople)
 
@@ -98,7 +102,7 @@ class DataBackupRepositoryTest {
         val report = inspected.use { (newPhone.device.backups.restore(it) as DataRestoreResult.Success).report }
         assertTrue("synchronisation avant l'appariement", newPhone.device.syncs > syncsBefore)
         assertEquals(
-            DataRestoreReport(media = 11, matched = 10, favorites = 2, albums = 2, people = 3, faces = 9, hiddenFolders = 2, searches = 2, settings = true),
+            DataRestoreReport(media = 11, matched = 10, favorites = 2, albums = 2, people = 3, faces = 9, hiddenFolders = 2, searches = 2, settings = true, dates = 1),
             report,
         )
         assertEquals(1, report.missing)
@@ -192,6 +196,90 @@ class DataBackupRepositoryTest {
         val second = newPhone.device.snapshot()
         newPhone.device.restore()
         assertEquals(second, newPhone.device.snapshot())
+    }
+
+    @Test
+    fun `chaque catégorie restaurée seule ne change qu'elle, comme une restauration complète`() = runTest {
+        OldPhone().device.backups.export(archive, password())
+        val full = NewPhone("complet").apply { device.restore() }.device.sections()
+        for (category in DataCategory.entries) {
+            val newPhone = NewPhone("seul-${category.name}")
+            val before = newPhone.device.sections()
+            assertNotEquals("$category : rien à restaurer, le test ne prouverait rien", before.getValue(category), full.getValue(category))
+            val syncs = newPhone.device.syncs
+            val report = newPhone.device.restore(setOf(category))
+            val after = newPhone.device.sections()
+            for (other in DataCategory.entries) {
+                val expected = if (other == category) full.getValue(other) else before.getValue(other)
+                assertEquals("$category seule : $other", expected, after.getValue(other))
+            }
+            assertEquals(setOf(category), report.categories)
+            // Ni réglages ni historique ne désignent de médias : pas d'index à synchroniser.
+            val needsLibrary = category.needsMedia || category == DataCategory.HIDDEN_FOLDERS
+            assertEquals("$category : synchronisation", needsLibrary, newPhone.device.syncs > syncs)
+        }
+    }
+
+    @Test
+    fun `le bilan d'une catégorie seule ne compte qu'elle et ses médias`() = runTest {
+        OldPhone().device.backups.export(archive, password())
+        // Favoris : 3 photos désignées, dont IMG_0009 absente du nouveau téléphone.
+        assertEquals(
+            DataRestoreReport(
+                media = 3, matched = 2, favorites = 2, albums = 0, people = 0, faces = 0, hiddenFolders = 0, searches = 0,
+                settings = null, dates = 0, categories = setOf(DataCategory.FAVORITES),
+            ),
+            NewPhone("favoris").device.restore(setOf(DataCategory.FAVORITES)),
+        )
+        assertEquals(
+            DataRestoreReport(
+                media = 0, matched = 0, favorites = 0, albums = 0, people = 0, faces = 0, hiddenFolders = 0, searches = 0,
+                settings = true, dates = 0, categories = setOf(DataCategory.SETTINGS),
+            ),
+            NewPhone("réglages").device.restore(setOf(DataCategory.SETTINGS)),
+        )
+        val people = NewPhone("personnes").device.restore(setOf(DataCategory.PEOPLE))
+        assertEquals(listOf(3, 9, 0), listOf(people.people, people.faces, people.favorites))
+        // Toutes les photos ont été analysées : toutes concernées.
+        assertEquals(listOf(11, 10), listOf(people.media, people.matched))
+        assertEquals(null, people.settings)
+    }
+
+    @Test
+    fun `des catégories combinées, restaurées deux fois, donnent le même résultat`() = runTest {
+        OldPhone().device.backups.export(archive, password())
+        val full = NewPhone("complet").apply { device.restore() }.device.sections()
+        val combinations = listOf(
+            setOf(DataCategory.FAVORITES, DataCategory.ALBUMS),
+            setOf(DataCategory.PEOPLE, DataCategory.SEARCH_HISTORY),
+            setOf(DataCategory.SETTINGS, DataCategory.HIDDEN_FOLDERS, DataCategory.ORIGINAL_DATES),
+            DataCategory.ALL - DataCategory.PEOPLE,
+        )
+        for ((index, combination) in combinations.withIndex()) {
+            val newPhone = NewPhone("combinaison-$index")
+            val before = newPhone.device.sections()
+            newPhone.device.restore(combination)
+            val first = newPhone.device.sections()
+            for (category in DataCategory.entries) {
+                val expected = if (category in combination) full.getValue(category) else before.getValue(category)
+                assertEquals("$combination : $category", expected, first.getValue(category))
+            }
+            newPhone.device.restore(combination)
+            assertEquals("$combination restaurée deux fois", first, newPhone.device.sections())
+        }
+    }
+
+    @Test
+    fun `une restauration partielle annulée ne change rien`() = runTest {
+        OldPhone().device.backups.export(archive, password())
+        val newPhone = NewPhone()
+        val before = newPhone.device.snapshot()
+        var read = 0
+        val result = newPhone.device.inspect().use {
+            newPhone.device.backups.restore(it, setOf(DataCategory.FAVORITES, DataCategory.SETTINGS), cancelled = { ++read > 20 })
+        }
+        assertEquals(DataRestoreResult.Cancelled, result)
+        assertEquals(before, newPhone.device.snapshot())
     }
 
     @Test
@@ -401,8 +489,8 @@ class DataBackupRepositoryTest {
      * Nouveau téléphone : les mêmes photos, copiées, sous d'autres identifiants ; une photo dans un
      * autre dossier, une absente, une propre à ce téléphone, déjà analysée et rangée.
      */
-    private inner class NewPhone {
-        val device = Device("nouveau")
+    private inner class NewPhone(name: String = "nouveau") {
+        val device = Device(name)
         val whatsAppBucket = 777_000L
 
         init {
@@ -487,48 +575,49 @@ class DataBackupRepositoryTest {
 
         suspend fun inspect(): InspectedBackup = (backups.inspect(archive, password()) as DataInspectResult.Ready).backup
 
-        suspend fun restore(): DataRestoreReport = inspect().use { (backups.restore(it) as DataRestoreResult.Success).report }
+        suspend fun restore(categories: Set<DataCategory> = DataCategory.ALL): DataRestoreReport =
+            inspect().use { (backups.restore(it, categories) as DataRestoreResult.Success).report }
 
         /**
-         * Contenu restauré, sans les identifiants propres au téléphone (médias, personnes, visages) :
-         * de quoi comparer deux restaurations. Les visages de la corbeille, hors de la sauvegarde, n'y
-         * sont pas.
+         * Contenu restauré par catégorie, sans les identifiants propres au téléphone (médias,
+         * personnes, visages) : de quoi comparer deux restaurations. Les visages de la corbeille,
+         * hors de la sauvegarde, n'y sont pas.
          */
-        suspend fun snapshot(): String = buildString {
-            fun dump(sql: String) {
-                database.query(sql).forEach { appendLine(it) }
-                appendLine("--")
-            }
-            dump("SELECT m.display_name || '|' || f.added_at FROM favorite f JOIN media m ON m.id = f.media_id ORDER BY 1")
-            dump("SELECT a.name || '|' || a.created_at || '|' || COALESCE((SELECT display_name FROM media WHERE id = a.cover_media_id), '∅') FROM album a ORDER BY 1")
-            dump("SELECT a.name || '|' || m.display_name || '|' || am.added_at FROM album_media am JOIN album a ON a.id = am.album_id JOIN media m ON m.id = am.media_id ORDER BY 1")
-            dump(
-                """SELECT COALESCE(p.name, '∅') || '|' || p.hidden || '|' || p.pinned || '|' || p.created_at || '|' ||
-                COALESCE((SELECT m.display_name FROM face c JOIN media m ON m.id = c.media_id WHERE c.id = p.cover_face_id), '∅')
-                FROM person p ORDER BY 1""",
-            )
-            dump(
-                """SELECT m.display_name || '|' || COALESCE(p.name, '∅') || '|' || COALESCE(p.created_at, '∅') || '|' || f.box_left || '|' ||
-                f.box_top || '|' || f.box_right || '|' || f.box_bottom || '|' || f.manual || '|' || hex(f.embedding) || '|' || f.quality
-                FROM face f JOIN media m ON m.id = f.media_id LEFT JOIN person p ON p.id = f.person_id
-                WHERE m.is_trashed = 0 ORDER BY 1""",
-            )
-            // Passages de la détection : à jour ou non, plutôt que la date de modification vue.
-            dump(
-                """SELECT m.display_name || '|' || (s.analyzed_modified = m.date_modified) || '|' || s.version || '|' || s.face_count
-                FROM face_scan s JOIN media m ON m.id = s.media_id ORDER BY 1""",
-            )
-            dump("SELECT COALESCE(l.name, '∅') || '|' || COALESCE(h.name, '∅') FROM person_refusal r JOIN person l ON l.id = r.person_low JOIN person h ON h.id = r.person_high ORDER BY 1")
-            dump("SELECT m.display_name || '|' || d.date_taken || '|' || m.date_taken FROM media_date d JOIN media m ON m.id = d.media_id ORDER BY 1")
-            // Recherches : leurs personnes désignées par leur nom, leur identifiant changeant à chaque restauration.
-            database.query("SELECT query || '\u0001' || searched_at FROM search_history").map { row ->
-                val (query, at) = row.split('\u0001')
-                SearchHistoryMerge.canonical(query) + "|" + at
-            }.sorted().forEach { appendLine(it) }
-            appendLine("--")
+        suspend fun sections(): Map<DataCategory, String> {
+            fun dump(vararg queries: String): String = queries.joinToString("--\n") { sql -> database.query(sql).joinToString("") { "$it\n" } }
             val current = settings.settings.first()
-            appendLine(current.copy(hiddenFolders = current.hiddenFolders.toSortedSet()).toString())
+            return mapOf(
+                DataCategory.FAVORITES to dump("SELECT m.display_name || '|' || f.added_at FROM favorite f JOIN media m ON m.id = f.media_id ORDER BY 1"),
+                DataCategory.ALBUMS to dump(
+                    "SELECT a.name || '|' || a.created_at || '|' || COALESCE((SELECT display_name FROM media WHERE id = a.cover_media_id), '∅') FROM album a ORDER BY 1",
+                    "SELECT a.name || '|' || m.display_name || '|' || am.added_at FROM album_media am JOIN album a ON a.id = am.album_id JOIN media m ON m.id = am.media_id ORDER BY 1",
+                ),
+                DataCategory.PEOPLE to dump(
+                    """SELECT COALESCE(p.name, '∅') || '|' || p.hidden || '|' || p.pinned || '|' || p.created_at || '|' ||
+                    COALESCE((SELECT m.display_name FROM face c JOIN media m ON m.id = c.media_id WHERE c.id = p.cover_face_id), '∅')
+                    FROM person p ORDER BY 1""",
+                    """SELECT m.display_name || '|' || COALESCE(p.name, '∅') || '|' || COALESCE(p.created_at, '∅') || '|' || f.box_left || '|' ||
+                    f.box_top || '|' || f.box_right || '|' || f.box_bottom || '|' || f.manual || '|' || hex(f.embedding) || '|' || f.quality
+                    FROM face f JOIN media m ON m.id = f.media_id LEFT JOIN person p ON p.id = f.person_id
+                    WHERE m.is_trashed = 0 ORDER BY 1""",
+                    // Passages de la détection : à jour ou non, plutôt que la date de modification vue.
+                    """SELECT m.display_name || '|' || (s.analyzed_modified = m.date_modified) || '|' || s.version || '|' || s.face_count
+                    FROM face_scan s JOIN media m ON m.id = s.media_id ORDER BY 1""",
+                    "SELECT COALESCE(l.name, '∅') || '|' || COALESCE(h.name, '∅') FROM person_refusal r JOIN person l ON l.id = r.person_low JOIN person h ON h.id = r.person_high ORDER BY 1",
+                ),
+                DataCategory.ORIGINAL_DATES to dump("SELECT m.display_name || '|' || d.date_taken || '|' || m.date_taken FROM media_date d JOIN media m ON m.id = d.media_id ORDER BY 1"),
+                // Recherches : leurs personnes désignées par leur nom, leur identifiant changeant à chaque restauration.
+                DataCategory.SEARCH_HISTORY to database.query("SELECT query || '\u0001' || searched_at FROM search_history").map { row ->
+                    val (query, at) = row.split('\u0001')
+                    SearchHistoryMerge.canonical(query) + "|" + at
+                }.sorted().joinToString("\n"),
+                DataCategory.SETTINGS to current.copy(hiddenFolders = emptySet()).toString(),
+                DataCategory.HIDDEN_FOLDERS to current.hiddenFolders.sorted().toString(),
+            )
         }
+
+        /** Tout le contenu restauré, en un texte (voir [sections]). */
+        suspend fun snapshot(): String = sections().entries.joinToString("\n--\n") { (category, content) -> "$category\n$content" }
 
         fun close() {
             database.close()
