@@ -36,12 +36,27 @@ data class SphereArea(val west: Double, val east: Double, val north: Double, val
 }
 
 /**
- * Photo panoramique et vue à lui proposer.
+ * Disposition des images d'une vidéo 360° : une seule, ou une par œil (stéréoscopie), dont seule
+ * celle de l'œil gauche est montrée.
+ */
+enum class StereoMode {
+    MONO,
+
+    /** Œil gauche dans la moitié haute de l'image. */
+    TOP_BOTTOM,
+
+    /** Œil gauche dans la moitié gauche de l'image. */
+    LEFT_RIGHT,
+}
+
+/**
+ * Photo panoramique, ou vidéo 360° ([SphericalVideos]), et vue à lui proposer.
  *
  * @property area zone couverte ; pour un panorama à plat sans GPano, couverture estimée.
  * @property initialYaw longitude (degrés) au centre de la vue initiale.
  * @property initialPitch latitude (degrés) au centre de la vue initiale.
  * @property initialHorizontalFov champ horizontal initial demandé par le fichier, s'il y en a un.
+ * @property stereo images d'une vidéo stéréoscopique ; une photo n'en a qu'une.
  */
 data class Panorama(
     val mediaId: Long,
@@ -50,6 +65,7 @@ data class Panorama(
     val initialYaw: Double,
     val initialPitch: Double,
     val initialHorizontalFov: Double? = null,
+    val stereo: StereoMode = StereoMode.MONO,
 )
 
 /**

@@ -30,4 +30,10 @@ internal object ViewerChromeMetrics {
 
     /** Hauteur des barres supérieures (retour, titre et sous-titre), sous la barre d'état. */
     val TopBarHeight: Dp = 64.dp
+
+    /**
+     * Marge sous le bouton « 360° » ou « Vue panoramique » : au-dessus de la barre d'outils d'une
+     * photo, et des commandes d'une vidéo (barre de navigation en plus).
+     */
+    fun panoramaButtonBottom(video: Boolean): Dp = (if (video) VideoControlsHeight else ToolbarHeight) + ScreenOffset
 }

@@ -2,6 +2,7 @@ package app.focale.ui.viewer
 
 import android.content.Context
 import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -9,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,6 +53,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -90,6 +93,7 @@ import app.focale.core.image.ThumbnailSizes
 import app.focale.core.image.thumbnail
 import app.focale.core.model.MediaItem
 import app.focale.core.util.Formatters
+import app.focale.panorama.Panorama
 import app.focale.ui.theme.ViewerChromeTheme
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -129,6 +133,9 @@ sealed interface VideoCast {
  *   progression (non précisée : toute la largeur disponible, dans la limite des barres).
  * @param cast diffusion en cours (page courante seulement) ; [onPlayer] reçoit le lecteur du
  *   téléphone, que l'écran externe affiche.
+ * @param sphere vidéo 360° ouverte en vue immersive (page courante seulement, jamais pendant une
+ *   diffusion) : le même lecteur dessine dans la sphère ([SphereVideoFrame]), commandes
+ *   comprises ; [onCloseSphere] (retour) revient à la vidéo à plat.
  */
 @Composable
 fun VideoPage(
@@ -144,9 +151,17 @@ fun VideoPage(
     controlsWidth: Dp = Dp.Unspecified,
     cast: VideoCast? = null,
     onPlayer: ((Player?) -> Unit)? = null,
+    sphere: Panorama? = null,
+    onCloseSphere: () -> Unit = {},
 ) {
     val shown = VideoCast.of(cast, item)
     val tv = shown as? VideoCast.Tv
+    val immersive = sphere?.takeIf { shown == null && isCurrent && it.mediaId == item.id }
+    // « Bouger le téléphone » et cap de la vue, gardés à la recréation de l'activité.
+    var motion by rememberSaveable(item.id) { mutableStateOf(false) }
+    var resets by remember(item.id) { mutableIntStateOf(0) }
+    val camera = if (immersive != null) rememberSaveable(immersive, saver = sphereCameraSaver(immersive)) { immersive.camera() } else null
+    if (immersive != null) BackHandler(onBack = onCloseSphere)
     VideoPlayerPage(
         key = item.id,
         isCurrent = isCurrent,
@@ -168,6 +183,22 @@ fun VideoPage(
         // La TV continue quand Focale passe en arrière-plan (service au premier plan).
         pauseInBackground = tv == null,
         onPlayerChanged = onPlayer,
+        frame = if (immersive != null && camera != null) {
+            { player -> SphereVideoFrame(player, immersive, camera, motion, resets) }
+        } else {
+            null
+        },
+        overlay = {
+            if (immersive != null) {
+                SphereVideoChrome(
+                    visible = controlsVisible,
+                    motion = motion,
+                    onMotionChange = { motion = it },
+                    onReset = { resets++ },
+                    onClose = onCloseSphere,
+                )
+            }
+        },
     )
 }
 
@@ -202,6 +233,8 @@ private fun galleryPlayer(context: Context): Player = ExoPlayer.Builder(context)
  *   l'affiche et ce libellé.
  * @param pauseInBackground pause à la mise en arrière-plan (pas pour une TV, qui continue).
  * @param onPlayerChanged reçoit le lecteur de la page courante, puis null à sa libération.
+ * @param frame dessine le lecteur à la place de son cadre habituel (vidéo 360°), sans le recréer.
+ * @param overlay par-dessus les commandes (barres de la vue 360°).
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -224,6 +257,8 @@ fun VideoPlayerPage(
     castLabel: String? = null,
     pauseInBackground: Boolean = true,
     onPlayerChanged: ((Player?) -> Unit)? = null,
+    frame: (@Composable (Player) -> Unit)? = null,
+    overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val context = LocalContext.current
     val memory = rememberSaveable(key, saver = PlaybackMemory.Saver) { PlaybackMemory() }
@@ -279,7 +314,9 @@ fun VideoPlayerPage(
         // le tempo, la hauteur du son reste celle de la vidéo.
         LaunchedEffect(player, playbackSpeed) { player.setPlaybackSpeed(playbackSpeed) }
 
-        if (castLabel == null) {
+        if (castLabel == null && frame != null) {
+            frame(player)
+        } else if (castLabel == null) {
             ContentFrame(
                 player = player,
                 modifier = Modifier.fillMaxSize(),
@@ -309,6 +346,7 @@ fun VideoPlayerPage(
         ) {
             ViewerChromeTheme { VideoControls(player, controlsWidth, playbackSpeed, onPlaybackSpeedChange) }
         }
+        overlay()
     }
 }
 

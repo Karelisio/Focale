@@ -60,14 +60,18 @@ object Panoramas {
     }
 }
 
-/** Accès aux panoramas pour les ViewModels (lecture sur le dispatcher d'entrées/sorties). */
+/**
+ * Accès aux panoramas pour les ViewModels (lecture sur le dispatcher d'entrées/sorties) : photos
+ * panoramiques et 360° ([Panoramas]), vidéos 360° ([SphericalVideos]).
+ */
 @Singleton
 class PanoramaRepository @Inject constructor(
     private val resolver: ContentResolver,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
-    suspend fun find(item: MediaItem): Panorama? {
-        if (!Panoramas.isCandidate(item)) return null
-        return withContext(io) { Panoramas.detect(resolver, item) }
+    suspend fun find(item: MediaItem): Panorama? = when {
+        SphericalVideos.isCandidate(item) -> withContext(io) { SphericalVideos.detect(resolver, item) }
+        Panoramas.isCandidate(item) -> withContext(io) { Panoramas.detect(resolver, item) }
+        else -> null
     }
 }

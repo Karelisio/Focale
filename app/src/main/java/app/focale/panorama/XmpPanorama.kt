@@ -42,18 +42,23 @@ data class GPano(
  * Lecture tolérante des propriétés GPano d'un paquet XMP, comme [app.focale.video.XmpMotionPhoto] :
  * préfixes résolus d'après les déclarations `xmlns` (à défaut, préfixe usuel `GPano`), propriétés
  * acceptées en attributs comme en éléments, et une erreur de syntaxe n'efface pas ce qui a déjà
- * été lu. Ni DTD ni entité externe.
+ * été lu. Ni DTD ni entité externe. Les vidéos 360° (GSpherical) se lisent de la même façon
+ * ([properties]).
  */
 internal object XmpPanorama {
 
     const val GPANO_NS = "http://ns.google.com/photos/1.0/panorama/"
     private const val DISALLOW_DOCTYPE = "http://apache.org/xml/features/disallow-doctype-decl"
 
-    private val knownPrefixes = mapOf("GPano" to GPANO_NS)
-
     /** Propriétés GPano du paquet, ou null s'il n'en porte aucune. */
-    fun parse(xmp: ByteArray): GPano? {
-        val handler = PanoramaHandler()
+    fun parse(xmp: ByteArray): GPano? = gpano(properties(xmp, GPANO_NS, "GPano"))
+
+    /**
+     * Propriétés de l'espace de noms [namespace] du document [xml] (nom local → valeur), la
+     * première de chaque nom ; [prefix] : préfixe usuel, admis sans déclaration.
+     */
+    fun properties(xml: ByteArray, namespace: String, prefix: String): Map<String, String> {
+        val handler = PropertiesHandler(namespace, mapOf(prefix to namespace))
         try {
             val factory = SAXParserFactory.newInstance().apply {
                 isNamespaceAware = false
@@ -63,11 +68,38 @@ internal object XmpPanorama {
             val reader = factory.newSAXParser().xmlReader
             reader.entityResolver = EntityResolver { _, _ -> InputSource(StringReader("")) }
             reader.contentHandler = handler
-            reader.parse(InputSource(ByteArrayInputStream(xmp, 0, contentLength(xmp))))
+            reader.parse(InputSource(ByteArrayInputStream(xml, 0, contentLength(xml))))
         } catch (malformed: Exception) {
             // XMP mal formé ou tronqué : on garde ce qui précède l'erreur.
         }
-        return handler.result()
+        return handler.values
+    }
+
+    private fun gpano(values: Map<String, String>): GPano? {
+        if (values.isEmpty()) return null
+        fun int(name: String): Int? = values[name]?.trim()?.let { it.toIntOrNull() ?: it.toDoubleOrNull()?.toInt() }
+        fun real(name: String): Double? = values[name]?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }
+        return GPano(
+            projectionType = values["ProjectionType"]?.trim()?.takeIf { it.isNotEmpty() },
+            usePanoramaViewer = values["UsePanoramaViewer"]?.let(::flag),
+            croppedWidth = int("CroppedAreaImageWidthPixels"),
+            croppedHeight = int("CroppedAreaImageHeightPixels"),
+            croppedLeft = int("CroppedAreaLeftPixels"),
+            croppedTop = int("CroppedAreaTopPixels"),
+            fullWidth = int("FullPanoWidthPixels"),
+            fullHeight = int("FullPanoHeightPixels"),
+            poseHeadingDegrees = real("PoseHeadingDegrees"),
+            initialViewHeadingDegrees = real("InitialViewHeadingDegrees"),
+            initialViewPitchDegrees = real("InitialViewPitchDegrees"),
+            initialHorizontalFovDegrees = real("InitialHorizontalFOVDegrees"),
+        )
+    }
+
+    /** « true » / « 1 », « false » / « 0 » ; null sinon. */
+    fun flag(value: String): Boolean? = when (value.trim().lowercase()) {
+        "true", "1" -> true
+        "false", "0" -> false
+        else -> null
     }
 
     /** Longueur sans les octets nuls de remplissage qui suivent parfois le paquet. */
@@ -77,28 +109,10 @@ internal object XmpPanorama {
         return end
     }
 
-    private class PanoramaHandler : DefaultHandler() {
+    private class PropertiesHandler(private val namespace: String, private val knownPrefixes: Map<String, String>) : DefaultHandler() {
         private val scopes = ArrayDeque<Map<String, String>>()
         private val text = StringBuilder()
-        private val values = HashMap<String, String>()
-
-        fun result(): GPano? {
-            if (values.isEmpty()) return null
-            return GPano(
-                projectionType = values["ProjectionType"]?.trim()?.takeIf { it.isNotEmpty() },
-                usePanoramaViewer = values["UsePanoramaViewer"]?.let(::flag),
-                croppedWidth = int("CroppedAreaImageWidthPixels"),
-                croppedHeight = int("CroppedAreaImageHeightPixels"),
-                croppedLeft = int("CroppedAreaLeftPixels"),
-                croppedTop = int("CroppedAreaTopPixels"),
-                fullWidth = int("FullPanoWidthPixels"),
-                fullHeight = int("FullPanoHeightPixels"),
-                poseHeadingDegrees = real("PoseHeadingDegrees"),
-                initialViewHeadingDegrees = real("InitialViewHeadingDegrees"),
-                initialViewPitchDegrees = real("InitialViewPitchDegrees"),
-                initialHorizontalFovDegrees = real("InitialHorizontalFOVDegrees"),
-            )
-        }
+        val values = HashMap<String, String>()
 
         override fun startElement(uri: String?, localName: String?, qName: String, attributes: Attributes) {
             scopes.addLast(declarations(attributes))
@@ -124,7 +138,7 @@ internal object XmpPanorama {
         private fun property(qName: String, value: String) {
             val (namespace, name) = resolve(qName)
             // Première valeur gardée : une seconde description (copie de l'extension) ne la remplace pas.
-            if (namespace == GPANO_NS) values.putIfAbsent(name, value)
+            if (namespace == this.namespace) values.putIfAbsent(name, value)
         }
 
         private fun declarations(attributes: Attributes): Map<String, String> {
@@ -146,16 +160,6 @@ internal object XmpPanorama {
             val prefix = qName.substring(0, colon)
             val namespace = scopes.lastOrNull { prefix in it }?.get(prefix) ?: knownPrefixes[prefix].orEmpty()
             return namespace to qName.substring(colon + 1)
-        }
-
-        private fun int(name: String): Int? = values[name]?.trim()?.let { it.toIntOrNull() ?: it.toDoubleOrNull()?.toInt() }
-
-        private fun real(name: String): Double? = values[name]?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }
-
-        private fun flag(value: String): Boolean? = when (value.trim().lowercase()) {
-            "true", "1" -> true
-            "false", "0" -> false
-            else -> null
         }
     }
 }

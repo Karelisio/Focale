@@ -4,11 +4,6 @@ import android.graphics.Bitmap
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.GLUtils
-import android.util.Log
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
-import java.nio.ShortBuffer
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
@@ -27,15 +22,8 @@ internal class SphereRenderer(
     private val onContext: (maxTextureSize: Int) -> Unit,
 ) : GLSurfaceView.Renderer {
 
-    private val mesh = SphereMesh.build(area)
+    private val sphere = SphereBuffers(area)
     private val wraps = area.wrapsAround
-    private val positions: FloatBuffer = floats(mesh.positions)
-    private val texCoords: FloatBuffer = floats(mesh.texCoords)
-    private val indices: ShortBuffer = ByteBuffer.allocateDirect(mesh.indices.size * 2).order(ByteOrder.nativeOrder())
-        .asShortBuffer().apply {
-            put(mesh.indices)
-            position(0)
-        }
 
     private var program = 0
     private var texture = 0
@@ -47,7 +35,7 @@ internal class SphereRenderer(
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         // Nouveau contexte : anciens objets perdus avec le précédent.
         texture = 0
-        program = createProgram()
+        program = GlPrograms.link(VERTEX_SHADER, FRAGMENT_SHADER, TAG)
         positionHandle = GLES20.glGetAttribLocation(program, "aPosition")
         texCoordHandle = GLES20.glGetAttribLocation(program, "aTexCoord")
         matrixHandle = GLES20.glGetUniformLocation(program, "uMatrix")
@@ -73,13 +61,7 @@ internal class SphereRenderer(
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
         GLES20.glUniform1i(samplerHandle, 0)
-        GLES20.glEnableVertexAttribArray(positionHandle)
-        GLES20.glVertexAttribPointer(positionHandle, 3, GLES20.GL_FLOAT, false, 0, positions)
-        GLES20.glEnableVertexAttribArray(texCoordHandle)
-        GLES20.glVertexAttribPointer(texCoordHandle, 2, GLES20.GL_FLOAT, false, 0, texCoords)
-        GLES20.glDrawElements(GLES20.GL_TRIANGLES, mesh.indices.size, GLES20.GL_UNSIGNED_SHORT, indices)
-        GLES20.glDisableVertexAttribArray(positionHandle)
-        GLES20.glDisableVertexAttribArray(texCoordHandle)
+        sphere.draw(positionHandle, texCoordHandle)
     }
 
     /** Fil OpenGL : envoie [bitmap] (puissances de deux) en texture avec ses mipmaps, puis le libère. */
@@ -114,32 +96,6 @@ internal class SphereRenderer(
         texture = 0
     }
 
-    private fun createProgram(): Int {
-        val vertex = compile(GLES20.GL_VERTEX_SHADER, VERTEX_SHADER)
-        val fragment = compile(GLES20.GL_FRAGMENT_SHADER, FRAGMENT_SHADER)
-        val program = GLES20.glCreateProgram()
-        GLES20.glAttachShader(program, vertex)
-        GLES20.glAttachShader(program, fragment)
-        GLES20.glLinkProgram(program)
-        GLES20.glDeleteShader(vertex)
-        GLES20.glDeleteShader(fragment)
-        val status = IntArray(1)
-        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, status, 0)
-        if (status[0] == 0) {
-            Log.w(TAG, "Programme refusé : ${GLES20.glGetProgramInfoLog(program)}")
-            GLES20.glDeleteProgram(program)
-            return 0
-        }
-        return program
-    }
-
-    private fun compile(type: Int, source: String): Int {
-        val shader = GLES20.glCreateShader(type)
-        GLES20.glShaderSource(shader, source)
-        GLES20.glCompileShader(shader)
-        return shader
-    }
-
     private companion object {
         const val TAG = "SphereRenderer"
 
@@ -170,11 +126,5 @@ internal class SphereRenderer(
                 gl_FragColor = texture2D(uTexture, vTexCoord);
             }
         """
-
-        fun floats(values: FloatArray): FloatBuffer =
-            ByteBuffer.allocateDirect(values.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
-                put(values)
-                position(0)
-            }
     }
 }

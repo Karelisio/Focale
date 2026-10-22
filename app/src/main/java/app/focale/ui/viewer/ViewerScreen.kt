@@ -104,6 +104,7 @@ import app.focale.core.util.Formatters
 import app.focale.data.PhotoRotator
 import app.focale.ml.CountryResolver
 import app.focale.ml.LabelDictionary
+import app.focale.panorama.Panorama
 import app.focale.ui.actions.MediaActionsHost
 import app.focale.ui.cast.CastButton
 import app.focale.ui.cast.CastPresentation
@@ -191,6 +192,12 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
             }
         }
     }
+    // Vidéo 360° : vue immersive dans sa page, avec ses commandes ; diffusée, elle reste à plat
+    // (une diffusion qui commence referme la vue).
+    val castingVideo = current?.takeIf { it.isVideo }?.let { VideoCast.of(videoCast, it) } != null
+    LaunchedEffect(castingVideo) { if (castingVideo) panoramaOpen = null }
+    val sphereVideo = immersive?.takeIf { current?.isVideo == true && !castingVideo }
+    val photoPanorama = immersive?.takeIf { current?.isVideo == false }
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
     // Vitesse des vidéos : la même d'une vidéo à l'autre, 1× à chaque ouverture.
     var videoSpeed by rememberVideoSpeed()
@@ -257,7 +264,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
         FlickToDismiss(
             state = flickState,
             enabled = !zoomed && !showInfo && immersive == null,
-            modifier = if (immersive != null) Modifier.clearAndSetSemantics {} else Modifier,
+            modifier = if (photoPanorama != null) Modifier.clearAndSetSemantics {} else Modifier,
         ) {
             val start = initialIndex
             val pagerReady = start != null && items.itemCount > start
@@ -278,6 +285,8 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     controlsWidth = toolbarWidth,
                     videoCast = videoCast,
                     onVideoPlayer = { videoPlayer = it },
+                    sphereVideo = sphereVideo,
+                    onCloseSphere = { panoramaOpen = null },
                     onToggleChrome = { chromeVisible = !chromeVisible },
                     onZoomChanged = { zoomed = it },
                     onPageChanged = { item ->
@@ -408,10 +417,11 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                 },
             )
         }
-        // Photo 360° ou panorama : bouton au-dessus de la barre d'outils, puis vue plein écran.
+        // Photo 360° ou panorama : bouton au-dessus de la barre d'outils, puis vue plein écran ;
+        // vidéo 360° : au-dessus de ses commandes, puis vue immersive dans sa page.
         val offered = panorama?.takeIf { item != null && it.mediaId == item.id }
         AnimatedVisibility(
-            visible = chromeVisible && offered != null && !rotating && immersive == null && !motionState.isPlaying,
+            visible = chromeVisible && offered != null && !rotating && immersive == null && !motionState.isPlaying && !castingVideo,
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -422,14 +432,14 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
                     onClick = { panoramaOpen = offered.mediaId },
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(bottom = ViewerChromeMetrics.ToolbarHeight + ViewerChromeMetrics.ScreenOffset),
+                        .padding(bottom = ViewerChromeMetrics.panoramaButtonBottom(video = item?.isVideo == true)),
                 )
             }
         }
-        if (immersive != null && item != null) {
+        if (photoPanorama != null && item != null) {
             PanoramaOverlay(
                 item = item,
-                panorama = immersive,
+                panorama = photoPanorama,
                 chromeVisible = chromeVisible,
                 onToggleChrome = { chromeVisible = !chromeVisible },
                 onClose = { panoramaOpen = null },
@@ -488,6 +498,8 @@ private fun ViewerPager(
     controlsWidth: Dp,
     videoCast: VideoCast?,
     onVideoPlayer: (Player?) -> Unit,
+    sphereVideo: Panorama?,
+    onCloseSphere: () -> Unit,
     onToggleChrome: () -> Unit,
     onZoomChanged: (Boolean) -> Unit,
     onPageChanged: (MediaItem) -> Unit,
@@ -512,6 +524,8 @@ private fun ViewerPager(
         key = items.itemKey { it.id },
         beyondViewportPageCount = 1,
         pageSpacing = 12.dp,
+        // Vidéo 360° : glisser regarde autour, sans changer de page.
+        userScrollEnabled = sphereVideo == null,
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer { alpha = if (hidden) 0f else 1f },
@@ -532,6 +546,8 @@ private fun ViewerPager(
                 controlsWidth = controlsWidth,
                 cast = videoCast?.takeIf { isCurrent },
                 onPlayer = onVideoPlayer,
+                sphere = sphereVideo?.takeIf { isCurrent && it.mediaId == item.id },
+                onCloseSphere = onCloseSphere,
             )
             else -> MotionPhotoBox(
                 // Pas de lecture tant qu'une rotation attend : la vidéo, elle, ne tournerait pas.

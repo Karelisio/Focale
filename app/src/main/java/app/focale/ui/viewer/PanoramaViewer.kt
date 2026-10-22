@@ -147,7 +147,8 @@ fun PanoramaOverlay(
 /**
  * Habillage commun des deux vues : barre supérieure (retour, titre) et barre flottante
  * (« Bouger le téléphone », seulement avec un capteur de rotation ; « Vue initiale »), au-dessus
- * de [content]. Fond noir : une sphère partielle ne couvre pas tout.
+ * de [content]. Fond noir : une sphère partielle ne couvre pas tout. Une vidéo 360° reprend les
+ * deux barres ([PanoramaTopBar], [PanoramaToolbar]) par-dessus ses commandes.
  */
 @Composable
 internal fun PanoramaChrome(
@@ -161,73 +162,98 @@ internal fun PanoramaChrome(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) = ViewerChromeTheme {
-    val colors = MaterialTheme.colorScheme
     Box(
         modifier
             .fillMaxSize()
             .background(Color.Black),
     ) {
         content()
-        AnimatedVisibility(
-            visible = chromeVisible,
-            enter = fadeIn() + slideInVertically { -it / 2 },
-            exit = fadeOut() + slideOutVertically { -it / 2 },
-            modifier = Modifier.align(Alignment.TopCenter),
+        PanoramaTopBar(title, chromeVisible, onClose, Modifier.align(Alignment.TopCenter))
+        PanoramaToolbar(chromeVisible, motionAvailable, motion, onMotionChange, onReset, Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+/** Barre supérieure d'une vue panoramique ou 360° : retour et titre (à placer dans [ViewerChromeTheme]). */
+@Composable
+internal fun PanoramaTopBar(title: String, visible: Boolean, onClose: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + slideInVertically { -it / 2 },
+        exit = fadeOut() + slideOutVertically { -it / 2 },
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.5f), Color.Transparent)))
+                .statusBarsPadding()
+                .padding(horizontal = 4.dp, vertical = 8.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(colors.scrim.copy(alpha = 0.5f), Color.Transparent)))
-                    .statusBarsPadding()
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
-            ) {
-                IconButton(onClick = onClose, shapes = IconButtonDefaults.shapes()) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = colors.onSurface)
-                }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMediumEmphasized,
-                    color = colors.onSurface,
-                    maxLines = 1,
-                    modifier = Modifier.padding(start = 4.dp),
-                )
+            IconButton(onClick = onClose, shapes = IconButtonDefaults.shapes()) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = colors.onSurface)
             }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                color = colors.onSurface,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 4.dp),
+            )
         }
-        AnimatedVisibility(
-            visible = chromeVisible,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 },
-            modifier = Modifier.align(Alignment.BottomCenter),
+    }
+}
+
+/**
+ * Barre flottante d'une vue panoramique ou 360° (à placer dans [ViewerChromeTheme]) : « Bouger le
+ * téléphone », seulement avec un capteur de rotation ([motionAvailable]), et « Vue initiale » ; aux
+ * mesures de la barre d'outils de la visionneuse ([ViewerChromeMetrics]), sur laquelle s'alignent
+ * les commandes d'une vidéo.
+ */
+@Composable
+internal fun PanoramaToolbar(
+    visible: Boolean,
+    motionAvailable: Boolean,
+    motion: Boolean,
+    onMotionChange: (Boolean) -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + slideInVertically { it / 2 },
+        exit = fadeOut() + slideOutVertically { it / 2 },
+        modifier = modifier,
+    ) {
+        HorizontalFloatingToolbar(
+            expanded = true,
+            colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
+                toolbarContainerColor = colors.surfaceContainer.copy(alpha = 0.9f),
+                toolbarContentColor = colors.onSurfaceVariant,
+            ),
+            modifier = Modifier
+                .navigationBarsPadding()
+                .padding(horizontal = ViewerChromeMetrics.ScreenOffset)
+                .padding(bottom = ViewerChromeMetrics.ScreenOffset)
+                .widthIn(max = ViewerChromeMetrics.BarMaxWidth),
         ) {
-            HorizontalFloatingToolbar(
-                expanded = true,
-                colors = FloatingToolbarDefaults.standardFloatingToolbarColors(
-                    toolbarContainerColor = colors.surfaceContainer.copy(alpha = 0.9f),
-                    toolbarContentColor = colors.onSurfaceVariant,
-                ),
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = ViewerChromeMetrics.ScreenOffset)
-                    .padding(bottom = ViewerChromeMetrics.ScreenOffset)
-                    .widthIn(max = ViewerChromeMetrics.BarMaxWidth),
-            ) {
-                if (motionAvailable) {
-                    ToggleButton(
-                        checked = motion,
-                        onCheckedChange = onMotionChange,
-                        contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-                    ) {
-                        Icon(Icons.Outlined._3dRotation, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                        Text(stringResource(R.string.panorama_motion))
-                    }
-                }
-                TextButton(onClick = onReset, shapes = ButtonDefaults.shapes(), contentPadding = ButtonDefaults.TextButtonWithIconContentPadding) {
-                    Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+            if (motionAvailable) {
+                ToggleButton(
+                    checked = motion,
+                    onCheckedChange = onMotionChange,
+                    contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+                ) {
+                    Icon(Icons.Outlined._3dRotation, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                     Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                    Text(stringResource(R.string.panorama_reset))
+                    Text(stringResource(R.string.panorama_motion))
                 }
+            }
+            TextButton(onClick = onReset, shapes = ButtonDefaults.shapes(), contentPadding = ButtonDefaults.TextButtonWithIconContentPadding) {
+                Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text(stringResource(R.string.panorama_reset))
             }
         }
     }
@@ -235,7 +261,7 @@ internal fun PanoramaChrome(
 
 /** Capteur de rotation de l'appareil, ou null s'il n'en a pas (« Bouger le téléphone » absent). */
 @Composable
-private fun rememberMotionSensor(): Pair<SensorManager?, android.hardware.Sensor?> {
+internal fun rememberMotionSensor(): Pair<SensorManager?, android.hardware.Sensor?> {
     val context = LocalContext.current
     return remember(context) {
         val manager = context.getSystemService(SensorManager::class.java)
@@ -371,10 +397,10 @@ private fun SphereViewer(
     }
 }
 
-private fun Panorama.camera() = SphereCamera(area, initialYaw, initialPitch, initialHorizontalFov)
+internal fun Panorama.camera() = SphereCamera(area, initialYaw, initialPitch, initialHorizontalFov)
 
 /** Cap, inclinaison et champ gardés à la recréation de l'activité (rotation de l'écran…). */
-private fun sphereCameraSaver(panorama: Panorama) = Saver<SphereCamera, DoubleArray>(
+internal fun sphereCameraSaver(panorama: Panorama) = Saver<SphereCamera, DoubleArray>(
     save = { doubleArrayOf(it.yaw, it.pitch, it.fov) },
     restore = { saved -> panorama.camera().apply { restore(saved[0], saved[1], saved[2]) } },
 )
