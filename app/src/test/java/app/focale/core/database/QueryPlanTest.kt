@@ -172,6 +172,25 @@ class QueryPlanTest {
         cover.assertNoScan("l2")
     }
 
+    @Test
+    fun `la sauvegarde des données lit chaque table par tranches, dans l'ordre de sa clé`() = runBlocking<Unit> {
+        // Chaque tranche reprend après la précédente : sans cela, chacune relirait la table depuis le début.
+        val dao = database.backupDao()
+        val paged = listOf(
+            plansOf { dao.mediaRefs(after = 7, limit = 1_000) }.single() to "m",
+            plansOf { dao.faceScans(after = 7, limit = 1_000) }.single() to "s",
+            plansOf { dao.faces(after = 7, limit = 500) }.single() to "f",
+            plansOf { dao.library(after = 7, limit = 2_000) }.single() to "media",
+        )
+        for ((plan, table) in paged) {
+            plan.assertSearches(table, "INTEGER PRIMARY KEY", constraint = "rowid>?")
+            plan.assertNoTempBTree()
+        }
+        val members = plansOf { dao.albumMembers(album = 3, media = 7, limit = 1_000) }.single()
+        members.assertSearches("am", "sqlite_autoindex_album_media_1", constraint = "(album_id,media_id)>(?,?)")
+        members.assertNoTempBTree()
+    }
+
     /** Charge une page de [source] à la position [key], comme Paging (chargement initial). */
     private suspend fun page(source: PagingSource<Int, MediaEntity>, key: Int) {
         source.load(PagingSource.LoadParams.Refresh(key = key, loadSize = 360, placeholdersEnabled = true))

@@ -89,6 +89,21 @@ class MediaSyncManager @Inject constructor(
             rerunRequested = true
             return@withContext 0
         }
+        runAndUnlock()
+    }
+
+    /**
+     * Synchronise et attend la fin : celle en cours, puis une de plus, qui voit tous les changements
+     * survenus jusqu'à l'appel (appariement d'une sauvegarde restaurée, qui doit trouver les photos
+     * tout juste copiées). Retourne le nombre de lignes modifiées par la seconde.
+     */
+    suspend fun syncNow(): Int = withContext(io) {
+        mutex.lock()
+        runAndUnlock()
+    }
+
+    /** Synchronise, verrou pris, autant de fois que demandé entre-temps, puis rend le verrou. */
+    private suspend fun runAndUnlock(): Int {
         try {
             var changed = 0
             do {
@@ -100,7 +115,7 @@ class MediaSyncManager @Inject constructor(
                     .getOrDefault(0)
             } while (rerunRequested)
             if (changed > 0) _changes.tryEmit(changed)
-            changed
+            return changed
         } finally {
             _state.value = SyncState.Idle
             mutex.unlock()

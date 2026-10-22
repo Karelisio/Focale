@@ -14,9 +14,9 @@ le principe « Fluide avec 50 000+ médias » de [ARCHITECTURE.md](ARCHITECTURE.
 ```
 
 Les tests de charge (`app/src/test/java/app/focale/perf/`) font partie de la suite ordinaire,
-CI comprise : environ 45 s sur la machine de mesure (§ 3), dont 15 à 20 s pour les files de
-l'analyse et 18 à 20 s pour le défilement, sur un peu plus de 100 s pour toute la suite
-unitaire. Aucune propriété Gradle n'est donc nécessaire.
+CI comprise : environ 55 s sur la machine de mesure (§ 3), dont 15 à 20 s pour les files de
+l'analyse, 18 à 20 s pour le défilement et 11 s pour la sauvegarde des données, sur près de
+120 s pour toute la suite unitaire. Aucune propriété Gradle n'est donc nécessaire.
 
 | Classe | Ce qu'elle mesure |
 |---|---|
@@ -24,6 +24,7 @@ unitaire. Aucune propriété Gradle n'est donc nécessaire.
 | `TimelineScrollLoadTest` | pages Paging de la timeline (continu et sauts, `initialKey`), en-têtes (`insertSeparators`), histogramme de la bulle, position dans la visionneuse et dans la grille, dossiers, compteurs, recherche par étiquette et par texte, onglet Recherche |
 | `AnalysisQueueLoadTest` | sélection et enregistrement des 2 078 lots de l'analyse principale, sélection des lots des étapes (texte, visages, empreintes) et compteurs d'avancement, au fil de l'avancement |
 | `AnalysisComputeLoadTest` | calculs par photo exécutables sur la JVM : dHash et netteté, géocodage, alignement et SFace, prétraitement et TinyCLIP, recherche par le sens, regroupement des visages |
+| `DataBackupLoadTest` | sauvegarde des données de toute la bibliothèque (20 000 visages et leurs empreintes, albums, historique), vérification de l'archive, restauration sur un autre téléphone (autres `_ID`, dossiers en partie déplacés) : durées et mémoire retenue |
 | `core/database/QueryPlanTest` | `EXPLAIN QUERY PLAN` des requêtes chaudes, sur le SQL réellement émis par Room (§ 6) |
 
 Chaque mesure est affichée (lignes `PERF` des rapports de test) et ajoutée à
@@ -188,6 +189,30 @@ minute par étape, contre 9 s en tout désormais), un coût qui croissait avec l
 taille de la bibliothèque ; le reste du coût propre à Focale (base, calculs Kotlin) est
 négligeable devant ML Kit et ONNX Runtime.
 
+### 4.6 Sauvegarde des données
+
+La bibliothèque de synthèse est complétée comme par l'utilisateur : 20 000 visages (989 de plus
+que l'analyse simulée), 40 personnes, 30 albums virtuels (6 000 photos environ, couverture
+choisie), 500 dates d'origine, 50 recherches, 3 dossiers masqués. La restauration a lieu sur un
+autre téléphone : mêmes fichiers sous d'autres `_ID`, un dossier d'album sur vingt déplacé
+(appariement par nom, taille et date). Médianes de trois passages.
+
+| Opération | Avant | Après |
+|---|---|---|
+| Sauvegarde : 114 174 enregistrements, archive de 11,7 Mio | 7,8 s | 2,0 s (1,9 à 2,2) |
+| Vérification de l'archive : mot de passe, intégrité, résumé | — | 0,3 s |
+| Restauration : 43 490 médias retrouvés, 20 000 visages | 3,0 s | 2,3 s (2,2 à 2,5) |
+| Mémoire retenue pendant la sauvegarde | — | 5 Mio |
+| Mémoire retenue pendant la restauration | — | 14 à 17 Mio |
+
+Mémoire retenue : tas occupé après ramasse-miettes, relevé à mi-parcours et vers la fin de
+l'opération, au-delà de celui d'avant (`HeapProbe`) ; le temps des relevés est retiré des durées.
+La sauvegarde ne garde que les identifiants des médias écrits (8 octets chacun) et une tranche de
+lignes ; la restauration, les clés des médias du téléphone et de la sauvegarde (40 octets par
+média et par côté), leurs identifiants et un lot de 500 visages. La mémoire suit le nombre de
+médias, ni celui des visages ni la taille de l'archive : les empreintes seules occupent 10 Mio,
+le contenu décompressé plus de 20. Budgets : 10 s, 2 s et 12 s ; 12 Mio et 28 Mio.
+
 ---
 
 ## 5. Points chauds trouvés et corrigés
@@ -241,6 +266,20 @@ Correction : une requête qui ne lit que `media` (`MediaQueryBuilder.readsOnlyMe
 sur cette seule table (`MediaDao.pagingSourceOfMedia`, `observeCountOfMedia`…).
 Test : `MediaObservationTest`.
 
+### 5.4 Sauvegarde des données : chaque tranche relisait la bibliothèque
+
+Les lectures par tranches de la sauvegarde (`BackupDao` : médias désignés, passages de la
+détection, visages, contenu des albums ; médias du téléphone à la restauration) écartent la
+corbeille (`m.is_trashed = 0`) et reprennent après la clé de la tranche précédente. Comme au
+§ 5.1, SQLite préférait l'index (`is_trashed`, `date_taken`) à la clé primaire, puis triait toute
+la bibliothèque par identifiant (`USE TEMP B-TREE FOR ORDER BY`) à chaque tranche de 500 à 2 000
+lignes : une centaine de tris de 50 000 lignes par sauvegarde.
+Correction : `+m.is_trashed` écarte l'index et chaque tranche se lit par la clé primaire
+(`rowid>?`), le contenu des albums par sa clé composée en valeur de ligne
+(`(album_id, media_id) > (?, ?)`, SQLite 3.15 et plus : Android 10 a la 3.22) ; la couverture
+choisie des albums, cherchée album par album pour chaque média, est une liste lue une fois
+(`IN`). Sauvegarde : 7,8 s → 2,0 s ; restauration : 3,0 s → 2,3 s. Test : `QueryPlanTest`.
+
 ---
 
 ## 6. Plans d'exécution surveillés
@@ -258,7 +297,9 @@ presque vide. Assertions :
   date (`date_taken<?`) ;
 - compteurs d'avancement : `media` dans l'ordre des identifiants, table de l'étape par sa clé ;
 - recherche par étiquette et couverture de chaque étiquette : index `label`, jamais de parcours
-  complet de `media_label`.
+  complet de `media_label` ;
+- sauvegarde des données : chaque tranche par la clé primaire de sa table (`rowid>?`), le contenu
+  des albums par sa clé composée (`(album_id,media_id)>(?,?)`), sans `TEMP B-TREE`.
 
 Les plans lus sur un téléphone dépendent de sa version de SQLite (3.22 sous Android 10) ; le test
 protège le SQL de Focale, pas le choix de chaque version.

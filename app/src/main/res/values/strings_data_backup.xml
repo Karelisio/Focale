@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Réglages : sauvegarde des données -->
+    <string name="data_backup_section">Data backup</string>
+    <string name="data_backup_now">Back up now</string>
+    <string name="data_backup_now_summary">Favorites, albums, people, hidden folders and settings, in a file encrypted with a password</string>
+    <string name="data_backup_restore">Restore</string>
+    <string name="data_backup_restore_summary">From a .focale file, on this phone or a new one</string>
+    <string name="data_backup_auto_summary">%1$s · %2$s</string>
+    <string name="data_backup_auto_message">Focale regularly saves an encrypted copy of your favorites, albums, people, hidden folders and settings to a folder of your choice. The last 3 backups are kept, and each one restores with its password, like a manual backup. The vault isn’t included: it has its own backup.</string>
+
+    <!-- Sauvegarde des données : sauvegarde -->
+    <string name="data_backup_title">Back up data</string>
+    <string name="data_backup_password_message">Choose a password to encrypt the backup of your favorites, albums, people, hidden folders and settings. You’ll need it to restore them, and it can’t be recovered. Photos and videos aren’t included: copy them to the new phone separately.</string>
+    <string name="data_backup_file_name">focale-%1$s.focale</string>
+    <string name="data_backup_progress_title">Backing up data</string>
+    <plurals name="data_backup_progress_items">
+        <item quantity="one">%1$,d / %2$,d item</item>
+        <item quantity="other">%1$,d / %2$,d items</item>
+    </plurals>
+    <string name="data_backup_done">Data backed up: %1$s</string>
+    <string name="data_backup_done_empty">Data backed up: settings</string>
+    <plurals name="data_backup_favorites">
+        <item quantity="one">%d favorite</item>
+        <item quantity="other">%,d favorites</item>
+    </plurals>
+    <plurals name="data_backup_albums">
+        <item quantity="one">%d album</item>
+        <item quantity="other">%,d albums</item>
+    </plurals>
+    <plurals name="data_backup_people">
+        <item quantity="one">%d person</item>
+        <item quantity="other">%,d people</item>
+    </plurals>
+    <plurals name="data_backup_hidden_folders">
+        <item quantity="one">%d hidden folder</item>
+        <item quantity="other">%,d hidden folders</item>
+    </plurals>
+
+    <!-- Sauvegarde des données : restauration -->
+    <string name="data_restore_title">Restore data</string>
+    <string name="data_restore_password_message">Enter the password chosen when the backup was created. Focale checks the whole backup before restoring anything.</string>
+    <string name="data_restore_checking">Checking the backup…</string>
+    <string name="data_restore_summary_title">Restore the backup from %1$s?</string>
+    <string name="data_restore_summary_version">Created by Focale %1$s</string>
+    <string name="data_restore_summary_merge">Favorites, albums (matched by name) and hidden folders are added to those on this phone. Settings are replaced by those of the backup.</string>
+    <plurals name="data_restore_summary_replace_people">
+        <item quantity="one">People: on the photos found, the faces and people of the backup replace those of this phone (%1$d person). Those left without photos disappear.</item>
+        <item quantity="other">People: on the photos found, the faces and people of the backup replace those of this phone (%1$,d people). Those left without photos disappear.</item>
+    </plurals>
+    <string name="data_restore_summary_new_people">People and their faces are recreated on the photos found.</string>
+    <string name="data_restore_summary_media">Photos and videos aren’t in the backup: Focale finds them on this phone by their folder and name. Copy them first; restoring again later adds the ones found since.</string>
+    <string name="data_restore_progress_title">Restoring data</string>
+    <string name="data_restore_preparing">Finding the photos on this phone…</string>
+    <string name="data_restore_finishing">Restoring the settings…</string>
+    <plurals name="data_restore_found">
+        <item quantity="one">%1$,d of %2$,d photo or video found on this phone</item>
+        <item quantity="other">%1$,d of %2$,d photos and videos found on this phone</item>
+    </plurals>
+    <string name="data_restore_restored">Restored: %1$s</string>
+    <string name="data_restore_restored_settings">Settings restored</string>
+    <plurals name="data_restore_missing">
+        <item quantity="one">%,d photo or video isn’t on this phone: its favorites, albums and faces weren’t restored. Restore the backup again once it’s copied.</item>
+        <item quantity="other">%,d photos and videos aren’t on this phone: their favorites, albums and faces weren’t restored. Restore the backup again once they’re copied.</item>
+    </plurals>
+    <string name="data_restore_settings_failed">The settings couldn’t be restored.</string>
+    <string name="data_restore_cancelled">Restore cancelled: nothing was changed</string>
+    <string name="data_restore_not_archive">This file isn’t a Focale data backup.</string>
+    <string name="data_restore_vault_backup">This file is a backup of the vault, not of Focale’s data. Restore it from the vault menu.</string>
+    <string name="data_restore_corrupted">The backup is damaged or incomplete. Nothing was changed.</string>
+    <string name="data_restore_no_space">Not enough free space on this device. Nothing was changed.</string>
+    <string name="data_restore_unreadable">The backup file couldn’t be read. Nothing was changed.</string>
+
+    <!-- Sauvegarde des données : sauvegarde automatique et ses notifications -->
+    <string name="data_auto_backup_channel">Automatic data backup</string>
+    <string name="data_auto_backup_channel_description">Automatic backups in progress and their failures</string>
+    <string name="data_auto_backup_running">Automatic data backup…</string>
+    <string name="data_auto_backup_failed_title">Automatic data backup failed</string>
+    <string name="data_auto_backup_error_folder">The backup folder can no longer be reached. Choose it again in Settings.</string>
+    <string name="data_auto_backup_error_keys">The backup key is no longer available on this device. Enter the password again in Settings.</string>
+</resources>

@@ -96,6 +96,7 @@ app/src/main/java/app/focale/
 │   ├── permissions/            état des permissions (complet / partiel / refusé)
 │   └── util/                   dates, formats, haptique, extensions
 ├── data/                       repositories
+├── backup/                     sauvegardes par mot de passe : données, format commun au coffre, automatiques
 ├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur, texte
 ├── people/                     visages : détection, alignement, SFace, regroupement
 ├── work/                       workers
@@ -106,7 +107,7 @@ app/src/main/java/app/focale/
     ├── components/             composants réutilisables
     ├── navigation/             routes typées, NavHost, barre adaptative
     ├── timeline/  viewer/  albums/  search/  more/  favorites/  trash/
-    ├── cleanup/   editor/  vault/   map/     slideshow/  memories/  settings/
+    ├── cleanup/   editor/  vault/   map/     slideshow/  memories/  settings/  backup/
 ```
 
 ---
@@ -153,6 +154,11 @@ Les tables d'analyse ne référencent pas `media` par clé étrangère (l'index 
 reconstruisible) : leurs lignes orphelines sont purgées après synchronisation. Les
 migrations (`DatabaseMigrations`) reprennent le SQL exporté par Room dans
 `app/schemas` et sont testées contre ce schéma.
+
+Ce que l'utilisateur a construit (`favorite`, `album`, `album_media`, `person`, `face`,
+`face_scan`, `person_refusal`, `media_date`, `search_history`), avec les dossiers masqués et les
+réglages, part dans la sauvegarde des données (§ 6.11) ; ce que l'analyse recalcule, le coffre
+et la corbeille, non.
 
 ### 5.3 `MediaQuery` : une requête pour tout
 
@@ -345,9 +351,10 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
 - Sauvegarde automatique (`VaultAutoBackup`, réglage du menu du coffre) : chaque jour ou chaque
   semaine, dans un dossier choisi par `ACTION_OPEN_DOCUMENT_TREE` (autorisation persistante, dossier
   en lecture seule refusé), avec un mot de passe saisi deux fois qui n'est pas conservé : les clés
-  d'archive en sont tirées une fois (`VaultArchive.deriveKeys` : PBKDF2 à sel aléatoire puis HKDF,
-  témoin et clé du flux) et gardées dans le DataStore du coffre, chiffrées par une AEAD Tink dont le
-  jeu de clés est protégé par le Keystore (`VaultAutoBackupKeys`). Les archives restent au format
+  d'archive en sont tirées une fois (`VaultArchive.deriveKeys`, soit `PasswordArchive.deriveKeys`
+  commun avec la sauvegarde des données : PBKDF2 à sel aléatoire puis HKDF, témoin et clé du flux)
+  et gardées dans le DataStore du coffre, chiffrées par une AEAD Tink dont le jeu de clés est
+  protégé par le Keystore (`VaultAutoBackupKeys`, sur `AutoBackupKeys`). Les archives restent au format
   `.fvault` v1 (en-tête commun, restaurables avec le mot de passe) : Tink tire un sel et un préfixe
   de nonce par flux, réutiliser la clé est sûr. `VaultAutoBackupWorker` (WorkManager périodique,
   batterie et stockage non faibles, coffre verrouillé) crée `focale-coffre-auto-AAAA-MM-JJ.fvault`
@@ -355,7 +362,14 @@ visages (`tools/release/smoke_test.sh`). La publication d'une version en dépend
   garde que les 3 dernières (reconnues à leur nom), saute la sauvegarde si l'empreinte du coffre
   (identifiants, albums, rangements) et des clés n'a pas changé, et met à jour la date de dernière
   sauvegarde. Échec (dossier inaccessible, autorisation retirée, plus de place) : erreur dans le
-  réglage et notification, sans nom d'album ni de fichier.
+  réglage et notification, sans nom d'album ni de fichier. Planification, dossier, clés, rotation,
+  empreinte et échecs sont la logique commune des sauvegardes automatiques (`AutoBackupEngine`),
+  partagée avec celle des données (§ 6.11) ; chacune garde son réglage, ses clés et ses fichiers.
+- Format `.fvault` (`VaultArchive`) : en-tête de `PasswordArchive` (signature `FOCALE-VAULT`,
+  version, dérivation, itérations, sel, témoin du mot de passe), puis flux Tink AES-256-GCM-HKDF
+  (segments de 1 Mio, en-tête en donnée associée) : manifeste JSON, puis média et miniature de
+  chaque élément. Primitives communes avec la sauvegarde des données, dont la signature diffère :
+  chaque restauration refuse le fichier de l'autre avant le mot de passe, en disant où le restaurer.
 - Tri (`VaultContent`, réglages `vaultSort` et `vaultAlbumSort`) : éléments par date de prise
   de vue, date d'ajout au coffre, nom (`Collator` primaire) ou taille, albums par nom, date de
   création ou nombre d'éléments, dans les deux sens ; même feuille que les grilles de la
@@ -524,6 +538,72 @@ couvertures (`bestCover`) de tous les albums viennent d'une seule requête
 (`MediaQueryBuilder.summaries`, `UNION ALL`) observée sur `media`, `media_label`,
 `media_analysis` et `media_text` : les tuiles suivent l'analyse sans réagir aux lots de visages
 ni d'empreintes.
+
+### 6.11 Sauvegarde des données
+Section « Sauvegarde des données » des réglages (`DataBackupSection`, `DataBackupRepository`,
+package `backup/`) : ce que l'utilisateur a construit dans Focale, pour changer de téléphone sans
+rien perdre. `android:allowBackup="false"` et les règles d'extraction restent : rien ne part dans
+la sauvegarde Google ni dans un transfert d'appareil, le coffre encore moins ; seule cette
+sauvegarde, chiffrée par un mot de passe, emporte les données de l'application.
+
+- **Contenu** : favoris ; albums virtuels (nom, date, couverture, contenu) ; personnes (nom,
+  épinglée, masquée, vignette) avec leurs visages (cadre, empreinte SFace, rattachement, décision
+  manuelle), le passage de la détection sur chaque photo (`face_scan`, même sans visage) et les
+  refus de fusion ; dossiers masqués de Photos ; réglages de la liste blanche
+  `SettingsRepository.BACKED_UP` (toute clé des réglages y est inscrite ou écartée dans
+  `NOT_BACKED_UP`, ce que vérifie `SettingsBackupTest`) ; dates d'origine (`media_date`) ;
+  historique de recherche. **Pas** : le coffre (sa propre sauvegarde), la corbeille (médias
+  `is_trashed`, sur le point de disparaître), ce que l'analyse recalcule (étiquettes, texte,
+  empreintes TinyCLIP, lieux, netteté, doublons), l'état propre à l'appareil (autorisations,
+  application par défaut, mises à jour téléchargées, nouveautés vues, synchronisation : système ou
+  `StateStore`, hors des réglages).
+- **Format** (`DataArchive`, `focale-AAAA-MM-JJ.focale`, version 1) : en-tête en clair de
+  `PasswordArchive`, commun avec le coffre (§ 6.6) mais de signature `FOCALE-DATA` (suivie d'un
+  octet nul) et de domaine de clés `focale-data-backup` : un même mot de passe ne donne pas les
+  mêmes clés aux deux formats, et chaque restauration refuse le fichier de l'autre. Le flux chiffré
+  (Tink AES-256-GCM-HKDF, segments de 1 Mio authentifiés, dernier marqué) porte un contenu zlib :
+  enregistrements typés (type sur 1 octet, longueur sur 4, JSON), puis une fin explicite. Les
+  médias sont des enregistrements numérotés (dossier, nom, taille, date de tri), désignés par leur
+  numéro ; albums, personnes et visages, par leur identifiant d'origine. Types et champs inconnus
+  sont ignorés : une version ultérieure complète le format sans en changer la version.
+- **En flux** : la sauvegarde lit l'index par tranches, dans l'ordre des clés primaires, sans
+  transaction (ce qu'elle n'a pas vu est laissé de côté ou détaché : l'archive reste cohérente) ;
+  la restauration ne garde en mémoire que les clés des médias et des lots de 500 visages. 50 000
+  médias et 20 000 visages : archive de 12 Mio, sauvegardée en 2 s, vérifiée en 0,3 s, restaurée
+  en 2,3 s, moins de 20 Mio de mémoire retenue (`DataBackupLoadTest`, [PERFORMANCE.md](PERFORMANCE.md) § 4.6).
+- **Appariement des médias** (`MediaMatcher`) : les `_ID` changent d'un téléphone à l'autre. L'index
+  est d'abord synchronisé avec MediaStore (`MediaSyncManager.syncNow`, attendue jusqu'au bout),
+  puis chaque média de la sauvegarde est cherché par `relative_path` et `display_name` (sans casse
+  ni différence de normalisation Unicode, en empreintes de 64 bits), départagés par la taille puis
+  la date de prise de vue ; à défaut (dossier déplacé), par nom, taille et date. Une date décalée
+  d'un fuseau horaire (multiple d'un quart d'heure, moins de 24 h) compte comme égale. Un média du
+  téléphone ne sert qu'une fois ; ceux qui manquent sont comptés et annoncés au bilan.
+- **Restauration** (`DataRestore`) : l'archive est d'abord vérifiée de bout en bout (mot de passe,
+  intégrité, fin) et résumée (date, favoris, albums, personnes, dossiers masqués ; personnes du
+  téléphone qui seront remplacées) ; confirmée, elle est relue et appliquée en une seule
+  transaction, validée une fois sa fin vérifiée : annulée, tronquée ou modifiée entre-temps, rien ne
+  change. Favoris réunis ; albums réunis par nom (contenu ajouté, couverture prise si l'album n'en a
+  pas) ; dossiers masqués réunis (même `BUCKET_ID`, sinon même chemin) ; historique réuni, les
+  personnes des recherches désignées par celles recréées ; dates d'origine reprises ; réglages de
+  la liste remplacés. Personnes remplacées : sur chaque photo retrouvée, les visages de la
+  sauvegarde remplacent ceux du téléphone ; ses personnes sont recréées avec leurs refus ; une
+  personne du téléphone qui n'a plus de visage hors corbeille disparaît (ses visages de la
+  corbeille, détachés, reviennent au regroupement). Les photos absentes de la sauvegarde gardent
+  leurs visages. Restaurer deux fois donne le même résultat ; restaurer plus tard ajoute les médias
+  arrivés entre-temps.
+- **Analyse des visages** : un lot de l'analyse et la restauration ne s'entrecroisent pas
+  (`PeopleEditions.writes`) ; ensuite, le regroupement recharge son état. Une photo retrouvée n'est
+  pas relue, sauf modifiée depuis son analyse. Sauvegarde d'une version antérieure de l'étape
+  (`FaceAnalysisStep.VERSION`) : la photo est relue, ses visages retrouvés au même endroit gardent
+  leur personne ; d'une version ultérieure (peut-être un autre modèle d'empreintes) : personnes et
+  cadres gardés, empreintes nulles jusqu'à la relecture.
+- **Sauvegarde automatique** (`DataAutoBackup`, `DataAutoBackupWorker`) : même logique que celle du
+  coffre (`AutoBackupEngine`, `AutoBackupKeys`, `WorkAutoBackupSchedule` : chaque jour ou chaque
+  semaine dans un dossier choisi, mot de passe non conservé, clés scellées par le Keystore, batterie
+  et stockage non faibles, 3 dernières gardées, sautée si rien n'a changé, échec noté dans le
+  réglage et notifié sans rien des données) ; réglage, clés, jeu de clés du Keystore, DataStore
+  (`data_backup`) et fichiers (`focale-auto-AAAA-MM-JJ.focale`) propres : elle fonctionne sans
+  coffre, et aucune des deux ne touche aux fichiers de l'autre.
 
 ---
 
