@@ -129,6 +129,37 @@ class QueryPlanTest {
         }
     }
 
+    @Test
+    fun `en-têtes avant un média lointain, mois puis jours sondés dans l'index d'une table récursive`() = runBlocking<Unit> {
+        // Deux ans après les autres : plus de deux mois de jours, d'où les mois non vides d'abord.
+        database.mediaDao().upsert(listOf(media(4).copy(dateTaken = 2 * 365 * DAY_MS)))
+        val plans = plansOf { repository.gridPositionOf(MediaQuery.Timeline, mediaId = 2, level = GroupLevel.DAY) }
+            .filter { it.sql.startsWith("WITH RECURSIVE") }
+        // Mois non vides, puis jours de ces mois : une requête chacun, quelques suites de périodes.
+        assertTrue(plans.joinToString("\n") { it.sql }, plans.size == 2)
+        assertTrue(plans[0].sql, plans[0].sql.contains("AS period_start"))
+        for (plan in plans) {
+            assertFalse(plan.sql, "strftime" in plan.sql)
+            plan.assertCovering("m", TIMELINE_INDEX)
+            plan.assertSearches("m", TIMELINE_INDEX, constraint = "date_taken<?")
+            plan.assertNoTempBTree()
+        }
+    }
+
+    @Test
+    fun `mois de toutes les années par l'index de la timeline, sans date locale par média`() = runBlocking<Unit> {
+        val july = MediaQuery(month = 7)
+        val count = plansOf { database.mediaDao().observeCountOfMedia(MediaQueryBuilder.count(july)).first() }.single()
+        count.assertCovering("m", TIMELINE_INDEX)
+        val page = plansOf { page(repository.pagingSource(july), key = 0) }.single { it.sql.startsWith("SELECT m.* FROM media m") }
+        page.assertSearches("m", TIMELINE_INDEX)
+        for (plan in listOf(count, page)) {
+            plan.assertNoTempBTree()
+            // Le mois local de SQLite ne sert qu'aux dates hors des années bornées en Kotlin.
+            assertFalse(plan.sql, "strftime" in plan.sql.substringAfter(" THEN ").substringAfter(" ELSE "))
+        }
+    }
+
     private fun media(id: Long) = MediaEntity(
         id = id, mediaType = 1, mimeType = "image/jpeg", displayName = "IMG_$id.jpg", relativePath = "DCIM/Camera/",
         bucketId = 42, bucketName = "Camera", dateTaken = id * 1_000, dateAdded = id * 1_000, dateModified = id * 1_000,
@@ -199,16 +230,29 @@ class QueryPlanTest {
         for (query in listOf(MediaQuery(personId = 3), MediaQuery(favoritesOnly = true))) {
             plansOf { database.mediaDao().observeCount(MediaQueryBuilder.count(query)).first() }.single().assertSearches("m", "INTEGER PRIMARY KEY")
         }
-        // Texte libre (nom de fichier) : `media` lue dans l'ordre des identifiants, pas des dates.
+        // Mot de lettres : les noms par l'index plein texte, puis chaque alternative depuis ses médias
+        // (clé primaire), sans lire toute la table `media` ; les pages gardent l'index des dates.
         val words = MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"), text = "chien")))
-        plansOf { database.mediaDao().observeCountWithAnalysis(MediaQueryBuilder.count(words)).first() }.single().assertScans("m")
+        val wordCount = plansOf { database.mediaDao().observeCountWithAnalysis(MediaQueryBuilder.count(words)).first() }.single()
+        wordCount.assertSearches("m", "INTEGER PRIMARY KEY")
+        wordCount.assertNoScan("m")
+        wordCount.assertFullText("media_name")
+        val wordPage = plansOf { page(repository.pagingSource(words), key = 0) }.single { it.sql.startsWith("SELECT m.* FROM media m") }
+        wordPage.assertSearches("m", TIMELINE_INDEX)
+        wordPage.assertFullText("media_name")
+        wordPage.assertNoTempBTree()
+        // Texte avec un chiffre ou un séparateur : le nom de chaque média, `media` lue dans l'ordre des identifiants.
+        val digits = MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"), text = "img2024")))
+        plansOf { database.mediaDao().observeCountWithAnalysis(MediaQueryBuilder.count(digits)).first() }.single().assertScans("m")
     }
 
     @Test
-    fun `étiquettes de l'onglet Recherche comptées par l'index seul, couverture des seules retenues`() = runBlocking<Unit> {
+    fun `étiquettes de l'onglet Recherche lues dans leurs comptes, couverture des seules retenues`() = runBlocking<Unit> {
         val stats = plansOf { database.analysisDao().labelStats(60) }.single()
-        // Comptage dans l'ordre de l'index, sans regrouper les lignes dans un arbre temporaire.
-        stats.assertScansIndex("l", LABEL_INDEX)
+        // Nombres tenus à jour dans label_count : aucune ligne de media_label relue pour compter.
+        stats.assertScans("label_count")
+        stats.assertNoScan("media_label")
+        stats.assertNoScan("l2")
         assertFalse(stats.text, "TEMP B-TREE FOR GROUP BY" in stats.text)
         // Couverture : la première de l'index de l'étiquette, par confiance décroissante.
         val cover = stats.subtree("CORRELATED SCALAR SUBQUERY")
@@ -216,6 +260,17 @@ class QueryPlanTest {
         cover.assertNoScan("l2")
         // Tri des seules égalités de confiance (« RIGHT PART »), jamais de toutes ses photos.
         assertFalse(cover.text, cover.rows.any { it.detail == "USE TEMP B-TREE FOR ORDER BY" })
+        // Comptes tenus à chaque lot et à chaque synchronisation : les étiquettes du lot seules, par
+        // leur clé primaire, jamais toute la timeline.
+        for (tally in listOf(
+            plansOf(writes = true) { database.analysisDao().uncountLabels(listOf(1L, 2L, 3L)) }.single(),
+            plansOf(writes = true) { database.analysisDao().countLabels(listOf(1L, 2L, 3L)) }.single(),
+        )) {
+            tally.assertSearches("l", "sqlite_autoindex_media_label_1", constraint = "media_id=?")
+            tally.assertSearches("m", "INTEGER PRIMARY KEY")
+            tally.assertNoScan("m")
+            tally.assertNoScan("l")
+        }
     }
 
     @Test
@@ -242,12 +297,13 @@ class QueryPlanTest {
         source.load(PagingSource.LoadParams.Refresh(key = key, loadSize = 360, placeholdersEnabled = true))
     }
 
-    /** Plans des requêtes de lecture émises par [block] (hors suivi des tables par Room). */
-    private suspend fun plansOf(block: suspend () -> Unit): List<Plan> {
+    /** Plans des requêtes de lecture émises par [block] (hors suivi des tables par Room), et des insertions avec [writes]. */
+    private suspend fun plansOf(writes: Boolean = false, block: suspend () -> Unit): List<Plan> {
         statements.clear()
         block()
+        val kinds = listOf("SELECT", "WITH") + if (writes) listOf("INSERT") else emptyList()
         return statements
-            .filter { (sql, _) -> sql.trimStart().startsWith("SELECT", ignoreCase = true) && "room_table_modification_log" !in sql }
+            .filter { (sql, _) -> kinds.any { sql.trimStart().startsWith(it, ignoreCase = true) } && "room_table_modification_log" !in sql }
             .map { (sql, args) -> explain(sql.trim(), args) }
     }
 
@@ -298,10 +354,10 @@ class QueryPlanTest {
             assertTrue("$table devrait être lue dans l'ordre des identifiants : $text\n$sql", rows.any { pattern.containsMatchIn(it.detail) })
         }
 
-        /** Parcours de toute la table [table] dans l'ordre de l'[index], lu seul. */
-        fun assertScansIndex(table: String, index: String) {
-            val pattern = Regex("""^SCAN (TABLE )?(\w+ AS )?$table USING COVERING INDEX $index\b""")
-            assertTrue("$table devrait être parcourue par l'index $index seul : $text\n$sql", rows.any { pattern.containsMatchIn(it.detail) })
+        /** Recherche dans l'index plein texte [table] (FTS4 : `MATCH`). */
+        fun assertFullText(table: String) {
+            val pattern = Regex("""^SCAN (TABLE )?$table VIRTUAL TABLE INDEX \d+:""")
+            assertTrue("$table devrait être cherchée par son index plein texte : $text\n$sql", rows.any { pattern.containsMatchIn(it.detail) })
         }
 
         /** Aucun parcours complet de [table] (SCAN), alors qu'un index permet de la chercher. */
@@ -316,5 +372,6 @@ class QueryPlanTest {
         const val FOLDER_INDEX = "index_media_bucket_id_is_trashed_date_taken"
         const val TYPE_INDEX = "index_media_media_type_is_trashed_date_taken"
         const val LABEL_INDEX = "index_media_label_label_confidence_media_id"
+        const val DAY_MS = 86_400_000L
     }
 }
