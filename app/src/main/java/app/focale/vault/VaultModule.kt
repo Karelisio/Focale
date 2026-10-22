@@ -4,6 +4,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.WorkManager
 import app.focale.core.di.AppInitializer
 import app.focale.core.image.ImageComponentContributor
+import app.focale.core.locale.LocaleChangeListener
 import dagger.Lazy
 import dagger.Module
 import dagger.Provides
@@ -12,8 +13,9 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 
 /**
- * Branche le coffre dans Coil (images chiffrées), le cycle de vie (verrouillage auto) et le
- * démarrage (contrôle des imports interrompus, purge de la corbeille, nouveaux médias).
+ * Branche le coffre dans Coil (images chiffrées), le cycle de vie (verrouillage auto), le
+ * démarrage (contrôle des imports interrompus, purge de la corbeille, nouveaux médias) et les
+ * changements de langue (canaux de notification).
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -42,6 +44,12 @@ object VaultModule {
         // Nouveaux médias des dossiers liés : compte à jour peu après le démarrage, puis surveillance.
         VaultNewMediaWatch.checkNow(workManager.get(), delaySeconds = STARTUP_CHECK_DELAY_S)
     }
+
+    /** Langue changée : canaux de notification du coffre renommés. */
+    @Provides
+    @IntoSet
+    fun vaultChannels(notifications: Lazy<VaultNotifications>): LocaleChangeListener =
+        LocaleChangeListener { notifications.get().refreshChannels() }
 
     private const val STARTUP_CHECK_DELAY_S = 15L
 }

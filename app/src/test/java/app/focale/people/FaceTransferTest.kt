@@ -7,6 +7,7 @@ import app.focale.core.database.FaceEntity
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaEntity
 import app.focale.core.database.PersonEntity
+import app.focale.core.locale.AppLocales
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -37,7 +38,7 @@ class FaceTransferTest {
             .allowMainThreadQueries()
             .build()
         faces = database.faceDao()
-        repository = PeopleRepository(faces, editions, Dispatchers.IO)
+        repository = PeopleRepository(faces, editions, Dispatchers.IO, AppLocales(ApplicationProvider.getApplicationContext()))
     }
 
     @After

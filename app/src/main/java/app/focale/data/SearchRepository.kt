@@ -7,6 +7,7 @@ import app.focale.core.database.EmbeddingDao
 import app.focale.core.database.SearchHistoryDao
 import app.focale.core.database.SearchHistoryEntity
 import app.focale.core.di.IoDispatcher
+import app.focale.core.locale.AppLocales
 import app.focale.core.model.MediaItem
 import app.focale.core.model.MediaQuery
 import app.focale.ml.CountryResolver
@@ -15,6 +16,7 @@ import app.focale.ml.PlaceNames
 import app.focale.ml.SearchQueryParser
 import app.focale.ml.semantic.QueryTranslator
 import app.focale.ml.semantic.SemanticSearch
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -48,12 +50,16 @@ class SearchRepository @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val placeNames: PlaceNames,
     private val semanticSearch: SemanticSearch,
+    private val locales: AppLocales,
     @IoDispatcher private val io: CoroutineDispatcher,
 ) {
 
+    /** Langue d'analyse des requêtes : celle de Focale, pas celle du système. */
+    val locale: Locale get() = locales.locale
+
     /** @param people personnes nommées (identifiant → nom), cherchées par leur nom. */
     fun parse(text: String, people: Map<Long, String> = emptyMap()): MediaQuery =
-        SearchQueryParser.parse(text, people = people)
+        SearchQueryParser.parse(text, people = people, locale = locale)
 
     /**
      * [parse] complétée par la recherche par le sens : les photos les plus proches du texte
@@ -68,7 +74,7 @@ class SearchRepository @Inject constructor(
         return try {
             // Hors du thread principal : le premier appel construit le dictionnaire de traduction.
             val (constraints, prompt) = withContext(io) {
-                val words = SearchQueryParser.freeWords(text, people = people)
+                val words = SearchQueryParser.freeWords(text, people = people, locale = locale)
                 val constraints = words.filterTo(mutableSetOf()) { isPlaceConstraint(it) }
                 constraints to QueryTranslator.prompt(words.filterNot { it in constraints })
             }
@@ -101,7 +107,7 @@ class SearchRepository @Inject constructor(
 
     private suspend fun isPlaceConstraint(word: String): Boolean {
         if (word.length < 3 || QueryTranslator.isKnownWord(word)) return false
-        return CountryResolver.resolve(word).isNotEmpty() || embeddingDao.isPlaceWord(word)
+        return CountryResolver.resolve(word, locale).isNotEmpty() || embeddingDao.isPlaceWord(word)
     }
 
     fun observeThings(limit: Int = 60): Flow<List<ThingSuggestion>> =

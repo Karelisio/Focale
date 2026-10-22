@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Langue de l'application (réglages) -->
+    <string name="settings_language">Langue</string>
+    <string name="settings_language_app">Langue de l\'application</string>
+    <string name="settings_language_summary">Aussi pour les dates, les lieux et les notifications</string>
+    <string name="settings_language_summary_system">Aussi pour les dates, les lieux et les notifications. Le même choix que dans les réglages d\'Android.</string>
+    <string name="settings_language_system">Système</string>
+</resources>

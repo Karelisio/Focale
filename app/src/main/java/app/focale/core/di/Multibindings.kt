@@ -2,6 +2,7 @@ package app.focale.core.di
 
 import android.app.Application
 import app.focale.core.image.ImageComponentContributor
+import app.focale.core.locale.LocaleChangeListener
 import app.focale.ml.AnalysisStep
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -25,4 +26,7 @@ abstract class MultibindingsModule {
 
     @Multibinds
     abstract fun analysisSteps(): Set<AnalysisStep>
+
+    @Multibinds
+    abstract fun localeChangeListeners(): Set<LocaleChangeListener>
 }

@@ -11,6 +11,7 @@ import app.focale.core.database.MediaEntity
 import app.focale.core.database.MemoryQueries
 import app.focale.core.database.PersonEntity
 import app.focale.core.database.PersonPresence
+import app.focale.core.locale.AppLocales
 import app.focale.core.model.MediaQuery
 import app.focale.core.settings.SettingsRepository
 import app.focale.ml.PlaceName
@@ -62,7 +63,7 @@ class MemoriesRepositoryTest {
             .allowMainThreadQueries()
             .build()
         settings = SettingsRepository(PreferenceDataStoreFactory.create { File(folder.root, "settings.preferences_pb") }, scope)
-        val people = PeopleRepository(database.faceDao(), PeopleEditions(), Dispatchers.Unconfined)
+        val people = PeopleRepository(database.faceDao(), PeopleEditions(), Dispatchers.Unconfined, AppLocales(ApplicationProvider.getApplicationContext()))
         val names = PlaceNames(ApplicationProvider.getApplicationContext(), Dispatchers.Unconfined)
         repository = MemoriesRepository(database.mediaDao(), database.memoryDao(), people, settings, names, Dispatchers.Unconfined)
     }

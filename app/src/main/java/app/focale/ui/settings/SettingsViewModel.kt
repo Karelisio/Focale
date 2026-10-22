@@ -2,6 +2,9 @@ package app.focale.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.focale.core.locale.AppLanguage
+import app.focale.core.locale.AppLocales
+import app.focale.core.locale.LocaleRefresh
 import app.focale.core.model.Album
 import app.focale.core.model.GroupMode
 import app.focale.core.model.MediaFilter
@@ -27,9 +30,23 @@ class SettingsViewModel @Inject constructor(
     albumRepository: AlbumRepository,
     private val analysisScheduler: AnalysisScheduler,
     private val mediaRepository: MediaRepository,
+    private val locales: AppLocales,
+    private val localeRefresh: LocaleRefresh,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = repository.current
+
+    /** Langue de Focale, gardée par le système (ou par AppCompat avant Android 13). */
+    fun language(): AppLanguage = locales.language
+
+    /**
+     * Change la langue : l'activité est recréée dans la nouvelle, l'état des écrans conservé ;
+     * canaux de notification et widget suivent.
+     */
+    fun setLanguage(language: AppLanguage) {
+        locales.setLanguage(language)
+        localeRefresh.refresh()
+    }
 
     /** Avancement détaillé de l'analyse sur l'appareil. */
     val analysisStatus: StateFlow<AnalysisStatus?> = analysisScheduler.status

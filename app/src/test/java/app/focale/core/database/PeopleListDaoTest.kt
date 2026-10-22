@@ -2,6 +2,7 @@ package app.focale.core.database
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import app.focale.core.locale.AppLocales
 import app.focale.core.settings.PeopleSort
 import app.focale.people.FaceEmbeddings
 import app.focale.people.MergeSuggestions
@@ -94,7 +95,7 @@ class PeopleListDaoTest {
         val recent = person(null, 22L..24L)
         person(null, 25L..26L) // Sans nom et sur deux photos seulement : absente.
         person("Masquée", 27L..30L, hidden = true)
-        val repository = PeopleRepository(faces, PeopleEditions(), Dispatchers.IO)
+        val repository = PeopleRepository(faces, PeopleEditions(), Dispatchers.IO, AppLocales(ApplicationProvider.getApplicationContext()))
 
         suspend fun order(sort: PeopleSort) = repository.observePeople(sort).first().map { it.id }
 
@@ -110,7 +111,7 @@ class PeopleListDaoTest {
         val a = person(null, 1L..3L)
         val b = person(null, 4L..6L)
         val c = person("Léa", 7L..9L)
-        PeopleRepository(faces, PeopleEditions(), Dispatchers.IO).refuseMerge(b, a)
+        PeopleRepository(faces, PeopleEditions(), Dispatchers.IO, AppLocales(ApplicationProvider.getApplicationContext())).refuseMerge(b, a)
         faces.refuse(minOf(a, c), maxOf(a, c))
         faces.refuse(minOf(a, c), maxOf(a, c))
         assertEquals(setOf(a to b, a to c), faces.observeRefusals().first().map { it.personLow to it.personHigh }.toSet())

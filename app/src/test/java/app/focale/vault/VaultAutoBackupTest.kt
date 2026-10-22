@@ -20,6 +20,7 @@ import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.database.VaultAlbumEntity
 import app.focale.core.database.VaultItemEntity
+import app.focale.core.locale.AppLocales
 import com.google.crypto.tink.Aead
 import com.google.crypto.tink.KeysetHandle
 import com.google.crypto.tink.RegistryConfiguration
@@ -355,7 +356,7 @@ class VaultAutoBackupTest {
         val scheduler = RecordingScheduler()
         var now = noon(2026, 10, 1)
         val autoBackup = VaultAutoBackup(
-            context.contentResolver, backups, autoPrefs, keys, VaultNotifications(context), scheduler, Dispatchers.IO,
+            context.contentResolver, backups, autoPrefs, keys, VaultNotifications(context, AppLocales(context)), scheduler, Dispatchers.IO,
             iterations = 1_000, clock = { now },
         )
         val media = HashMap<String, ByteArray>()

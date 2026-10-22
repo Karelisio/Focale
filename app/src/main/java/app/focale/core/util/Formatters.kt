@@ -13,7 +13,10 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-/** Mise en forme localisée (FR/EN) des dates, tailles et durées. */
+/**
+ * Mise en forme localisée (FR/EN) des dates, tailles et durées, dans la langue du contexte reçu :
+ * celle de Focale pour une activité, et pour un contexte de `AppLocales.localized` hors d'elles.
+ */
 object Formatters {
 
     /** Libellé d'en-tête : « Aujourd'hui », « Lundi 14 juillet », « Juillet 2023 », « 2023 »… */
@@ -72,12 +75,12 @@ object Formatters {
         }
     }
 
-    /** Résolution et nombre de mégapixels, ex. « 4000 × 3000 · 12 Mpx ». */
-    fun resolution(width: Int, height: Int): String {
+    /** Résolution et nombre de mégapixels dans la langue de [locale], ex. « 4000 × 3000 · 12,0 Mpx ». */
+    fun resolution(width: Int, height: Int, locale: Locale): String {
         if (width <= 0 || height <= 0) return "—"
         val megapixels = width.toLong() * height / 1_000_000.0
         return if (megapixels >= 0.95) {
-            String.format(Locale.getDefault(), "%d × %d · %.1f Mpx", width, height, megapixels)
+            String.format(locale, "%d × %d · %.1f Mpx", width, height, megapixels)
         } else {
             "$width × $height"
         }

@@ -8,6 +8,7 @@ import app.focale.ml.SearchQueryParser
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Locale
 
 /** Pastille tirée de la saisie : la choisir retire [words] (mots tels que saisis) du texte. */
 @Immutable
@@ -24,6 +25,7 @@ object SearchChipDetector {
      * Suggestions pour [text], dans cet ordre : période, types, personnes, lieux.
      * @param people personnes nommées (identifiant → nom), comme pour la recherche.
      * @param places lieux de la bibliothèque, les plus photographiés d'abord.
+     * @param locale langue de l'application, comme pour la recherche (ordre des dates numériques).
      */
     fun detect(
         text: String,
@@ -31,13 +33,14 @@ object SearchChipDetector {
         places: List<PlaceSuggestion>,
         today: LocalDate = LocalDate.now(),
         zone: ZoneId = ZoneId.systemDefault(),
+        locale: Locale = Locale.ROOT,
     ): List<ChipSuggestion> {
         val dates = mutableListOf<String>()
         val types = LinkedHashMap<MediaFilter, MutableList<String>>()
         val persons = LinkedHashMap<Long, MutableList<String>>()
         val placeWords = LinkedHashMap<PlaceSuggestion, MutableList<String>>()
         for (word in words(text)) {
-            val query = SearchQueryParser.parse(word, today, zone, people)
+            val query = SearchQueryParser.parse(word, today, zone, people, locale)
             when {
                 // Mot vide (« de », « la »…), favoris : pas de pastille.
                 query.terms.isEmpty() && (query.dateFrom != null || query.month != null) -> dates += word
@@ -52,7 +55,7 @@ object SearchChipDetector {
         }
         return buildList {
             if (dates.isNotEmpty()) {
-                period(SearchQueryParser.parse(dates.joinToString(" "), today, zone, people), zone)
+                period(SearchQueryParser.parse(dates.joinToString(" "), today, zone, people, locale), zone)
                     ?.let { add(ChipSuggestion(it, dates.toList())) }
             }
             types.forEach { (filter, words) -> add(ChipSuggestion(SearchChip.Type(filter), words)) }
@@ -65,11 +68,11 @@ object SearchChipDetector {
      * [text] sans les mots de [suggestion] (une occurrence chacun) ; vide s'il n'y reste rien à
      * chercher (mots vides seulement).
      */
-    fun remainingText(text: String, suggestion: ChipSuggestion, people: Map<Long, String> = emptyMap()): String {
+    fun remainingText(text: String, suggestion: ChipSuggestion, people: Map<Long, String> = emptyMap(), locale: Locale = Locale.ROOT): String {
         val rest = words(text).toMutableList()
         suggestion.words.forEach { rest.remove(it) }
         val remaining = rest.joinToString(" ")
-        return if (SearchQueryParser.isEmpty(SearchQueryParser.parse(remaining, people = people))) "" else remaining
+        return if (SearchQueryParser.isEmpty(SearchQueryParser.parse(remaining, people = people, locale = locale))) "" else remaining
     }
 
     private fun words(text: String): List<String> = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }

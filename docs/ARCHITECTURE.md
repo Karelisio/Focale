@@ -92,6 +92,7 @@ app/src/main/java/app/focale/
 │   ├── database/               Room : entités, DAO, requêtes brutes
 │   ├── mediastore/             scanner, synchro incrémentale, observer, consentements
 │   ├── settings/               DataStore → AppSettings
+│   ├── locale/                 langue de l'application (AppLocales), changements de langue
 │   ├── image/                  Fetchers Coil (miniatures, fichiers chiffrés)
 │   ├── permissions/            état des permissions (complet / partiel / refusé)
 │   └── util/                   dates, formats, haptique, extensions
@@ -845,6 +846,38 @@ application ouvre les photos et proposer de choisir Focale.
 - Accessibilité : la carte entière est un seul nœud (nom, nombre, dossier masqué), l'ondulation
   restant sur la couverture ; appui long nommé « Options de l'album » et action personnalisée du
   même nom pour TalkBack (`clickableWithOptions`).
+
+### 7.7 Langue
+- Français et anglais ; ressources non qualifiées en anglais (`res/resources.properties` :
+  `unqualifiedResLocale=en`), `values-fr` en français. AGP génère `android:localeConfig`
+  (`generateLocaleConfig`) : Android 13+ propose Focale dans « Langue des applications ». Seules ces
+  deux langues sont gardées des bibliothèques (`localeFilters`) : leurs textes suivent aussi.
+- Réglages → Langue (`LanguageSection`) : Système, Français, English, pour toutes les versions.
+  `AppLocales` est la seule porte : depuis Android 13, `LocaleManager` (le réglage du système, qui
+  le garde) ; avant, `AppCompatDelegate.setApplicationLocales`,
+  appliqué par `MainActivity` (une `AppCompatActivity`, thème `Theme.AppCompat.*.NoActionBar`) et
+  gardé par AppCompat dans un fichier privé (`AppLocalesMetadataHolderService` et
+  `autoStoreLocales` dans le manifeste), relu par `LocaleManagerCompat` et repris par le système au
+  passage à Android 13. Le choix garde la région du téléphone quand il parle cette langue
+  (« fr-CA », « en-GB »). Ni l'un ni l'autre n'est une clé de `SettingsRepository` : la
+  sauvegarde des données ne reprend pas la langue.
+- Changement sans redémarrage : l'activité est recréée (par le système, ou par AppCompat), l'état
+  des écrans conservé (navigation, `rememberSaveable`, ViewModels). `LocaleChangeReceiver`
+  (`LOCALE_CHANGED`, annoncé aussi pour un choix fait dans les réglages d'Android 13+, même Focale
+  fermée) et le choix dans Focale préviennent les `LocaleChangeListener` (`LocaleRefresh`) : canaux
+  de notification renommés, widget redessiné.
+- Hors des activités, le contexte de l'application reste dans la langue du système avant Android
+  13 : notifications et canaux (créés par les tâches de fond), widget et ses légendes passent par
+  `AppLocales.localized`, et `AppLocales.locale` remplace `Locale.getDefault()` pour la langue de
+  l'interface : dates et nombres (`Formatters`, résolution des photos), noms des lieux
+  (`PlaceName.display`) et des pays, étiquettes (`LabelDictionary.displayName`), ordre
+  alphabétique (personnes, coffre), analyse de la saisie (`SearchQueryParser` : ordre du jour et du
+  mois des dates numériques, « 07/14/2021 » en anglais des États-Unis, l'autre ordre s'il est le
+  seul valable ; noms de pays dans la langue de l'application, `SearchChipDetector`). Les écrans
+  lisent la langue de leur configuration (`LocalConfiguration`, ressources de l'activité).
+- Limites : le journal des nouveautés (CHANGELOG.md) n'existe qu'en français ; un titre déjà passé
+  en argument de navigation (souvenir, étiquette ouverte depuis la recherche) et une notification
+  déjà affichée gardent leur langue.
 
 ---
 

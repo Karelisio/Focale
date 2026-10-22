@@ -85,9 +85,6 @@
     <string name="settings_videos">Videos</string>
     <string name="settings_autoplay">Play videos automatically</string>
     <string name="settings_mute">Start videos muted</string>
-    <string name="settings_language">Language</string>
-    <string name="settings_language_app">App language</string>
-    <string name="settings_language_summary">English or French, independently of the system</string>
 
     <!-- À propos -->
     <string name="about_title">About</string>

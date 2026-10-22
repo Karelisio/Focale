@@ -36,6 +36,10 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   Google Sans Flex, formes et morphing Expressive, retours haptiques.
 - **Adaptatif** : barre de navigation sur téléphone, rail sur tablette et pliable,
   edge-to-edge, icône adaptative et thématique (Android 13+).
+- **Français ou anglais** : Réglages → Langue (celle du système, Français, English), sur toutes
+  les versions d'Android, appliquée sans redémarrer ; depuis Android 13, c'est aussi le réglage
+  « Langue des applications » d'Android. Dates, nombres, lieux, étiquettes, recherche (ordre des
+  dates saisies), notifications et widget suivent la langue choisie.
 - **Organisation** : albums par dossier et albums virtuels, favoris, corbeille
   30 jours, sélection multiple (appui long + glisser), copier / déplacer / renommer /
   supprimer / partager / imprimer, tri et filtres (photos, vidéos, captures, GIF), dossiers

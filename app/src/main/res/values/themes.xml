@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Focale" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- Thème AppCompat : MainActivity en hérite pour appliquer la langue de l'application
+         avant Android 13 (AppCompatDelegate). Sans barre d'action, Compose dessine tout. -->
+    <style name="Theme.Focale" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@color/focale_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

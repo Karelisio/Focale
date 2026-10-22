@@ -85,9 +85,6 @@
     <string name="settings_videos">Vidéos</string>
     <string name="settings_autoplay">Lire les vidéos automatiquement</string>
     <string name="settings_mute">Démarrer les vidéos sans le son</string>
-    <string name="settings_language">Langue</string>
-    <string name="settings_language_app">Langue de l\'application</string>
-    <string name="settings_language_summary">Français ou anglais, indépendamment du système</string>
 
     <!-- À propos -->
     <string name="about_title">À propos</string>

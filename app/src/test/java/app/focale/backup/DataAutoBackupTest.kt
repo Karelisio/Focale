@@ -14,6 +14,7 @@ import app.focale.core.database.AlbumMediaEntity
 import app.focale.core.database.FavoriteEntity
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaEntity
+import app.focale.core.locale.AppLocales
 import app.focale.core.settings.SettingsRepository
 import app.focale.core.settings.ThemeMode
 import app.focale.people.PeopleEditions
@@ -337,7 +338,7 @@ class DataAutoBackupTest {
         }
         val scheduler = RecordingScheduler()
         val autoBackup = DataAutoBackup(
-            context.contentResolver, backups, autoPrefs, keys, DataBackupNotifications(context), scheduler, Dispatchers.IO,
+            context.contentResolver, backups, autoPrefs, keys, DataBackupNotifications(context, AppLocales(context)), scheduler, Dispatchers.IO,
             iterations = 1_000, clock = { now },
         )
 
