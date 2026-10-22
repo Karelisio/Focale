@@ -26,11 +26,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -47,15 +51,30 @@ import app.focale.core.settings.AppSettings
 import app.focale.core.settings.ThemeMode
 import app.focale.ui.components.Choice
 import app.focale.ui.components.ConnectedChoiceGroup
+import kotlinx.coroutines.launch
 
 /** Écran des réglages. */
 @Composable
-fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+    backupViewModel: DataBackupViewModel = hiltViewModel(),
+    autoBackupViewModel: DataAutoBackupViewModel = hiltViewModel(),
+) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val autoBackup by autoBackupViewModel.settings.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // Sélecteurs et dialogues de la sauvegarde des données, hors de la liste.
+    val backupActions = rememberDataBackup(backupViewModel, autoBackupViewModel) { message ->
+        scope.launch { snackbarHostState.showSnackbar(message.resolve(context)) }
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.settings_title)) },
@@ -73,6 +92,7 @@ fun SettingsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMo
             item { GridSection(settings, viewModel) }
             item { VideoSection(settings, viewModel) }
             settingsExtraSections(settings, viewModel)
+            item { DataBackupSection(autoBackup, backupActions) }
             item { LanguageSection() }
             item { UpdatesSection(settings, viewModel) }
             item { Spacer(Modifier.height(32.dp)) }

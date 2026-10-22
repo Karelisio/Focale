@@ -2,25 +2,7 @@
 <resources>
     <!-- Coffre-fort : sauvegarde automatique -->
     <string name="vault_auto_backup_action">Sauvegarde automatique</string>
-    <string name="vault_auto_backup_title">Sauvegarde automatique</string>
     <string name="vault_auto_backup_message">Focale enregistre régulièrement une copie chiffrée du coffre dans le dossier de votre choix : carte SD, clé USB, dossier synchronisé par une autre application… Les 3 dernières sauvegardes sont gardées, et chacune se restaure avec son mot de passe, comme une sauvegarde manuelle.</string>
-    <string name="vault_auto_backup_frequency">Fréquence</string>
-    <string name="vault_auto_backup_off">Désactivée</string>
-    <string name="vault_auto_backup_daily">Chaque jour</string>
-    <string name="vault_auto_backup_weekly">Chaque semaine</string>
-    <string name="vault_auto_backup_destination">Destination</string>
-    <string name="vault_auto_backup_folder">Changer de dossier</string>
-    <string name="vault_auto_backup_folder_unknown">Dossier choisi</string>
-    <string name="vault_auto_backup_password">Changer le mot de passe</string>
-    <string name="vault_auto_backup_password_summary">Non conservé : seule une clé qui en est tirée reste sur cet appareil</string>
-    <string name="vault_auto_backup_last">Dernière sauvegarde : %1$s</string>
-    <string name="vault_auto_backup_pending">Première sauvegarde dès que possible</string>
-    <string name="vault_auto_backup_failed_on">Échec le %1$s</string>
-    <string name="vault_auto_backup_password_message">Choisissez le mot de passe des sauvegardes automatiques. Il sera demandé pour les restaurer et ne pourra pas être récupéré. Focale ne le conserve pas : seule une clé qui en est tirée reste sur cet appareil, protégée par l\'Android Keystore.</string>
-    <string name="vault_auto_backup_choose_folder">Choisir le dossier</string>
-    <string name="vault_auto_backup_password_changed">Mot de passe changé : les prochaines sauvegardes l\'utiliseront.</string>
-    <string name="vault_auto_backup_folder_refused">Ce dossier ne peut pas recevoir les sauvegardes. Choisissez-en un autre.</string>
-    <string name="vault_auto_backup_no_picker">Aucune application de cet appareil ne permet de choisir un dossier</string>
 
     <!-- Coffre-fort : notifications de la sauvegarde automatique -->
     <string name="vault_auto_backup_channel">Sauvegarde automatique du coffre</string>
@@ -28,7 +10,5 @@
     <string name="vault_auto_backup_running">Sauvegarde automatique du coffre…</string>
     <string name="vault_auto_backup_failed_title">Échec de la sauvegarde automatique du coffre</string>
     <string name="vault_auto_backup_error_folder">Le dossier des sauvegardes n\'est plus accessible. Choisissez-le de nouveau dans le coffre.</string>
-    <string name="vault_auto_backup_error_space">Plus assez de place dans le dossier des sauvegardes.</string>
-    <string name="vault_auto_backup_error_write">La sauvegarde n\'a pas pu être écrite. Elle sera retentée à la prochaine échéance.</string>
     <string name="vault_auto_backup_error_keys">La clé des sauvegardes n\'est plus disponible sur cet appareil. Saisissez de nouveau le mot de passe dans le coffre.</string>
 </resources>

@@ -56,6 +56,22 @@ class MediaStoreSource @Inject constructor(
         }
     }
 
+    /**
+     * `DATE_TAKEN` brute des médias [ids] (au plus 500), telle que MediaStore la donne : absente (ou
+     * nulle) pour ceux dont le fichier n'a pas de date de prise de vue.
+     */
+    fun datesTaken(ids: Collection<Long>): Map<Long, Long> {
+        if (ids.isEmpty()) return emptyMap()
+        val selection = "$MEDIA_SELECTION AND ${FileColumns._ID} IN (${ids.joinToString(",") { "?" }})"
+        val cursor = query(arrayOf(FileColumns._ID, MediaStore.MediaColumns.DATE_TAKEN), selection, ids.map(Long::toString).toTypedArray())
+            ?: return emptyMap()
+        return cursor.use {
+            buildMap {
+                while (it.moveToNext()) if (!it.isNull(1)) put(it.getLong(0), it.getLong(1))
+            }
+        }
+    }
+
     /** Vrai si l'image ou la vidéo [id] est visible avec l'accès actuel (complet, ou sélection). */
     fun isVisible(id: Long): Boolean =
         query(arrayOf(FileColumns._ID), "$MEDIA_SELECTION AND ${FileColumns._ID} = ?", arrayOf(id.toString()))

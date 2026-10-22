@@ -14,15 +14,27 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Compteur des modifications faites par l'utilisateur sur les personnes (fusion, retrait,
- * renommage…) : l'étape d'analyse recharge son état de regroupement quand il change.
+ * renommage, restauration d'une sauvegarde…) : l'étape d'analyse recharge son état de
+ * regroupement quand il change.
  */
 @Singleton
 class PeopleEditions @Inject constructor() {
     private val counter = AtomicLong()
     val current: Long get() = counter.get()
+
+    /**
+     * Écritures des visages qui partent de ceux déjà enregistrés : un lot de l'analyse (visages
+     * précédents de ses photos, puis détections et regroupement) et la restauration d'une
+     * sauvegarde, qui remplace les visages des photos retrouvées. L'une n'écrit pas d'après ce que
+     * l'autre est en train de remplacer.
+     */
+    val writes = Mutex()
+
     fun bump() {
         counter.incrementAndGet()
     }
@@ -72,8 +84,10 @@ class FaceAnalysisStep @Inject constructor(
                 emptyList()
             }
         }
-        val fresh = save(detections)
-        cluster(fresh)
+        editions.writes.withLock {
+            val fresh = save(detections)
+            cluster(fresh)
+        }
     }
 
     /** Enregistre les visages du lot ; renvoie les nouveaux, à regrouper. */

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Réglages : sauvegarde des données -->
+    <string name="data_backup_section">Sauvegarde des données</string>
+    <string name="data_backup_now">Sauvegarder maintenant</string>
+    <string name="data_backup_now_summary">Favoris, albums, personnes, dossiers masqués et réglages, dans un fichier chiffré par un mot de passe</string>
+    <string name="data_backup_restore">Restaurer</string>
+    <string name="data_backup_restore_summary">Depuis un fichier .focale, sur ce téléphone ou un nouveau</string>
+    <string name="data_backup_auto_summary">%1$s · %2$s</string>
+    <string name="data_backup_auto_message">Focale enregistre régulièrement une copie chiffrée de vos favoris, albums, personnes, dossiers masqués et réglages dans le dossier de votre choix. Les 3 dernières sauvegardes sont gardées, et chacune se restaure avec son mot de passe, comme une sauvegarde manuelle. Le coffre n\'y est pas : il a sa propre sauvegarde.</string>
+
+    <!-- Sauvegarde des données : sauvegarde -->
+    <string name="data_backup_title">Sauvegarder les données</string>
+    <string name="data_backup_password_message">Choisissez un mot de passe pour chiffrer la sauvegarde de vos favoris, albums, personnes, dossiers masqués et réglages. Il sera demandé pour la restaurer et ne pourra pas être récupéré. Les photos et vidéos n\'y sont pas : copiez-les à part sur le nouveau téléphone.</string>
+    <string name="data_backup_file_name">focale-%1$s.focale</string>
+    <string name="data_backup_progress_title">Sauvegarde des données</string>
+    <plurals name="data_backup_progress_items">
+        <item quantity="one">%1$,d / %2$,d élément</item>
+        <item quantity="many">%1$,d / %2$,d éléments</item>
+        <item quantity="other">%1$,d / %2$,d éléments</item>
+    </plurals>
+    <string name="data_backup_done">Données sauvegardées : %1$s</string>
+    <string name="data_backup_done_empty">Données sauvegardées : réglages</string>
+    <plurals name="data_backup_favorites">
+        <item quantity="one">%d favori</item>
+        <item quantity="many">%,d favoris</item>
+        <item quantity="other">%,d favoris</item>
+    </plurals>
+    <plurals name="data_backup_albums">
+        <item quantity="one">%d album</item>
+        <item quantity="many">%,d albums</item>
+        <item quantity="other">%,d albums</item>
+    </plurals>
+    <plurals name="data_backup_people">
+        <item quantity="one">%d personne</item>
+        <item quantity="many">%,d personnes</item>
+        <item quantity="other">%,d personnes</item>
+    </plurals>
+    <plurals name="data_backup_hidden_folders">
+        <item quantity="one">%d dossier masqué</item>
+        <item quantity="many">%,d dossiers masqués</item>
+        <item quantity="other">%,d dossiers masqués</item>
+    </plurals>
+
+    <!-- Sauvegarde des données : restauration -->
+    <string name="data_restore_title">Restaurer les données</string>
+    <string name="data_restore_password_message">Saisissez le mot de passe choisi lors de la sauvegarde. Focale vérifie toute la sauvegarde avant de restaurer quoi que ce soit.</string>
+    <string name="data_restore_checking">Vérification de la sauvegarde…</string>
+    <string name="data_restore_summary_title">Restaurer la sauvegarde du %1$s ?</string>
+    <string name="data_restore_summary_version">Créée par Focale %1$s</string>
+    <string name="data_restore_summary_merge">Les favoris, les albums (réunis par nom) et les dossiers masqués s\'ajoutent à ceux de ce téléphone. Les réglages sont remplacés par ceux de la sauvegarde.</string>
+    <plurals name="data_restore_summary_replace_people">
+        <item quantity="one">Personnes : sur les photos retrouvées, les visages et les personnes de la sauvegarde remplacent ceux de ce téléphone (%1$d personne). Celles qui n\'ont plus de photo disparaissent.</item>
+        <item quantity="many">Personnes : sur les photos retrouvées, les visages et les personnes de la sauvegarde remplacent ceux de ce téléphone (%1$,d personnes). Celles qui n\'ont plus de photo disparaissent.</item>
+        <item quantity="other">Personnes : sur les photos retrouvées, les visages et les personnes de la sauvegarde remplacent ceux de ce téléphone (%1$,d personnes). Celles qui n\'ont plus de photo disparaissent.</item>
+    </plurals>
+    <string name="data_restore_summary_new_people">Les personnes et leurs visages sont recréés sur les photos retrouvées.</string>
+    <string name="data_restore_summary_media">Les photos et vidéos ne sont pas dans la sauvegarde : Focale les retrouve sur ce téléphone par leur dossier et leur nom. Copiez-les d\'abord ; restaurer de nouveau plus tard ajoute celles trouvées entre-temps.</string>
+    <string name="data_restore_progress_title">Restauration des données</string>
+    <string name="data_restore_preparing">Recherche des photos sur ce téléphone…</string>
+    <string name="data_restore_finishing">Restauration des réglages…</string>
+    <plurals name="data_restore_found">
+        <item quantity="one">%1$,d sur %2$,d photo ou vidéo retrouvée sur ce téléphone</item>
+        <item quantity="many">%1$,d sur %2$,d photos et vidéos retrouvées sur ce téléphone</item>
+        <item quantity="other">%1$,d sur %2$,d photos et vidéos retrouvées sur ce téléphone</item>
+    </plurals>
+    <string name="data_restore_restored">Restaurés : %1$s</string>
+    <string name="data_restore_restored_settings">Réglages restaurés</string>
+    <plurals name="data_restore_missing">
+        <item quantity="one">%,d photo ou vidéo n\'est pas sur ce téléphone : ses favoris, albums et visages n\'ont pas été restaurés. Restaurez de nouveau la sauvegarde une fois la photo copiée.</item>
+        <item quantity="many">%,d photos et vidéos ne sont pas sur ce téléphone : leurs favoris, albums et visages n\'ont pas été restaurés. Restaurez de nouveau la sauvegarde une fois les photos copiées.</item>
+        <item quantity="other">%,d photos et vidéos ne sont pas sur ce téléphone : leurs favoris, albums et visages n\'ont pas été restaurés. Restaurez de nouveau la sauvegarde une fois les photos copiées.</item>
+    </plurals>
+    <string name="data_restore_settings_failed">Les réglages n\'ont pas pu être restaurés.</string>
+    <string name="data_restore_cancelled">Restauration annulée : rien n\'a été modifié</string>
+    <string name="data_restore_not_archive">Ce fichier n\'est pas une sauvegarde des données de Focale.</string>
+    <string name="data_restore_vault_backup">Ce fichier est une sauvegarde du coffre-fort, pas des données de Focale. Restaurez-la depuis le menu du coffre.</string>
+    <string name="data_restore_corrupted">La sauvegarde est endommagée ou incomplète. Rien n\'a été modifié.</string>
+    <string name="data_restore_no_space">Pas assez d\'espace libre sur cet appareil. Rien n\'a été modifié.</string>
+    <string name="data_restore_unreadable">Le fichier de sauvegarde n\'a pas pu être lu. Rien n\'a été modifié.</string>
+
+    <!-- Sauvegarde des données : sauvegarde automatique et ses notifications -->
+    <string name="data_auto_backup_channel">Sauvegarde automatique des données</string>
+    <string name="data_auto_backup_channel_description">Sauvegardes automatiques en cours et leurs échecs</string>
+    <string name="data_auto_backup_running">Sauvegarde automatique des données…</string>
+    <string name="data_auto_backup_failed_title">Échec de la sauvegarde automatique des données</string>
+    <string name="data_auto_backup_error_folder">Le dossier des sauvegardes n\'est plus accessible. Choisissez-le de nouveau dans les réglages.</string>
+    <string name="data_auto_backup_error_keys">La clé des sauvegardes n\'est plus disponible sur cet appareil. Saisissez de nouveau le mot de passe dans les réglages.</string>
+</resources>

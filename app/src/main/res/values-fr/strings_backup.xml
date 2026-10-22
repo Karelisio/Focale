@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sauvegardes (coffre-fort et données) : mot de passe, avancement, bilan -->
+    <string name="backup_password">Mot de passe</string>
+    <string name="backup_password_confirm">Confirmez le mot de passe</string>
+    <string name="backup_password_mismatch">Les mots de passe ne correspondent pas</string>
+    <plurals name="backup_password_min">
+        <item quantity="one">Au moins %d caractère</item>
+        <item quantity="many">Au moins %d caractères</item>
+        <item quantity="other">Au moins %d caractères</item>
+    </plurals>
+    <string name="backup_strength_weak">Robustesse : faible</string>
+    <string name="backup_strength_fair">Robustesse : moyenne</string>
+    <string name="backup_strength_strong">Robustesse : forte</string>
+    <string name="backup_show_password">Afficher le mot de passe</string>
+    <string name="backup_hide_password">Masquer le mot de passe</string>
+    <string name="backup_choose_location">Choisir l\'emplacement</string>
+    <string name="backup_no_picker">Aucune application de cet appareil ne permet de choisir un fichier</string>
+    <string name="backup_preparing">Préparation du chiffrement…</string>
+    <string name="backup_progress_bytes">%1$s sur %2$s</string>
+    <string name="backup_keep_open">Gardez Focale ouverte jusqu\'à la fin.</string>
+    <string name="backup_cancelling">Annulation…</string>
+    <string name="backup_done_title">Sauvegarde créée</string>
+    <string name="backup_cancelled">Sauvegarde annulée</string>
+    <string name="backup_failed_title">Échec de la sauvegarde</string>
+    <string name="backup_failed_message">Le fichier de sauvegarde n\'a pas pu être écrit. Vérifiez l\'espace libre à l\'emplacement choisi, puis réessayez.</string>
+    <string name="backup_partial_left">Le fichier incomplet n\'a pas pu être supprimé. Supprimez-le vous-même : il ne peut pas être restauré.</string>
+    <string name="restore_password">Mot de passe de la sauvegarde</string>
+    <string name="restore_wrong_password">Mot de passe incorrect</string>
+    <string name="restore_checking">Vérification du mot de passe…</string>
+    <string name="restore_done_title">Restauration terminée</string>
+    <string name="restore_failed_title">Échec de la restauration</string>
+    <string name="restore_unsupported">Cette sauvegarde a été créée par une version plus récente de Focale. Mettez l\'application à jour pour la restaurer.</string>
+</resources>

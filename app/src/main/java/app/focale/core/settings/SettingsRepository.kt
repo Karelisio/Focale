@@ -17,8 +17,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
 
 /** Lecture / écriture des réglages utilisateur. */
 @Singleton
@@ -67,6 +71,57 @@ class SettingsRepository @Inject constructor(
         prefs[Keys.HIDDEN_FOLDERS] = if (hidden) current + bucketId.toString() else current - bucketId.toString()
     }
 
+    /** Masque aussi les dossiers [bucketIds] (restauration d'une sauvegarde) ; renvoie le nombre de nouveaux. */
+    suspend fun hideFolders(bucketIds: Collection<Long>): Int {
+        var added = 0
+        edit { prefs ->
+            val current = prefs[Keys.HIDDEN_FOLDERS].orEmpty()
+            val next = current + bucketIds.map(Long::toString)
+            added = next.size - current.size
+            prefs[Keys.HIDDEN_FOLDERS] = next
+        }
+        return added
+    }
+
+    // ── Sauvegarde des données ──────────────────────────────────────────────────────
+
+    /**
+     * Réglages repris par la sauvegarde des données ([BACKED_UP]) : ceux que l'utilisateur a
+     * réglés, par nom de clé (les autres sont à leur valeur par défaut), et le nom de tous ceux de
+     * la liste.
+     */
+    suspend fun backupValues(): Pair<Map<String, JsonPrimitive>, List<String>> {
+        val prefs = dataStore.data.catch { emit(androidx.datastore.preferences.core.emptyPreferences()) }.first()
+        val values = BACKED_UP.mapNotNull { setting -> setting.exported(prefs)?.let { setting.key.name to it } }.toMap()
+        return values to BACKED_UP.map { it.key.name }
+    }
+
+    /**
+     * Remplace les réglages de la liste par ceux d'une sauvegarde : [values] les siens, à sa valeur
+     * par défaut chacun de ceux que connaissait la version sauvegardée ([known]) et qui n'y est pas.
+     * Un réglage qu'elle ne connaissait pas reste tel quel, une valeur illisible (version ultérieure)
+     * aussi ; les clés hors de la liste sont ignorées.
+     *
+     * @return nombre de réglages changés.
+     */
+    suspend fun restoreBackup(values: Map<String, JsonPrimitive>, known: Collection<String>): Int {
+        var changed = 0
+        edit { prefs ->
+            for (setting in BACKED_UP) {
+                val name = setting.key.name
+                if (name !in known) continue
+                val value = values[name]
+                if (value == null) {
+                    if (prefs.contains(setting.key)) changed++
+                    prefs.remove(setting.key)
+                } else if (setting.imported(prefs, value)) {
+                    changed++
+                }
+            }
+        }
+        return changed
+    }
+
     private suspend fun edit(block: (androidx.datastore.preferences.core.MutablePreferences) -> Unit) {
         dataStore.edit(block)
     }
@@ -108,7 +163,80 @@ class SettingsRepository @Inject constructor(
     private inline fun <reified E : Enum<E>> String?.toEnum(default: E): E =
         this?.let { name -> enumValues<E>().firstOrNull { it.name == name } } ?: default
 
-    private object Keys {
+    /**
+     * Réglage repris par la sauvegarde des données : sa clé, et la lecture d'une valeur sauvegardée,
+     * null si elle n'est pas valable (type inattendu, nom d'une version ultérieure…).
+     */
+    internal class BackedUp<T : Any>(
+        val key: Preferences.Key<T>,
+        private val read: (JsonPrimitive) -> T?,
+        private val write: (T) -> JsonPrimitive,
+    ) {
+        fun exported(prefs: Preferences): JsonPrimitive? = prefs[key]?.let(write)
+
+        /** Écrit la valeur sauvegardée [value] si elle est valable ; vrai si le réglage a changé. */
+        fun imported(prefs: androidx.datastore.preferences.core.MutablePreferences, value: JsonPrimitive): Boolean {
+            val parsed = read(value) ?: return false
+            if (prefs[key] == parsed) return false
+            prefs[key] = parsed
+            return true
+        }
+    }
+
+    internal companion object {
+        /**
+         * Liste blanche explicite des réglages sauvegardés : les choix de l'utilisateur. Une clé
+         * ajoutée aux réglages n'est sauvegardée qu'une fois inscrite ici ; sinon, dans
+         * [NOT_BACKED_UP] (vérifié par les tests). L'état propre à l'appareil ou passager n'est pas
+         * dans ce DataStore (autorisations, application par défaut : le système ; mises à jour
+         * téléchargées, nouveautés vues, synchronisation : `StateStore`).
+         */
+        internal val BACKED_UP: List<BackedUp<*>> = listOf(
+            choice<ThemeMode>(Keys.THEME),
+            flag(Keys.AMOLED),
+            flag(Keys.DYNAMIC_COLOR),
+            flag(Keys.COLOR_FROM_PHOTO),
+            number(Keys.COLUMNS, AppSettings.MIN_COLUMNS..AppSettings.MAX_COLUMNS),
+            choice<GroupMode>(Keys.GROUP_MODE),
+            flag(Keys.SHOW_MEMORIES),
+            flag(Keys.AUTOPLAY),
+            flag(Keys.MUTE),
+            flag(Keys.STRIP_METADATA),
+            flag(Keys.ANALYSIS),
+            flag(Keys.ANALYSIS_CHARGING),
+            flag(Keys.ONLINE_MAP),
+            number(Keys.SLIDESHOW_INTERVAL, 2..30),
+            number(Keys.VAULT_AUTO_LOCK, 0..Int.MAX_VALUE),
+            flag(Keys.AUTO_UPDATES),
+            choice<PeopleSort>(Keys.PEOPLE_SORT),
+            choice<VaultItemOrder>(Keys.VAULT_SORT),
+            flag(Keys.VAULT_SORT_ASCENDING),
+            choice<VaultAlbumOrder>(Keys.VAULT_ALBUM_SORT),
+            flag(Keys.VAULT_ALBUM_SORT_ASCENDING),
+            flag(Keys.VAULT_NEW_MEDIA_ALERTS),
+        )
+
+        /**
+         * Clés écartées de la liste blanche, avec leur raison : les dossiers masqués désignent des
+         * dossiers de cet appareil (`BUCKET_ID`), sauvegardés à part avec leur chemin et réunis à
+         * ceux du téléphone qui restaure.
+         */
+        internal val NOT_BACKED_UP: Set<Preferences.Key<*>> = setOf(Keys.HIDDEN_FOLDERS)
+
+        private fun flag(key: Preferences.Key<Boolean>) =
+            BackedUp(key, { value -> value.booleanOrNull.takeUnless { value.isString } }, ::JsonPrimitive)
+
+        private fun number(key: Preferences.Key<Int>, range: IntRange) =
+            BackedUp(key, { value -> value.intOrNull.takeUnless { value.isString }?.coerceIn(range) }, ::JsonPrimitive)
+
+        private inline fun <reified E : Enum<E>> choice(key: Preferences.Key<String>) = BackedUp(
+            key,
+            { value -> value.content.takeIf { value.isString && enumValues<E>().any { it.name == value.content } } },
+            ::JsonPrimitive,
+        )
+    }
+
+    internal object Keys {
         val THEME = stringPreferencesKey("theme_mode")
         val AMOLED = booleanPreferencesKey("amoled")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")

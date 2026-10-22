@@ -5,6 +5,11 @@ import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import app.focale.backup.ArchiveFormat
+import app.focale.backup.BackupProgress
+import app.focale.backup.DataArchive
+import app.focale.backup.HeaderRecord
+import app.focale.backup.PasswordArchive
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.database.VaultAlbumEntity
@@ -305,6 +310,21 @@ class VaultBackupRepositoryTest {
         val photo = items.single { it.displayName == "IMG_0001.jpg" }
         assertEquals("Photo du coffre, sauvegardée avant les albums", phone.read(photo.fileName).decodeToString())
         assertEquals("Miniature de la photo", phone.read(requireNotNull(photo.thumbFileName)).decodeToString())
+    }
+
+    @Test
+    fun `une sauvegarde des données est refusée par le coffre, sans rien importer`() = runTest {
+        // Écrite comme par « Sauvegarde des données », avec le même mot de passe.
+        PasswordArchive.deriveKeys(ArchiveFormat.DATA, password(), 1_000).use { keys ->
+            DataArchive.write(archiveFile.outputStream(), keys).use { writer ->
+                writer.write(HeaderRecord(createdAt = 1_760_000_000_000, appVersion = "1.9.0", faceVersion = 1))
+                writer.finish()
+            }
+        }
+        val phone = Device("téléphone")
+        assertEquals(RestoreResult.Failed(RestoreResult.Failed.Reason.DATA_BACKUP), phone.backups.restore(archive, password()))
+        assertTrue(phone.items().isEmpty())
+        assertTrue(stagedFiles().isEmpty())
     }
 
     private fun password() = "cheval correct agrafe".toCharArray()

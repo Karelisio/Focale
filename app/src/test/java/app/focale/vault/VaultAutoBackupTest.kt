@@ -9,6 +9,13 @@ import androidx.core.app.NotificationCompat
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import app.focale.backup.AutoBackupError
+import app.focale.backup.AutoBackupFrequency
+import app.focale.backup.AutoBackupResult
+import app.focale.backup.AutoBackupScheduler
+import app.focale.backup.AutoBackupSettings
+import app.focale.backup.BackupFolder
+import app.focale.backup.BackupPassword
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.database.VaultAlbumEntity
@@ -121,6 +128,8 @@ class VaultAutoBackupTest {
             "notes.txt",
             // Sauvegarde manuelle, et noms voisins qui ne sont pas ceux de la sauvegarde automatique.
             "focale-coffre-2026-09-30.fvault",
+            // Sauvegarde automatique des données, dans le même dossier.
+            "focale-auto-2026-10-01.focale",
             "focale-coffre-auto-2026-09-30.fvault.txt",
             "copie de focale-coffre-auto-2026-09-29.fvault",
         )

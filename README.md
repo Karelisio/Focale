@@ -77,6 +77,12 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   les y met d'un geste. Mise au coffre en tâche de fond (service au premier plan, reprise
   sans rien rechiffrer, état réparé au lancement), tri mémorisé des éléments et des albums,
   corbeille de 30 jours. Une photo qui en sort retrouve sa date.
+- **Sauvegarde des données** (Réglages) : favoris, albums, personnes et leurs visages, dossiers
+  masqués, réglages et historique de recherche dans un fichier `.focale` chiffré par mot de passe
+  (même chiffrement que le coffre), à restaurer sur un nouveau téléphone, où les photos copiées à
+  part sont retrouvées par leur dossier et leur nom ; manuelle ou automatique (chaque jour ou
+  chaque semaine, dans un dossier choisi, les 3 dernières gardées). Rien ne part dans la
+  sauvegarde Google.
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir

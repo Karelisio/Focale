@@ -10,6 +10,7 @@ import androidx.room.Room
 import androidx.work.WorkManager
 import app.focale.core.database.AlbumDao
 import app.focale.core.database.AnalysisDao
+import app.focale.core.database.BackupDao
 import app.focale.core.database.DatabaseMigrations
 import app.focale.core.database.EmbeddingDao
 import app.focale.core.database.FaceDao
@@ -57,6 +58,11 @@ annotation class SettingsStore
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class VaultStore
+
+/** DataStore de la sauvegarde des données : réglage et clés de sa sauvegarde automatique. */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class DataBackupStore
 
 /** DataStore de l'état technique (synchronisation, versions MediaStore). */
 @Qualifier
@@ -123,6 +129,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    @DataBackupStore
+    fun dataBackupDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("data_backup") }
+
+    @Provides
+    @Singleton
     @VaultStore
     fun vaultDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
         PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("vault") }
@@ -141,6 +153,9 @@ object AppModule {
 
     @Provides
     fun memoryDao(database: FocaleDatabase): MemoryDao = database.memoryDao()
+
+    @Provides
+    fun backupDao(database: FocaleDatabase): BackupDao = database.backupDao()
 
     @Provides
     @Singleton

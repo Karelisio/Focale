@@ -44,6 +44,7 @@ abstract class FocaleDatabase : RoomDatabase() {
     abstract fun faceDao(): FaceDao
     abstract fun embeddingDao(): EmbeddingDao
     abstract fun memoryDao(): MemoryDao
+    abstract fun backupDao(): BackupDao
 
     companion object {
         const val NAME = "focale.db"
