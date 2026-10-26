@@ -117,8 +117,9 @@ class RendererClientTest {
     }
 
     @Test
-    fun `le client ne contacte que le réseau local, sans DNS`() {
-        val http = LanHttpClient()
+    fun `le client ne contacte que le réseau local, un nom public non plus`() {
+        // Résolution simulée : aucune requête DNS réelle dans les tests.
+        val http = LanHttpClient(resolver = { listOf(java.net.InetAddress.getByAddress(it, byteArrayOf(93, -72, -40, 34))) })
         for (url in listOf(
             "http://8.8.8.8/dmr",
             "http://tv.example.com/dmr",

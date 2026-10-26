@@ -22,7 +22,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   en HDR (Android 14+), rotation à deux doigts (enregistrée sans perte dans l'orientation
   EXIF des JPEG et WebP, et dans leur orientation XMP que lisent Lightroom et d'autres
   logiciels ; dans la propriété `irot` des HEIF / HEIC et AVIF, sans réencodage, EXIF et XMP
-  mis d'accord), panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
+  mis d'accord, photos animées, traîne des Galaxy et carte de gain HDR des iPhone comprises),
+  panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
   copiable. Photos 360° (métadonnées GPano des JPEG, WebP et HEIF, sphères complètes ou
   partielles, horizon redressé d'après l'inclinaison et le roulis du fichier) en vue immersive
   OpenGL : glisser pour regarder autour, pincer pour le champ, « Bouger le téléphone » (capteur
@@ -77,15 +78,17 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   rectangle, ellipse, gomme), texte (plusieurs lignes, affiché sur la photo à mesure qu'on le
   tape, réglages compris, la saisie restant au-dessus du clavier ; déplacé au doigt, agrandi et
   tourné à deux doigts ; couleur, taille, fond encadré ou contour, gras), zones floutées pour
-  cacher un visage ou une plaque (rectangle, ellipse ou pinceau ; flou fort ou mosaïque,
-  irréversibles ; « Visages » floute ceux que détecte ML Kit) ; annuler / rétablir, et « Tout
+  cacher un visage ou une plaque (rectangle, ellipse ou pinceau, qui peint aussi par-dessus une
+  zone ; un appui long puis un glisser déplace une zone ; flou fort ou mosaïque, irréversibles ;
+  « Visages » floute ceux que détecte ML Kit) ; annuler / rétablir, et « Tout
   annuler » qui rend l'original d'un coup (confirmation au-delà de quelques modifications, lui
   aussi annulable) ; enregistrement en copie ou à la place de
   l'original. Vidéos : coupe du début et de la fin, son coupé, enregistrées en copie (Media3
   Transformer). Collages de 2 à 9 photos depuis la sélection multiple (vidéos ignorées) :
   plusieurs dispositions par nombre de photos (grilles, une grande et des petites, mosaïques
   décalées, moulinet), format 1:1, 4:5, 3:4, 9:16 ou 16:9, espacement, coins arrondis, fond blanc,
-  noir ou aux couleurs Material You ; chaque photo se cadre au doigt et s'agrandit en pinçant, un
+  noir ou aux couleurs Material You ; chaque photo se cadre au doigt et s'agrandit en pinçant (nette
+  même très agrandie : la partie visible est alors décodée à la résolution de l'écran), un
   appui long l'échange avec une autre case ; nouveau JPEG de 4 096 px dans `Pictures/Focale`, ouvert
   dans la visionneuse ou partagé aussitôt, Ultra HDR si des photos le sont (Android 14+ : gainmap
   composée case par case, cases SDR au gain neutre).
@@ -107,7 +110,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   part sont retrouvées par leur dossier et leur nom ; manuelle ou automatique (chaque jour ou
   chaque semaine, dans un dossier choisi, les 3 dernières gardées). À la restauration, une case
   par catégorie (favoris, albums, personnes, dossiers masqués, réglages, historique, dates
-  d'origine) pour n'en reprendre qu'une partie. Rien ne part dans la sauvegarde Google.
+  d'origine) pour n'en reprendre qu'une partie ; le fichier choisi (Drive ou autre) n'est lu
+  qu'une fois, copié chiffré dans le cache de Focale le temps de la restauration. Rien ne part dans
+  la sauvegarde Google.
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir
@@ -124,10 +129,13 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   l'écran » du système), le téléphone gardant les commandes ; dans la variante `standard`, vers
   les TV du réseau local (DLNA/UPnP : Samsung, LG, Sony, Kodi…), servies par un petit serveur
   local démarré le temps de la diffusion (photo réduite en JPEG sans métadonnées, vidéo telle
-  quelle, lecture, pause, position et volume depuis le téléphone, notification « Arrêter » en
-  arrière-plan). Une vidéo que la TV refuse, ou qu'elle lâche en perdant la connexion, reprend
+  quelle, lecture, pause, position et volume depuis le téléphone, touches de volume du téléphone
+  comprises, notification « Arrêter » en arrière-plan). Les TV qui se désignent par leur nom
+  (« bravia.local ») sont trouvées aussi, tout comme celles d'un réseau sans IPv4 (IPv6 locales).
+  Une vidéo que la TV refuse, ou qu'elle lâche en perdant la connexion, reprend
   sur le téléphone à la même position, la diffusion continuant pour les médias suivants. Rien ne
-  sort du réseau local ; le coffre-fort n'est jamais diffusé.
+  sort du réseau local (hormis, pour un nom, la question au résolveur DNS du réseau) ; le
+  coffre-fort n'est jamais diffusé.
 - **Widget** « Souvenir » (Glance, couleurs Material You) : une photo du jour, renouvelée
   toutes les quatre heures, qui s'ouvre dans la visionneuse.
 - **Nouveautés** présentées au premier lancement après chaque mise à jour, tirées de

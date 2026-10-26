@@ -1,8 +1,16 @@
 package app.focale.backup
 
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.focale.core.database.AlbumEntity
@@ -22,14 +30,22 @@ import app.focale.data.SearchFilters
 import app.focale.people.FaceAnalysisStep
 import app.focale.people.PeopleEditions
 import app.focale.perf.SyntheticLibrary
+import app.focale.ui.settings.DataBackupFlow
+import app.focale.ui.settings.DataBackupViewModel
 import java.io.File
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -43,6 +59,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -317,12 +334,13 @@ class DataBackupRepositoryTest {
         assertEquals(DataInspectResult.Failed(DataBackupFailure.VAULT_BACKUP), inspectBytes(vault))
         assertEquals(DataInspectResult.Failed(DataBackupFailure.UNREADABLE), newPhone.device.backups.inspect(Uri.fromFile(File(folder.root, "absent.focale")), password()))
 
-        // Vérifiée, puis abîmée avant la restauration : la transaction n'est jamais validée.
+        // Copie vérifiée, puis abîmée avant la restauration : la transaction n'est jamais validée.
         newPhone.device.inspect().use { inspected ->
-            archiveFile.writeBytes(bytes.copyOf(bytes.size - 1))
+            inspected.copy.file.writeBytes(bytes.copyOf(bytes.size - 1))
             assertEquals(DataRestoreResult.Failed(DataBackupFailure.CORRUPTED), newPhone.device.backups.restore(inspected))
         }
         assertEquals(before, newPhone.device.snapshot())
+        assertTrue("aucune copie ne reste", newPhone.device.copies().isEmpty())
     }
 
     @Test
@@ -334,6 +352,125 @@ class DataBackupRepositoryTest {
         val result = newPhone.device.inspect().use { newPhone.device.backups.restore(it, cancelled = { ++read > 3 }) }
         assertEquals(DataRestoreResult.Cancelled, result)
         assertEquals(before, newPhone.device.snapshot())
+        assertTrue(newPhone.device.copies().isEmpty())
+    }
+
+    @Test
+    fun `le document n'est lu qu'une fois, vérification et restauration lisent sa copie, supprimée ensuite`() = runTest {
+        OldPhone().device.backups.export(archive, password())
+        val document = Documents.serve(archiveFile)
+        val newPhone = NewPhone()
+        val opened = newPhone.device.backups.open(document) as DataOpenResult.Ready
+        assertEquals(1, Documents.opens)
+        // Copie telle quelle, toujours chiffrée, dans le dossier des copies.
+        val copy = newPhone.device.copies().single()
+        assertArrayEquals(archiveFile.readBytes(), copy.readBytes())
+
+        // Mot de passe faux : la copie reste pour un nouvel essai, sans relire le document.
+        assertEquals(DataInspectResult.WrongPassword, newPhone.device.backups.inspect(opened.backup, "pas le bon".toCharArray()))
+        assertTrue(copy.exists())
+        val inspected = (newPhone.device.backups.inspect(opened.backup, password()) as DataInspectResult.Ready).backup
+        assertEquals(document, inspected.source)
+        // Le document change (ou disparaît) entre-temps : la copie vérifiée est celle restaurée.
+        archiveFile.writeBytes(ByteArray(16))
+        val report = inspected.use { (newPhone.device.backups.restore(it) as DataRestoreResult.Success).report }
+        assertEquals(10, report.matched)
+        assertEquals("une seule lecture du document", 1, Documents.opens)
+        assertTrue("copie supprimée", newPhone.device.copies().isEmpty())
+    }
+
+    @Test
+    fun `sans restauration, la copie est supprimée, refus, échec ou annulation, et au démarrage`() = runTest {
+        OldPhone().device.backups.export(archive, password())
+        val newPhone = NewPhone()
+        val backups = newPhone.device.backups
+        val bytes = archiveFile.readBytes()
+        fun document(content: ByteArray): Uri = Uri.fromFile(folder.newFile().apply { writeBytes(content) })
+
+        // Fichier étranger : refusé dès son en-tête.
+        assertEquals(DataOpenResult.Failed(DataBackupFailure.NOT_AN_ARCHIVE), backups.open(document(ByteArray(64 * 1024))))
+        assertEquals(DataOpenResult.Failed(DataBackupFailure.UNREADABLE), backups.open(Uri.fromFile(File(folder.root, "absent.focale"))))
+        // Copie annulée en cours de lecture.
+        var reads = 0
+        assertEquals(DataOpenResult.Cancelled, backups.open(archive, cancelled = { ++reads > 3 }))
+        assertTrue(newPhone.device.copies().isEmpty())
+
+        // Copiée, puis refusée à la vérification (tronquée), ou abandonnée sur le résumé.
+        assertEquals(DataInspectResult.Failed(DataBackupFailure.CORRUPTED), backups.inspect(document(bytes.copyOf(bytes.size - 40)), password()))
+        assertTrue(newPhone.device.copies().isEmpty())
+        newPhone.device.inspect().close()
+        assertTrue(newPhone.device.copies().isEmpty())
+        // Copie faite, puis oubliée (écran quitté avant le mot de passe).
+        (backups.open(archive) as DataOpenResult.Ready).backup.close()
+        assertTrue(newPhone.device.copies().isEmpty())
+
+        // Copie laissée par un processus arrêté en pleine restauration : supprimée au démarrage, et à la copie suivante.
+        val directory = File(folder.root, "nouveau-copies").apply { mkdirs() }
+        val stale = File(directory, "ancienne.focale").apply { writeBytes(bytes) }
+        BackupCopies.clear(directory)
+        assertFalse(stale.exists())
+        stale.writeBytes(bytes)
+        val kept = (backups.open(archive) as DataOpenResult.Ready).backup
+        assertFalse(stale.exists())
+        // Une copie en service, elle, n'est jamais supprimée par le nettoyage.
+        BackupCopies.clear(directory)
+        assertTrue(kept.file.exists())
+        kept.close()
+        assertTrue(newPhone.device.copies().isEmpty())
+    }
+
+    /** Attend, en temps réel et au plus 20 s, que [condition] soit vraie (copies et vérifications en tâche de fond). */
+    private suspend fun until(condition: () -> Boolean) = withContext(Dispatchers.Default) {
+        withTimeout(20_000) { while (!condition()) delay(10) }
+    }
+
+    @Test
+    fun `depuis l'écran, document lu une fois malgré un mot de passe faux, copie supprimée quelle que soit l'issue`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            OldPhone().device.backups.export(archive, password())
+            val document = Documents.serve(archiveFile)
+            val newPhone = NewPhone()
+            val store = ViewModelStore()
+            val screen = ViewModelProvider(store, viewModelFactory { initializer { DataBackupViewModel(newPhone.device.backups) } })[DataBackupViewModel::class.java]
+
+            // Restauration complète : la copie se fait pendant la saisie, une seule lecture, supprimée au bilan.
+            screen.onBackupChosen(document)
+            screen.inspect("pas le bon".toCharArray())
+            until { screen.flow.value == DataBackupFlow.BackupPassword(wrong = true) }
+            assertEquals(1, newPhone.device.copies().size)
+            screen.inspect(password())
+            until { screen.flow.value is DataBackupFlow.Summary }
+            screen.restore()
+            until { (screen.flow.value as? DataBackupFlow.Report)?.success == true }
+            assertEquals(1, Documents.opens)
+            assertTrue(newPhone.device.copies().isEmpty())
+            screen.dismiss()
+
+            // Résumé refermé sans restaurer, puis dialogue du mot de passe fermé pendant la copie.
+            screen.onBackupChosen(document)
+            screen.inspect(password())
+            until { screen.flow.value is DataBackupFlow.Summary }
+            screen.dismiss()
+            assertTrue(newPhone.device.copies().isEmpty())
+            screen.onBackupChosen(document)
+            screen.dismiss()
+            until { newPhone.device.copies().isEmpty() }
+
+            // Fichier étranger : signalé sans attendre le mot de passe, rien ne reste.
+            screen.onBackupChosen(Uri.fromFile(folder.newFile().apply { writeBytes(ByteArray(4_096)) }))
+            until { screen.flow.value is DataBackupFlow.Report }
+            assertTrue(newPhone.device.copies().isEmpty())
+            screen.dismiss()
+
+            // Écran quitté avec une copie faite (toute la sauvegarde écrite) : supprimée.
+            screen.onBackupChosen(document)
+            until { newPhone.device.copies().singleOrNull()?.length() == archiveFile.length() }
+            store.clear()
+            until { newPhone.device.copies().isEmpty() }
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
@@ -532,6 +669,10 @@ class DataBackupRepositoryTest {
     /** Un téléphone : sa base, ses réglages, sa sauvegarde des données. */
     private inner class Device(name: String) {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        private val copiesDirectory = File(folder.root, "$name-copies")
+
+        /** Copies locales des sauvegardes encore là. */
+        fun copies(): List<File> = copiesDirectory.listFiles()?.toList().orEmpty()
         val database: FocaleDatabase = Room.inMemoryDatabaseBuilder(context, FocaleDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -543,7 +684,7 @@ class DataBackupRepositoryTest {
         var syncs = 0
         val backups = DataBackupRepository(
             context.contentResolver, database, settings, PeopleEditions(), { emptyMap() }, { syncs++ }, Dispatchers.IO,
-            iterations = 1_000, appVersion = "1.9.0", clock = { now },
+            iterations = 1_000, appVersion = "1.9.0", clock = { now }, copies = copiesDirectory,
         )
 
         init {
@@ -677,3 +818,42 @@ private fun FocaleDatabase.query(sql: String): List<String> = openHelper.readabl
 
 /** Mise en place des données de test, hors d'un `runTest` (constructeurs). */
 private fun <T> runTestBlocking(block: suspend () -> T): T = kotlinx.coroutines.runBlocking { block() }
+
+/**
+ * Documents d'un fournisseur de test, comme ceux d'un fournisseur en ligne (Drive) qu'on ne veut lire
+ * qu'une fois : [serve] publie un fichier, [opens] compte ses ouvertures.
+ */
+private object Documents {
+    const val AUTHORITY = "app.focale.test.documents"
+
+    @Volatile var file: File? = null
+
+    @Volatile var opens = 0
+
+    fun serve(file: File): Uri {
+        this.file = file
+        opens = 0
+        Robolectric.setupContentProvider(CountingDocuments::class.java, AUTHORITY)
+        return Uri.parse("content://$AUTHORITY/document/focale-2026-10-22.focale")
+    }
+}
+
+/** Fournisseur du fichier de [Documents], ouvertures comptées. */
+class CountingDocuments : ContentProvider() {
+    override fun onCreate(): Boolean = true
+
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        Documents.opens++
+        return ParcelFileDescriptor.open(requireNotNull(Documents.file), ParcelFileDescriptor.MODE_READ_ONLY)
+    }
+
+    override fun getType(uri: Uri): String = "application/octet-stream"
+
+    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
+
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+}

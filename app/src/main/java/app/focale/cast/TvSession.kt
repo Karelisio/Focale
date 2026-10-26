@@ -84,6 +84,9 @@ internal class TvSession(
     @Volatile private var shown = false
     private var loadedAt = 0L
 
+    /** Dernière demande de volume ([clock]) : la lecture qui suit ne la contredit pas. */
+    @Volatile private var volumeRequestedAt = Long.MIN_VALUE / 2
+
     /** Souhait de l'utilisateur pour la vidéo [mediaId], appliqué quand la TV la joue. */
     private data class Desire(val mediaId: Long, val playing: Boolean = true, val seekMs: Long? = null) {
         fun forMedia(id: Long): Desire = if (id == mediaId) this else Desire(id)
@@ -101,10 +104,7 @@ internal class TvSession(
             }
             launch { content.collectLatest(::show) }
             launch { monitor() }
-            launch {
-                val volume = runCatching { call { client.volume() } }.getOrNull()
-                info.update { it.copy(volume = volume) }
-            }
+            if (renderer.hasVolume) launch { followVolume() }
             launch {
                 volumeRequests.filterNotNull().collectLatest { volume ->
                     delay(VOLUME_DEBOUNCE_MS)
@@ -316,9 +316,30 @@ internal class TvSession(
         sessionScope.launch { runCatching { call { client.seek(positionMs) } } }
     }
 
+    /**
+     * Volume lu sur la TV au début, puis toutes les [VOLUME_REFRESH_MS] : changé à la télécommande,
+     * il reste juste pour la feuille et pour les touches du téléphone, qui partent de lui. Une
+     * lecture qui suit de près une demande ([VOLUME_SETTLE_MS]) ne la contredit pas.
+     */
+    private suspend fun followVolume() {
+        while (true) {
+            val volume = runCatching { call { client.volume() } }.getOrNull()
+            if (volume != null && clock() - volumeRequestedAt >= VOLUME_SETTLE_MS) info.update { it.copy(volume = volume) }
+            delay(VOLUME_REFRESH_MS)
+        }
+    }
+
     fun requestVolume(volume: Int) {
-        info.update { it.copy(volume = volume) }
-        volumeRequests.value = volume
+        val wanted = volume.coerceIn(0, 100)
+        volumeRequestedAt = clock()
+        info.update { it.copy(volume = wanted) }
+        volumeRequests.value = wanted
+    }
+
+    /** Touche de volume : [delta] ajouté au volume connu de la TV ; sans volume connu, rien. */
+    fun adjustVolume(delta: Int) {
+        val current = info.value.volume ?: return
+        requestVolume(current + delta)
     }
 
     /** Fin : TV arrêtée ([sendStop]), serveur fermé, transferts coupés. */
@@ -343,6 +364,8 @@ internal class TvSession(
         const val PLAY_ATTEMPTS = 4
         const val PLAY_RETRY_MS = 800L
         const val VOLUME_DEBOUNCE_MS = 150L
+        const val VOLUME_REFRESH_MS = 10_000L
+        const val VOLUME_SETTLE_MS = 3_000L
         const val STOP_TIMEOUT_MS = 3_000L
 
         /** Une vidéo reprise sur la TV depuis la position du téléphone, sauf tout au début. */

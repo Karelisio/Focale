@@ -1,6 +1,7 @@
 package app.focale.cast
 
 import android.content.Context
+import android.media.session.MediaController
 import android.os.SystemClock
 import app.focale.BuildConfig
 import app.focale.cast.display.ExternalDisplay
@@ -16,10 +17,12 @@ import app.focale.core.di.IoDispatcher
 import app.focale.core.model.MediaItem
 import app.focale.core.settings.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +38,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * Diffusion de la visionneuse et du diaporama vers un écran externe ou une TV du réseau local.
@@ -66,6 +70,15 @@ class CastManager @Inject internal constructor(
     /** Écrans arrêtés par l'utilisateur, oubliés quand ils partent. */
     private val declined = MutableStateFlow<Set<Int>>(emptySet())
     private val session = MutableStateFlow<TvSession?>(null)
+    private val volumeKeys = TvVolumeKeys(context)
+    @Volatile private var volumeJob: Job? = null
+
+    /**
+     * Session média de la diffusion vers la TV, à laquelle l'activité confie les touches de volume
+     * ([android.app.Activity.setMediaController]) ; null hors diffusion, ou si la TV ne donne pas
+     * son volume : les touches règlent alors le téléphone.
+     */
+    val volumeController: StateFlow<MediaController?> get() = volumeKeys.controller
     private val presenters = MutableStateFlow<List<Presenter>>(emptyList())
     private val eventChannel = Channel<CastEvent>(capacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -147,7 +160,8 @@ class CastManager @Inject internal constructor(
         val tv = TvSession(
             renderer = renderer,
             client = RendererClient(renderer, link.httpClient()),
-            server = MediaServer(link.address),
+            // Adresse de la famille de celle de la TV (IPv4, ou IPv6 locale sur un réseau sans IPv4).
+            server = MediaServer(link.addresses.serverFor(runCatching { URI(renderer.location.trim()).host }.getOrNull())),
             content = content,
             prepare = preparer::prepare,
             events = { eventChannel.trySend(it) },
@@ -158,6 +172,8 @@ class CastManager @Inject internal constructor(
         session.value = tv
         discovery.pinned = renderer.udn
         CastService.start(context, renderer.name)
+        // Avant le départ de la session, dont la fin ([endTv]) peut suivre aussitôt.
+        volumeJob = scope.launch { volumeKeys.follow(tv) }
         tv.start()
     }
 
@@ -196,6 +212,9 @@ class CastManager @Inject internal constructor(
     private fun endTv(tv: TvSession, lost: Boolean) {
         if (!session.compareAndSet(tv, null)) return
         discovery.pinned = null
+        // Touches de volume rendues au téléphone.
+        volumeJob?.cancel()
+        volumeJob = null
         tv.close(sendStop = !lost)
         CastService.stop(context)
         if (lost) discovery.forget(tv.renderer.udn)

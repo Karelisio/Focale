@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,8 +52,10 @@ import app.focale.R
 import app.focale.collage.CellFrame
 import app.focale.collage.CellFraming
 import app.focale.collage.CellRect
+import app.focale.collage.CollageDetail
 import app.focale.collage.CollageGeometry
 import app.focale.collage.CollageState
+import app.focale.collage.DetailRequest
 import app.focale.core.model.MediaItem
 import app.focale.core.util.Formatters
 import kotlin.math.min
@@ -65,12 +68,20 @@ private data class SwapDrag(val from: Int, val position: Offset, val target: Int
 private enum class Gesture { TAP, FRAME, SWAP }
 
 /**
+ * Détail d'une photo pour sa case agrandie ([CollageDetail]) : demande d'origine, zone vraiment
+ * couverte (fraction de l'image affichée) et image, posée par-dessus l'aperçu.
+ */
+@Immutable
+data class CollageDetailImage(val request: DetailRequest, val region: CellRect, val image: ImageBitmap)
+
+/**
  * Aperçu du collage, à sa proportion : fond, cases, photos cadrées et coins arrondis, comme
  * l'export ([app.focale.collage.CollageRenderer]). Dans une case, un glisser cadre la photo et un
  * pincement l'agrandit autour des doigts ; un appui long puis un glisser emmène la photo sur une
  * autre case, avec qui elle s'échange au relâchement. Chaque case est un élément TalkBack, lu avec
  * sa photo, dont les actions échangent la photo avec la case voisine, l'agrandissent, la réduisent
- * ou la recentrent.
+ * ou la recentrent. Une case agrandie au-delà de la résolution de son aperçu demande le détail de
+ * sa partie visible ([onDetails], [CollageDetail.request]), dessiné par-dessus quand il arrive ([details]).
  */
 @Composable
 internal fun CollageCanvas(
@@ -83,6 +94,8 @@ internal fun CollageCanvas(
     onZoomStep: (cell: Int, factor: Float, cellSize: Size, imageSize: Size) -> Unit,
     onResetFrame: (cell: Int) -> Unit,
     modifier: Modifier = Modifier,
+    details: Map<Long, CollageDetailImage> = emptyMap(),
+    onDetails: (Map<Long, DetailRequest>) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
@@ -103,6 +116,27 @@ internal fun CollageCanvas(
         val ring = with(density) { 3.dp.toPx() }
         val ghostSide = with(density) { GHOST_SIDE.toPx() }
         val ghostCorner = with(density) { 12.dp.toPx() }
+
+        // Cases agrandies au-delà de leur aperçu : zone visible à décoder plus finement, budget
+        // partagé selon la surface des cases.
+        val requests = remember(state, cells, previews, width, height) {
+            buildMap {
+                cells.forEachIndexed { index, cell ->
+                    val photo = state.photos[index]
+                    val preview = previews[photo] ?: return@forEachIndexed
+                    CollageDetail.request(
+                        state.frame(photo),
+                        cell.width,
+                        cell.height,
+                        preview.width,
+                        preview.height,
+                        CollageDetail.budget(cell.width, cell.height, width, height),
+                    )?.let { put(photo, it) }
+                }
+            }
+        }
+        val currentOnDetails by rememberUpdatedState(onDetails)
+        LaunchedEffect(requests) { currentOnDetails(requests) }
 
         Canvas(
             Modifier
@@ -175,7 +209,8 @@ internal fun CollageCanvas(
                 val photo = state.photos[index]
                 val radius = CollageGeometry.radius(state.corners, width, height, cell)
                 val alpha = if (dragging?.from == index) DRAGGED_ALPHA else 1f
-                drawPhoto(previews[photo], state.frame(photo), cell, radius, placeholder, alpha)
+                // Case estompée pendant un échange : l'aperçu seul (deux couches translucides se verraient).
+                drawPhoto(previews[photo], state.frame(photo), cell, radius, placeholder, alpha, details[photo].takeIf { alpha == 1f })
                 if (dragging?.target == index) {
                     val inset = ring / 2f
                     drawRoundRect(
@@ -232,8 +267,20 @@ private suspend fun AwaitPointerEventScope.awaitGesture(down: PointerInputChange
     }
 }
 
-/** Photo [image] cadrée par [frame] dans [cell], coins arrondis de [radius] ; un aplat tant qu'elle n'est pas chargée. */
-private fun DrawScope.drawPhoto(image: ImageBitmap?, frame: CellFrame, cell: CellRect, radius: Float, placeholder: Color, alpha: Float) {
+/**
+ * Photo [image] cadrée par [frame] dans [cell], coins arrondis de [radius] ; un aplat tant qu'elle
+ * n'est pas chargée. [detail] : zone décodée plus finement, posée à sa place sur l'aperçu (qui
+ * reste visible autour, le temps qu'un glisser en appelle un autre).
+ */
+private fun DrawScope.drawPhoto(
+    image: ImageBitmap?,
+    frame: CellFrame,
+    cell: CellRect,
+    radius: Float,
+    placeholder: Color,
+    alpha: Float,
+    detail: CollageDetailImage? = null,
+) {
     val content: DrawScope.() -> Unit = {
         if (image == null) {
             drawRect(placeholder, topLeft = Offset(cell.left, cell.top), size = Size(cell.width, cell.height), alpha = alpha)
@@ -246,6 +293,18 @@ private fun DrawScope.drawPhoto(image: ImageBitmap?, frame: CellFrame, cell: Cel
                 translate(-visible.left, -visible.top)
             }) {
                 drawImage(image, alpha = alpha)
+                if (detail != null) {
+                    // Zone du détail, en pixels de l'aperçu.
+                    val region = detail.region
+                    val left = region.left * image.width
+                    val top = region.top * image.height
+                    withTransform({
+                        translate(left, top)
+                        scale(region.width * image.width / detail.image.width, region.height * image.height / detail.image.height, pivot = Offset.Zero)
+                    }) {
+                        drawImage(detail.image, alpha = alpha)
+                    }
+                }
             }
         }
     }

@@ -35,8 +35,12 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -62,8 +66,11 @@ import kotlin.math.roundToInt
 /**
  * Couche de l'outil Flouter posée sur l'aperçu. Elle capte et consomme tous les gestes : un
  * glisser trace une nouvelle zone (rectangle ou ellipse du point de départ au doigt, ou trait de
- * pinceau), sauf s'il part de la zone sélectionnée, qu'il déplace alors ; un appui sélectionne la
- * zone touchée (ou aucune). Les zones sont exprimées dans le repère de la photo avant
+ * pinceau) ; avec le rectangle et l'ellipse, un glisser parti de la zone sélectionnée la déplace,
+ * alors que le pinceau peint toujours, même par-dessus une zone. Un appui long sur une zone (retour
+ * haptique, comme pour emmener une photo d'un collage) la sélectionne, puis le glisser qui suit la
+ * déplace, avec tous les outils ; un appui sélectionne la zone touchée (ou aucune). Les zones sont
+ * exprimées dans le repère de la photo avant
  * redressement ([BlurArea]) : un rectangle tracé à l'écran sur une photo redressée reste droit à
  * l'écran, puis pivote avec elle. Chaque zone est aussi un élément accessible (sélection,
  * suppression).
@@ -86,6 +93,7 @@ fun BlurOverlay(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val slop = with(density) { TOUCH_MARGIN.toPx() }
     val step = with(density) { MIN_STEP.toPx() }
     val minShape = with(density) { MIN_SHAPE.toPx() }
@@ -114,10 +122,25 @@ fun BlurOverlay(
                         down.consume()
                         val placement = currentViewport.photo
                         val start = down.position
-                        val moving = currentSelected?.takeIf { id ->
+                        val brush = currentShape == BlurShape.BRUSH
+                        val under = hitTest(placement, currentRegions, start, slop)
+                        // Rectangle et ellipse : un glisser parti de la zone sélectionnée la déplace. Le
+                        // pinceau, lui, peint toujours ; seul l'appui long emmène une zone, avec tous les outils.
+                        val selectedUnder = currentSelected?.takeIf { id ->
                             currentRegions.firstOrNull { it.id == id }?.let { contains(placement, it.area, start, slop) } == true
                         }
-                        val brushing = moving == null && currentShape == BlurShape.BRUSH
+                        // Sur une zone, le doigt resté immobile jusqu'au délai de l'appui long l'emmène ;
+                        // sinon, le premier mouvement au-delà du seuil (ou le relâchement) reste à traiter.
+                        var pending: PointerInputChange? = null
+                        val held = under != null && withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                            awaitSlopOrUp(down, viewConfiguration.touchSlop).also { pending = it }
+                        } == null
+                        val moving = if (held) under else selectedUnder?.takeIf { !brush }
+                        if (held) {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            currentOnSelect(under)
+                        }
+                        val brushing = moving == null && brush
                         val brushPoints = ArrayList<Offset>()
                         if (brushing) {
                             brushPoints += start
@@ -128,14 +151,16 @@ fun BlurOverlay(
                         var dragging = false
                         try {
                             while (true) {
-                                val event = awaitPointerEvent()
-                                event.changes.forEach { it.consume() }
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                val change = pending ?: awaitPointerEvent().let { event ->
+                                    event.changes.forEach { it.consume() }
+                                    event.changes.firstOrNull { it.id == down.id }
+                                } ?: break
+                                pending = null
                                 finger = change.position
                                 if (!dragging && (finger - start).getDistance() > viewConfiguration.touchSlop) {
                                     dragging = true
                                     // Une seule étape d'historique pour tout le déplacement.
-                                    if (moving != null) currentOnMoveStart(moving)
+                                    moving?.let(currentOnMoveStart)
                                 }
                                 when {
                                     moving != null && dragging -> {
@@ -158,8 +183,10 @@ fun BlurOverlay(
                         }
                         val extent = finger - start
                         when {
-                            moving != null -> if (!dragging) currentOnSelect(hitTest(placement, currentRegions, start, slop))
-                            !dragging -> currentOnSelect(hitTest(placement, currentRegions, start, slop))
+                            // Sélectionnée à l'appui long, déplacée si le doigt a bougé ensuite.
+                            held -> Unit
+                            !dragging -> currentOnSelect(under)
+                            moving != null -> Unit
                             brushing -> {
                                 if (brushPoints.last() != finger) brushPoints += finger
                                 val points = FloatArray(brushPoints.size * 2)
@@ -228,6 +255,19 @@ fun BlurOverlay(
             }
         }
         BlurNodes(viewport, regions, selected, onSelect, onDelete)
+    }
+}
+
+/**
+ * Attend, sous le délai de l'appui long, que le doigt [down] franchisse le seuil [slop] ou se lève :
+ * rend ce mouvement (ou ce relâchement), à traiter par le geste ; le doigt disparu, son appui.
+ */
+private suspend fun AwaitPointerEventScope.awaitSlopOrUp(down: PointerInputChange, slop: Float): PointerInputChange {
+    while (true) {
+        val event = awaitPointerEvent()
+        event.changes.forEach { it.consume() }
+        val change = event.changes.firstOrNull { it.id == down.id } ?: return down
+        if (!change.pressed || (change.position - down.position).getDistance() > slop) return change
     }
 }
 

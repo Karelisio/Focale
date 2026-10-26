@@ -8,17 +8,32 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.net.Socket
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Réseau Wi-Fi (ou Ethernet) de l'appareil et son adresse IPv4 privée. */
-internal class LocalLink(val network: Network, val address: Inet4Address) {
+/**
+ * Réseau Wi-Fi (ou Ethernet) de l'appareil et ses adresses locales ([addresses] : IPv4 privée, sinon
+ * IPv6 unique locale ou de lien local).
+ */
+internal class LocalLink(val network: Network, val addresses: LinkAddresses) {
+    /** Adresse principale de l'appareil sur ce réseau. */
+    val address get() = addresses.primary
+
     /** Socket non connectée qui passe par ce réseau, même quand un VPN est actif. */
     fun socket(): Socket = network.socketFactory.createSocket()
 
-    fun httpClient(): LanHttpClient = LanHttpClient(socketFactory = ::socket)
+    /**
+     * Client des TV de ce réseau : sockets du réseau, adresses locales joignables d'ici, noms résolus
+     * par le système sur ce réseau (pas par le VPN), interface donnée aux IPv6 de lien local.
+     */
+    fun httpClient(): LanHttpClient = LanHttpClient(
+        socketFactory = ::socket,
+        hostAllowed = addresses::reaches,
+        resolver = { name -> network.getAllByName(name).toList() },
+        scoped = addresses::scoped,
+    )
 }
 
 /** Accès au réseau local : réseau Wi-Fi courant et autorisation d'Android 17+. */
@@ -32,7 +47,10 @@ class LocalNetworks @Inject constructor(@ApplicationContext private val context:
     fun hasAccess(): Boolean = Build.VERSION.SDK_INT < LOCAL_NETWORK_SDK ||
         ContextCompat.checkSelfPermission(context, LOCAL_NETWORK_PERMISSION) == PackageManager.PERMISSION_GRANTED
 
-    /** Réseau local actuel : le réseau par défaut s'il est Wi-Fi ou Ethernet, sinon l'un d'eux (VPN actif). */
+    /**
+     * Réseau local actuel : le réseau par défaut s'il est Wi-Fi ou Ethernet, sinon l'un d'eux (VPN
+     * actif), pourvu qu'il donne à l'appareil une IPv4 privée ou, à défaut, une IPv6 locale.
+     */
     internal fun current(): LocalLink? {
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return null
         val active = manager.activeNetwork
@@ -46,12 +64,10 @@ class LocalNetworks @Inject constructor(@ApplicationContext private val context:
             ) {
                 continue
             }
-            val address = manager.getLinkProperties(network)?.linkAddresses.orEmpty()
-                .map { it.address }
-                .filterIsInstance<Inet4Address>()
-                .firstOrNull(LanAddresses::isLan)
-                ?: continue
-            return LocalLink(network, address)
+            val properties = manager.getLinkProperties(network) ?: continue
+            val scope = properties.interfaceName?.let { name -> runCatching { NetworkInterface.getByName(name)?.index }.getOrNull() }
+            val addresses = LinkAddresses.of(properties.linkAddresses.map { it.address }, scope) ?: continue
+            return LocalLink(network, addresses)
         }
         return null
     }

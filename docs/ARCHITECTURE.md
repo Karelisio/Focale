@@ -10,7 +10,7 @@ cible, les choix techniques structurants et le découpage du développement.
 
 | Principe | Conséquence concrète |
 |---|---|
-| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. Les seules connexions réseau sont le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement, et la recherche quotidienne de mises à jour sur GitHub (désactivable) ; la diffusion vers une TV (DLNA, § 6.12) ne parle qu'aux adresses du réseau local. La variante `strict` retire toute permission réseau, `INTERNET` comprise. |
+| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. Les seules connexions réseau sont le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement, et la recherche quotidienne de mises à jour sur GitHub (désactivable) ; la diffusion vers une TV (DLNA, § 6.12) ne parle qu'aux adresses du réseau local (et, pour une TV qui se désigne par son nom, au résolveur DNS du réseau Wi-Fi). La variante `strict` retire toute permission réseau, `INTERNET` comprise. |
 | **Fluide avec 50 000+ médias** | MediaStore est indexé dans Room ; toutes les listes passent par Paging 3 (placeholders + sauts) ; les miniatures viennent du cache système de MediaStore (`loadThumbnail`) via un `Fetcher` Coil dédié. Tests de charge sur 50 000 médias, plans d'exécution surveillés, profil de référence : [PERFORMANCE.md](PERFORMANCE.md). |
 | **MediaStore reste la source de vérité** | Room n'est qu'un miroir (index) + les métadonnées propres à l'app (favoris, albums virtuels, étiquettes ML, empreintes, coffre). |
 | **Material You partout** | Couleurs dynamiques du fond d'écran, palette maison en repli, thème « couleur depuis la photo » dans la visionneuse et les albums. |
@@ -640,7 +640,7 @@ sauvegarde, chiffrée par un mot de passe, emporte les données de l'application
 - **En flux** : la sauvegarde lit l'index par tranches, dans l'ordre des clés primaires, sans
   transaction (ce qu'elle n'a pas vu est laissé de côté ou détaché : l'archive reste cohérente) ;
   la restauration ne garde en mémoire que les clés des médias et des lots de 500 visages. 50 000
-  médias et 20 000 visages : archive de 12 Mio, sauvegardée en 2 s, vérifiée en 0,3 s, restaurée
+  médias et 20 000 visages : archive de 12 Mio, sauvegardée en 2 s, copiée et vérifiée en 0,4 s, restaurée
   en 2,3 s, moins de 20 Mio de mémoire retenue (`DataBackupLoadTest`, [PERFORMANCE.md](PERFORMANCE.md) § 4.6).
 - **Appariement des médias** (`MediaMatcher`) : les `_ID` changent d'un téléphone à l'autre. L'index
   est d'abord synchronisé avec MediaStore (`MediaSyncManager.syncNow`, attendue jusqu'au bout),
@@ -649,7 +649,18 @@ sauvegarde, chiffrée par un mot de passe, emporte les données de l'application
   la date de prise de vue ; à défaut (dossier déplacé), par nom, taille et date. Une date décalée
   d'un fuseau horaire (multiple d'un quart d'heure, moins de 24 h) compte comme égale. Un média du
   téléphone ne sert qu'une fois ; ceux qui manquent sont comptés et annoncés au bilan.
-- **Restauration** (`DataRestore`) : l'archive est d'abord vérifiée de bout en bout (mot de passe,
+- **Copie locale** (`DataBackupRepository.open`, `BackupCopies`) : le document choisi (souvent chez un
+  fournisseur en ligne, lent à relire) n'est lu qu'une fois, dès qu'il est choisi, pendant que le
+  mot de passe se tape : copié tel quel, donc toujours chiffré, dans le cache privé
+  (`cache/restore/<uuid>.focale`), son en-tête vérifié aux premiers octets (un fichier étranger ou une
+  sauvegarde du coffre est signalé aussitôt, sans être copié plus loin). Vérification (un mot de
+  passe faux se réessaie sur la copie) et restauration lisent la copie ; elle est supprimée dès
+  qu'elle ne sert plus (`StagedBackup.close`, avec `InspectedBackup` : bilan, échec, annulation,
+  résumé ou dialogue refermé, écran quitté ; une copie écartée par une annulation tardive, à la
+  copie suivante), et au démarrage celles qu'un processus arrêté aurait laissées (`AppInitializer`) ;
+  une copie en service n'est jamais supprimée. La restauration du coffre (§ 6.6) lisait déjà son
+  archive une seule fois (vérification, rechiffrement et fin authentifiée en un passage) : inchangée.
+- **Restauration** (`DataRestore`) : la copie est d'abord vérifiée de bout en bout (mot de passe,
   intégrité, fin) et résumée (date, favoris, albums, personnes, dossiers masqués ; personnes du
   téléphone qui seront remplacées) ; confirmée, elle est relue et appliquée en une seule
   transaction, validée une fois sa fin vérifiée : annulée, tronquée ou modifiée entre-temps, rien ne
@@ -710,8 +721,12 @@ les éléments n'ont pas d'URI MediaStore, ne l'est jamais, ni servi ni présent
   arrière-plan, la présentation est masquée (observateur du cycle de vie : la composition, elle,
   est suspendue) et la vidéo mise en pause ; elle reparaît au retour.
 - **TV DLNA** (variante `standard`, `BuildConfig.TV_CAST_AVAILABLE`) :
+  - réseau (`LocalNetworks`, `LinkAddresses`) : Wi-Fi ou Ethernet, même sous VPN ; l'IPv4 privée
+    du téléphone, sinon (réseau IPv6 seul) ses IPv6 locales, unique locale (fc00::/7) d'abord puis
+    de lien local, à laquelle l'interface du réseau est donnée (index de `LinkProperties.interfaceName`) ;
   - découverte (`DlnaDiscovery`) : M-SEARCH `urn:schemas-upnp-org:device:MediaRenderer:1` envoyé
-    trois fois au groupe SSDP sous verrou multicast Wi-Fi, sans `USER-AGENT`, réponses écoutées
+    trois fois au groupe SSDP sous verrou multicast Wi-Fi (239.255.255.250, ou FF02::C de lien local
+    depuis l'adresse de lien local quand le réseau n'a pas d'IPv4), sans `USER-AGENT`, réponses écoutées
     4 s (`Ssdp`), puis description de chaque appareil (`DeviceDescription` : lecteur racine ou
     imbriqué offrant AVTransport, `URLBase` ou adresse de la description, RenderingControl s'il
     existe). Automatique à l'ouverture de la visionneuse ou du diaporama, au plus une fois par
@@ -722,9 +737,18 @@ les éléments n'ont pas d'URI MediaStore, ne l'est jamais, ni servi ni présent
     (`REL_TIME`), Stop, GetTransportInfo et GetPositionInfo, SetVolume/GetVolume. Les requêtes SOAP
     et les descriptions passent par `LanHttpClient`, client HTTP/1.1 minimal sur socket brute : la
     politique de sécurité réseau n'autorise pas le trafic en clair, et ce client n'accepte que des
-    adresses privées écrites en clair (`LanAddresses` : 10/8, 172.16/12, 192.168/16, lien local,
-    IPv6 locales), sans résolution DNS, par le réseau Wi-Fi même sous VPN (`Network.socketFactory`) ;
-  - serveur local (`MediaServer`) : démarré avec la diffusion, lié à l'adresse Wi-Fi sur un port
+    adresses privées (`LanAddresses` : 10/8, 172.16/12, 192.168/16, lien local, IPv6 locales) de la
+    famille d'une adresse du téléphone, par le réseau Wi-Fi même sous VPN (`Network.socketFactory`).
+    Une TV qui annonce un nom (« bravia.local », « tv-salon ») plutôt qu'une adresse : nom bien formé
+    (RFC 1123) résolu par le système sur ce réseau (`Network.getAllByName` : DNS du réseau, mDNS des
+    noms en « .local » quand Android le fait), 3 s au plus, résultat gardé une minute par client ;
+    seule une adresse locale obtenue est contactée (IPv4 d'abord), sans seconde résolution, et un nom
+    qui ne mène qu'ailleurs est refusé comme une adresse publique. La seule donnée qui sort alors
+    est la requête DNS, adressée au résolveur du réseau Wi-Fi. Une IPv6 de lien local (écrite sans
+    zone, ou avec celle de la TV, ignorée) reçoit l'interface du réseau ;
+  - serveur local (`MediaServer`) : démarré avec la diffusion, lié à l'adresse Wi-Fi de la famille
+    de celle de la TV (`LinkAddresses.serverFor` : IPv4, unique locale ou lien local ; pour un nom,
+    l'adresse principale) sur un port
     tiré par le système, il ne sert que le média publié, sous `/<jeton>/media.<ext>` (128 bits de
     `SecureRandom`, neuf à chaque média, comparé en temps constant), GET et HEAD, une plage `Range`,
     en-têtes DLNA, 8 transferts au plus ; clients hors réseau local refusés (403) ; arrêté (socket
@@ -752,7 +776,18 @@ les éléments n'ont pas d'URI MediaStore, ne l'est jamais, ni servi ni présent
     l'écran, garde le processus actif tant qu'une TV est servie, avec la notification « Diffusion
     sur … » et « Arrêter » ; fermer Focale depuis les applications récentes arrête la diffusion. Le
     diaporama continue d'avancer sur la TV écran éteint (sa boucle présente elle-même la photo
-    suivante, la composition étant suspendue).
+    suivante, la composition étant suspendue) ;
+  - touches de volume (`TvVolumeKeys`, `TvRemoteVolume`) : dès que le volume d'une TV qui a
+    RenderingControl est connu, une session média du framework en lecture distante
+    (`MediaSession.setPlaybackToRemote`, fournisseur de volume absolu de 0 à 50, pas de 2 sur
+    l'échelle de 0 à 100 de la TV ; état « en lecture » sans aucune action, que les boutons d'un
+    casque ne commandent pas) est confiée à `MainActivity` (`Activity.setMediaController`) : le
+    système lui passe les touches de volume (et les montre sur le curseur du volume du système), qui
+    deviennent des SetVolume, regroupés comme ceux du curseur de la feuille (150 ms). Hors de Focale,
+    la session active les reçoit quand le système le permet (selon l'appareil). Le volume de la TV
+    est relu toutes les 10 s (changé à la télécommande, la touche suivante part de lui), sauf dans
+    les 3 s qui suivent une demande. Sans RenderingControl, ou la diffusion finie : plus de session,
+    les touches règlent le téléphone.
 - **Interface** : bouton « Diffuser » dans la barre de la visionneuse et du diaporama, visible
   seulement si un écran externe ou une TV est là, pendant une recherche ou une diffusion
   (`CastState.available`) ; feuille (`CastSheet`) : diffusion en cours avec « Arrêter » et volume,
@@ -875,18 +910,42 @@ application ouvre les photos et proposer de choisir Focale.
   propriété de 9 octets est ajoutée à la fin de `ipco` et associée en dernier (appliquée après
   `clap` et `imir`, marquée essentielle) ; `meta` grandit, les tailles des boîtes qui la
   contiennent et les positions `iloc` des données qui la suivent sont décalées, et le fichier
-  est recopié depuis l'original dans un fichier temporaire, relu (orientation obtenue), puis
-  remplace l'original (`operations.overwrite`, avec copie de secours). Orientation EXIF de
+  est recopié depuis l'original dans un fichier temporaire, relu (`HeifRotation.verify` :
+  orientation de chaque image tournée, longueur, traîne et morceaux de la vidéo à leur place),
+  puis remplace l'original (`operations.overwrite`, avec copie de secours). Orientation EXIF de
   l'élément `Exif` et `tiff:Orientation` du XMP (`HeifXmp`, `XmpOrientation`) mis à la valeur
-  affichée, sur place : MediaStore les lit (ExifInterface). Toute structure inattendue renonce
-  et garde le réencodage d'avant : rotation suivie d'un `clap`, élément `tmap` (gainmap ISO
-  21496-1), `irot` en double, et, pour une `meta` qui grandit, boîte de premier niveau autre que
-  `mdat`, `free`, `skip` ou `mpvd` (un `moov` pointerait dans `mdat`), données après la dernière
-  boîte, donnée `iloc` dans la boîte ou position qui ne tient plus dans son champ. Le résultat
-  est revérifié avant écriture (affichage voulu de chaque image, mêmes données aux positions
-  décalées). Les options de la barre (`PhotoRotator.options`, suspendue) lisent cet en-tête en
-  arrière-plan : « Enregistrer la rotation » attend leur réponse. Fichiers de test réels
-  (libheif / x265 et FFmpeg / libaom) produits par `tools/heif/make_fixtures.py`.
+  affichée, sur place : MediaStore les lit (ExifInterface).
+  - Ce qui suit la boîte `meta` se décale d'un seul tenant : `mdat`, `free`, `skip`, `mpvd`
+    (vidéo d'une photo animée Samsung, fichier MP4 complet aux positions relatives) ; traîne
+    Samsung (`SamsungTrailer` : blocs « Image_UTC_Data », « MCC_Data », « MotionPhoto_Data »…,
+    répertoire `SEFH`, longueur et `SEFT` à la fin, chaque bloc désigné par sa distance avant le
+    répertoire), reconnue seulement si chaque entrée désigne un bloc de la traîne qui commence par
+    le même type et si les boîtes finissent exactement où elle commence ; `moov` d'une photo
+    animée ou d'une séquence d'images (`MovieChunks`), gardée telle quelle (vidéo ni réencodée ni
+    tournée) sauf ses positions `stco` / `co64` des morceaux rangés après `meta`, décalées comme
+    celles de `iloc` ; chaque morceau doit tomber dans un `mdat` du fichier, chaque référence de
+    données être dans le fichier (`dref` autonome), et rien dans `moov` ne doit désigner de position
+    absolue que le décalage ne suivrait pas (`saio`, `iloc`) ni annoncer de fragments (`mvex`, `moof`).
+  - Carte de gain ISO 21496-1 (`tmap`, HDR des iPhone sous iOS 18 et d'Android 16) : l'image
+    `tmap` (dérivée de l'image principale et de l'image de gain, `dimg`), que les lecteurs HDR
+    montrent à la place de l'image principale (groupe `altr`), tourne avec elle (ou, si l'image
+    `tmap` est l'image principale, son image de base) ; l'image de gain aussi quand elle porte la
+    même orientation que l'image de base (elle doit lui rester superposée), et reste telle quelle
+    quand elle n'en porte aucune (orientation portée par l'image dérivée, comme l'écrit libavif).
+  - Toute structure inattendue renonce et garde le réencodage d'avant : rotation suivie d'un
+    `clap`, `irot` en double, `tmap` sans ses deux images, dérivée d'une autre image ou dont
+    l'image de gain est orientée autrement que l'image de base, et, pour une `meta` qui grandit,
+    boîte de premier niveau autre que celles ci-dessus, seconde `ftyp` (fichier ajouté à la suite,
+    aux positions relatives à son début), deux `moov`, données après la dernière boîte qui ne sont
+    pas une traîne Samsung reconnue, donnée `iloc` dans la boîte ou position qui ne tient plus
+    dans son champ. Le résultat est revérifié avant écriture (affichage voulu de chaque image,
+    mêmes données aux positions décalées). Les options de la barre (`PhotoRotator.options`,
+    suspendue) lisent cet en-tête en arrière-plan : « Enregistrer la rotation » attend leur
+    réponse. Fichiers de test réels (libheif / x265 et FFmpeg / libaom, libx265) produits par
+    `tools/heif/make_fixtures.py`, dont les structures des Galaxy (traîne avec la vidéo de la
+    photo animée), d'une photo animée à `moov` et des cartes de gain des iPhone, reproduites
+    autour d'un HEIC de libheif ; chaque fichier tourné se relit avec libheif (orientation de
+    l'image) et FFmpeg (mêmes images de la vidéo).
 - Autres formats (PNG, dont Android ignore l'orientation EXIF ; HEIF et AVIF à la structure
   inattendue) : rendu de l'éditeur, en copie ou à la place (jamais un JPEG à la place d'un
   HEIF). Clé mémoire Coil des images pleine taille liée à `date_modified`.
@@ -1073,9 +1132,13 @@ application ouvre les photos et proposer de choisir Focale.
   l'export pleine résolution ont la même mise en page.
 - Flou (`BlurRegion`, `BlurController`, `BlurOverlay`, `BlurPanel`) : rectangle ou ellipse du
   point de départ au doigt, ou trait de pinceau (épaisseur en dp à l'écran convertie en
-  fraction de l'image) ; un appui sélectionne une zone, un glisser parti de la zone
-  sélectionnée la déplace (une zone nouvelle n'est pas sélectionnée : un second trait peut
-  partir d'elle) ; style « Flou » ou « Pixels » et intensité pour la zone sélectionnée et les
+  fraction de l'image) ; un appui sélectionne une zone ; avec le rectangle et l'ellipse, un glisser
+  parti de la zone sélectionnée la déplace (une zone nouvelle n'est pas sélectionnée : un second
+  trait peut partir d'elle), alors qu'avec le pinceau un glisser peint toujours, même depuis la zone
+  sélectionnée. Avec tous les outils, un appui long sur une zone (doigt immobile jusqu'au délai du
+  système, retour haptique, comme l'échange des photos d'un collage) la sélectionne, et le glisser
+  qui suit la déplace, en une étape d'historique (aucune si le doigt ne bouge pas) ; style « Flou »
+  ou « Pixels » et intensité pour la zone sélectionnée et les
   suivantes. Les zones sont attachées à la photo (`BlurArea` : repère du cadre avant
   redressement, inclinaison propre) : contrairement aux traits, elles pivotent avec le
   redressement, et ce qu'elles cachent reste caché à tout angle ; un cadre tracé sur une photo
@@ -1159,6 +1222,17 @@ application ouvre les photos et proposer de choisir Focale.
   (`ImageOrientation`, quarts de tour et miroirs ; ignorée pour PNG, GIF et BMP, comme Android), repli
   sur `ImageDecoder` réduit à 16 Mpx pour les autres formats. Aperçus de 1 280 px (960 au-delà de
   quatre photos), deux décodés à la fois : le cadrage réglé à l'écran est celui du collage enregistré.
+- Détail des cases agrandies (`CollageDetail`, `CollageRenderer.detail`, `CollageMaker.loadDetail`) :
+  une case dont l'aperçu est étiré à plus de 1,25 pixel de l'écran par pixel demande le détail de sa
+  partie visible, plus un quart de marge de chaque côté (un petit glisser reste net), à la résolution
+  de l'écran. Mémoire bornée : 4 Mpx (16 Mo, une bande de l'export) pour toutes les cases, partagés
+  selon leur surface ; jamais plus fin que la photo ; lecture réduite par le plus grand facteur qui
+  garde un pixel décodé par pixel du détail, 4 Mpx décodés au plus (plutôt un peu moins fin). Demandé
+  à chaque changement de cadrage, décodé hors du fil principal 300 ms après le dernier (un geste en
+  cours ne décode rien), case par case ; posé sur l'aperçu à la zone qu'il couvre vraiment (bornes
+  arrondies au pixel stocké), il suit le glisser jusqu'au détail suivant, et disparaît quand la case
+  revient à son aperçu. Formats sans décodeur de zones : l'aperçu seul (il faudrait décoder la photo
+  entière).
 - Export : JPEG qualité 95, 4 096 px sur le grand côté (4 096 × 4 096, 3 277 × 4 096, 3 072 × 4 096,
   2 304 × 4 096, 4 096 × 2 304). Pour chaque case, seule la zone stockée visible (plus 3 pixels décodés
   de marge pour le filtrage) est lue, réduite par la plus grande puissance de 2 qui garde au moins un

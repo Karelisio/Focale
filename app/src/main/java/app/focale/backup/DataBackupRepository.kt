@@ -1,6 +1,7 @@
 package app.focale.backup
 
 import android.content.ContentResolver
+import android.content.Context
 import android.database.sqlite.SQLiteFullException
 import android.net.Uri
 import android.util.Log
@@ -17,6 +18,8 @@ import app.focale.core.settings.SettingsRepository
 import app.focale.people.FaceAnalysisStep
 import app.focale.people.PeopleEditions
 import app.focale.people.PeopleRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
 import javax.inject.Inject
@@ -25,6 +28,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
@@ -41,8 +45,10 @@ import kotlinx.coroutines.withContext
  * enregistrement qui désigne ce que la lecture n'a pas vu (média, album ou personne ajouté
  * entre-temps) est laissé de côté ou détaché, si bien que la sauvegarde reste cohérente.
  *
- * Restauration, en deux temps. [inspect] vérifie l'archive de bout en bout (mot de passe,
- * intégrité, fin) et en tire le résumé. [restore] synchronise d'abord l'index avec MediaStore,
+ * Restauration, en deux temps, depuis une copie locale : [open] copie une seule fois le document
+ * choisi, tel quel (chiffré), dans le cache privé ([BackupCopies]), en vérifiant son en-tête dès les
+ * premiers octets ; un fournisseur en ligne n'est ainsi lu qu'une fois. [inspect] vérifie la copie de
+ * bout en bout (mot de passe, intégrité, fin) et en tire le résumé. [restore] synchronise d'abord l'index avec MediaStore,
  * apparie les médias de la sauvegarde à ceux du téléphone ([MediaMatcher]), puis applique tout en
  * une seule transaction, validée seulement une fois l'archive relue jusqu'à sa fin : favoris
  * (réunion), albums (réunis par nom, membres ajoutés), dates d'origine, historique ; personnes
@@ -68,9 +74,12 @@ class DataBackupRepository internal constructor(
     private val iterations: Int,
     private val appVersion: String,
     private val clock: () -> Long,
+    /** Dossier des copies locales des sauvegardes à restaurer ([BackupCopies]). */
+    private val copies: File,
 ) {
     @Inject
     constructor(
+        @ApplicationContext context: Context,
         resolver: ContentResolver,
         database: FocaleDatabase,
         settings: SettingsRepository,
@@ -80,7 +89,7 @@ class DataBackupRepository internal constructor(
         @IoDispatcher io: CoroutineDispatcher,
     ) : this(
         resolver, database, settings, editions, source::datesTaken, { sync.syncNow() }, io,
-        PasswordArchive.DEFAULT_ITERATIONS, BuildConfig.VERSION_NAME, System::currentTimeMillis,
+        PasswordArchive.DEFAULT_ITERATIONS, BuildConfig.VERSION_NAME, System::currentTimeMillis, BackupCopies.directory(context),
     )
 
     private val dao: BackupDao get() = database.backupDao()
@@ -303,19 +312,83 @@ class DataBackupRepository internal constructor(
         return counts
     }
 
+    // ── Copie locale ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Copie la sauvegarde [source] dans le cache privé, telle quelle (chiffrée), en une seule lecture
+     * du document : vérification et restauration liront la copie. L'en-tête est vérifié au passage,
+     * dès ses premiers octets : un fichier qui n'est pas une sauvegarde des données (ou celle du
+     * coffre) n'est pas copié plus loin. Sans copie rendue (refus, échec, annulation), rien ne reste.
+     *
+     * @param cancelled consulté à chaque lecture : vrai pour abandonner.
+     */
+    suspend fun open(source: Uri, cancelled: () -> Boolean = { false }): DataOpenResult {
+        val staged = BackupCopies.create(copies)
+        // Copie rendue à l'appelant, ou supprimée : même un résultat écarté par une annulation tardive.
+        var delivered = false
+        try {
+            val result = withContext(io) { copy(source, staged, cancelled) }
+            delivered = result is DataOpenResult.Ready
+            return result
+        } finally {
+            if (!delivered) staged.close()
+        }
+    }
+
+    private suspend fun copy(source: Uri, staged: BackupCopies.StagedFile, cancelled: () -> Boolean): DataOpenResult = try {
+        val job = currentCoroutineContext().job
+        val document = resolver.openInputStream(source) ?: throw FileNotFoundException("Lecture impossible : $source")
+        document.use { input ->
+            staged.file.outputStream().buffered(BUFFER).use { output ->
+                val copying = CopyingInput(input, output) {
+                    if (cancelled()) throw CancelledByUser()
+                    job.ensureActive()
+                }
+                // En-tête vérifié aux premiers octets, puis le reste recopié tel quel.
+                DataArchive.open(copying)
+                copying.drain()
+            }
+        }
+        DataOpenResult.Ready(StagedBackup(source, staged))
+    } catch (error: BackupArchiveException) {
+        DataOpenResult.Failed(failureOf(error) ?: DataBackupFailure.CORRUPTED)
+    } catch (error: CancelledByUser) {
+        DataOpenResult.Cancelled
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        Log.w(TAG, "Sauvegarde illisible", error)
+        DataOpenResult.Failed(if (BackupDocuments.isNoSpace(error)) DataBackupFailure.NO_SPACE else DataBackupFailure.UNREADABLE)
+    }
+
     // ── Vérification ─────────────────────────────────────────────────────────────────
 
     /**
-     * Vérifie l'archive [source] de bout en bout avec [password] (effacé) et en tire le résumé ;
-     * rien n'est modifié. La sauvegarde vérifiée se restaure ensuite sans redemander le mot de passe.
+     * Copie la sauvegarde [source] ([open]) puis la vérifie ([inspect]) ; sans sauvegarde prête à
+     * restaurer, la copie est supprimée aussitôt. [password] est effacé.
+     */
+    suspend fun inspect(source: Uri, password: CharArray, cancelled: () -> Boolean = { false }): DataInspectResult =
+        when (val opened = open(source, cancelled)) {
+            is DataOpenResult.Ready -> inspect(opened.backup, password, cancelled).also { result ->
+                if (result !is DataInspectResult.Ready) opened.backup.close()
+            }
+            is DataOpenResult.Failed -> DataInspectResult.Failed(opened.reason).also { password.fill('\u0000') }
+            DataOpenResult.Cancelled -> DataInspectResult.Cancelled.also { password.fill('\u0000') }
+        }
+
+    /**
+     * Vérifie la copie [backup] de bout en bout avec [password] (effacé) et en tire le résumé ; rien
+     * n'est modifié. La sauvegarde vérifiée ([DataInspectResult.Ready], à qui revient la copie) se
+     * restaure ensuite sans redemander le mot de passe ; un mot de passe faux laisse la copie pour
+     * un nouvel essai.
      *
      * @param cancelled consulté entre deux enregistrements : vrai pour abandonner.
      */
-    suspend fun inspect(source: Uri, password: CharArray, cancelled: () -> Boolean = { false }): DataInspectResult = try {
+    suspend fun inspect(backup: StagedBackup, password: CharArray, cancelled: () -> Boolean = { false }): DataInspectResult = try {
         mutex.withLock {
             withContext(io) {
                 val job = coroutineContext.job
-                read(source) { archive ->
+                read(backup.file) { archive ->
                     val keys = try {
                         archive.keysFor(password)
                     } finally {
@@ -323,7 +396,7 @@ class DataBackupRepository internal constructor(
                     }
                     try {
                         val summary = DataArchive.read(archive, keys).use { reader -> summarize(reader, Progress(0, cancelled, job, {})) }
-                        DataInspectResult.Ready(InspectedBackup(source, summary, keys))
+                        DataInspectResult.Ready(InspectedBackup(backup, summary, keys))
                     } catch (error: Throwable) {
                         keys.close()
                         throw error
@@ -412,7 +485,7 @@ class DataBackupRepository internal constructor(
                 // Photos tout juste copiées : l'index doit les connaître avant l'appariement.
                 if (categories.any { it.needsMedia } || DataCategory.HIDDEN_FOLDERS in categories) syncMedia()
                 val progress = Progress(backup.summary.records, cancelled, coroutineContext.job, onProgress)
-                val applied = read(backup.source) { archive ->
+                val applied = read(backup.copy.file) { archive ->
                     DataArchive.read(archive, backup.keys).use { reader ->
                         // Ni l'analyse des visages ni l'utilisateur n'écrivent pendant le remplacement.
                         editions.writes.withLock {
@@ -460,26 +533,27 @@ class DataBackupRepository internal constructor(
         return DataRestoreResult.Success(applied.report.copy(hiddenFolders = hidden, settings = settingsRestored))
     }
 
+    /** Raison d'un refus de l'archive ; null : mot de passe incorrect. */
+    private fun failureOf(error: BackupArchiveException): DataBackupFailure? = when (error.reason) {
+        Reason.WRONG_PASSWORD -> null
+        Reason.NOT_AN_ARCHIVE -> DataBackupFailure.NOT_AN_ARCHIVE
+        Reason.OTHER_BACKUP -> DataBackupFailure.VAULT_BACKUP
+        Reason.UNSUPPORTED -> DataBackupFailure.UNSUPPORTED
+        Reason.CORRUPTED -> {
+            Log.w(TAG, "Sauvegarde refusée", error)
+            DataBackupFailure.CORRUPTED
+        }
+    }
+
     /**
-     * Ouvre l'archive [source], vérifie qu'elle est une sauvegarde des données et la passe à
-     * [block] ; les refus deviennent des [Failure], une erreur de lecture [DataBackupFailure.UNREADABLE].
+     * Ouvre la copie locale [file], vérifie qu'elle est une sauvegarde des données et la passe à
+     * [block] ; les refus deviennent des [Failure], une erreur de lecture [DataBackupFailure.UNREADABLE]
+     * (copie disparue : cache vidé par le système).
      */
-    private suspend fun <T> read(source: Uri, block: suspend (SealedArchive) -> T): T = try {
-        val input = resolver.openInputStream(source) ?: throw FileNotFoundException("Lecture impossible : $source")
-        input.buffered(BUFFER).use { block(DataArchive.open(it)) }
+    private suspend fun <T> read(file: File, block: suspend (SealedArchive) -> T): T = try {
+        file.inputStream().buffered(BUFFER).use { block(DataArchive.open(it)) }
     } catch (error: BackupArchiveException) {
-        throw Failure(
-            when (error.reason) {
-                Reason.WRONG_PASSWORD -> null
-                Reason.NOT_AN_ARCHIVE -> DataBackupFailure.NOT_AN_ARCHIVE
-                Reason.OTHER_BACKUP -> DataBackupFailure.VAULT_BACKUP
-                Reason.UNSUPPORTED -> DataBackupFailure.UNSUPPORTED
-                Reason.CORRUPTED -> {
-                    Log.w(TAG, "Sauvegarde refusée", error)
-                    DataBackupFailure.CORRUPTED
-                }
-            },
-        )
+        throw Failure(failureOf(error))
     } catch (error: CancelledByUser) {
         throw error
     } catch (error: CancellationException) {
