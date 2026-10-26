@@ -16,9 +16,51 @@ import android.os.Build
 import android.util.Log
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withClip
+import androidx.exifinterface.media.ExifInterface
 import java.io.InputStream
 import kotlin.math.ceil
 import kotlin.math.floor
+
+/**
+ * Octets d'une photo, relus depuis le début à chaque [open] : URI de la galerie ou d'une autre
+ * application ([UriPhotoStreams]), ou fichier du coffre déchiffré à la volée, en mémoire.
+ */
+internal interface PhotoStreams {
+
+    /** Flux de la photo depuis son début, null s'il n'est pas lisible. */
+    fun open(): InputStream?
+
+    /** Source d'[ImageDecoder] de la photo (orientation EXIF appliquée au décodage). */
+    fun decoderSource(): ImageDecoder.Source
+}
+
+/** Photo désignée par une URI du résolveur de contenu. */
+internal class UriPhotoStreams(private val resolver: ContentResolver, private val uri: Uri) : PhotoStreams {
+    override fun open(): InputStream? = resolver.openInputStream(uri)
+
+    override fun decoderSource(): ImageDecoder.Source = ImageDecoder.createSource(resolver, uri)
+}
+
+/** En-tête d'une photo hors de l'index (autre application, coffre) : dimensions et orientation. */
+internal object PhotoHeader {
+
+    /** Dimensions affichées (orientation EXIF appliquée), null si l'en-tête n'est pas lisible. */
+    fun displaySize(streams: PhotoStreams): Pair<Int, Int>? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        val stream = streams.open() ?: return null
+        // Dimensions seulement : aucun pixel décodé.
+        stream.use { BitmapFactory.decodeStream(it, null, options) }
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+        return if (orientation(streams) % 180 == 0) options.outWidth to options.outHeight else options.outHeight to options.outWidth
+    }
+
+    /** Rotation EXIF (0, 90, 180 ou 270 degrés), 0 si elle n'est pas lisible. */
+    fun orientation(streams: PhotoStreams): Int = try {
+        streams.open()?.use { ExifInterface(it).rotationDegrees } ?: 0
+    } catch (error: Exception) {
+        0
+    }
+}
 
 /**
  * Décodage d'une photo 360° en texture : réduite aux puissances de deux de [SphereTextureSize],
@@ -26,8 +68,9 @@ import kotlin.math.floor
  *
  * La photo est lue par bandes ([BitmapRegionDecoder], sous-échantillonnées autant que possible)
  * redimensionnées une à une dans la texture : seule une bande de l'original est en mémoire à la
- * fois, même pour une sphère de 70 Mpx. Une photo tournée par son orientation EXIF, ou que ce
- * décodeur ne lit pas, passe par [ImageDecoder] (orientation appliquée).
+ * fois, même pour une sphère de 70 Mpx (d'un flux qui n'est pas un fichier, le décodeur garde en
+ * mémoire l'image compressée). Une photo tournée par son orientation EXIF, ou que ce décodeur ne
+ * lit pas, passe par [ImageDecoder] (orientation appliquée).
  */
 internal object SphereTexture {
 
@@ -45,10 +88,14 @@ internal object SphereTexture {
         return SphereTextureSize.pixelBudget(if (manager.isLowRamDevice) 0 else info.totalMem)
     }
 
-    /** Bloquant : texture de la photo [uri], ou null si elle est illisible. */
-    fun decode(resolver: ContentResolver, uri: Uri, orientation: Int, maxTextureSize: Int, maxPixels: Long): Bitmap? = try {
-        (if (orientation % 360 == 0) decodeBands(resolver, uri, maxTextureSize, maxPixels) else null)
-            ?: decodeWhole(resolver, uri, maxTextureSize, maxPixels)
+    /**
+     * Bloquant : texture de la photo [streams], ou null si elle est illisible. [orientation] :
+     * rotation EXIF connue (galerie), sinon lue dans l'en-tête.
+     */
+    fun decode(streams: PhotoStreams, orientation: Int?, maxTextureSize: Int, maxPixels: Long): Bitmap? = try {
+        val rotation = orientation ?: PhotoHeader.orientation(streams)
+        (if (rotation % 360 == 0) decodeBands(streams, maxTextureSize, maxPixels) else null)
+            ?: decodeWhole(streams, maxTextureSize, maxPixels)
     } catch (error: OutOfMemoryError) {
         Log.w(TAG, "Mémoire insuffisante", error)
         null
@@ -58,8 +105,8 @@ internal object SphereTexture {
     }
 
     /** Lecture par bandes ; null si ce décodeur ne lit pas la photo. */
-    internal fun decodeBands(resolver: ContentResolver, uri: Uri, maxTextureSize: Int, maxPixels: Long): Bitmap? {
-        val decoder = resolver.openInputStream(uri)?.use(::regionDecoder) ?: return null
+    internal fun decodeBands(streams: PhotoStreams, maxTextureSize: Int, maxPixels: Long): Bitmap? {
+        val decoder = streams.open()?.use(::regionDecoder) ?: return null
         try {
             val width = decoder.width
             val height = decoder.height
@@ -116,9 +163,8 @@ internal object SphereTexture {
     }.getOrNull()
 
     /** Photo entière, orientation EXIF appliquée, redimensionnée en une fois. */
-    private fun decodeWhole(resolver: ContentResolver, uri: Uri, maxTextureSize: Int, maxPixels: Long): Bitmap {
-        val source = ImageDecoder.createSource(resolver, uri)
-        return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+    private fun decodeWhole(streams: PhotoStreams, maxTextureSize: Int, maxPixels: Long): Bitmap {
+        return ImageDecoder.decodeBitmap(streams.decoderSource()) { decoder, info, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             decoder.isMutableRequired = false
             val (width, height) = SphereTextureSize.choose(info.size.width, info.size.height, maxTextureSize, maxPixels)

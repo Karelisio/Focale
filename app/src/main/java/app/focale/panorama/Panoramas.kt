@@ -6,6 +6,7 @@ import android.util.Log
 import android.util.LruCache
 import app.focale.core.di.IoDispatcher
 import app.focale.core.model.MediaItem
+import app.focale.data.ExternalMedia
 import app.focale.data.readAt
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,6 +41,20 @@ object Panoramas {
         return PanoramaRules.classify(item.id, gpano, item.displayWidth, item.displayHeight)
     }
 
+    /**
+     * Bloquant : vue d'une photo hors de l'index (autre application, coffre), de type [mimeType] :
+     * GPano lu dans l'en-tête par [read] ([length] octets à [offset], null au-delà de la fin),
+     * dimensions et orientation dans celui de [streams]. Rien n'est gardé en mémoire : la
+     * visionneuse garde le résultat.
+     */
+    internal fun detect(mediaId: Long, mimeType: String, streams: PhotoStreams, read: (offset: Long, length: Int) -> ByteArray?): Panorama? {
+        val type = mimeType.lowercase()
+        if (!type.startsWith("image/") || type == "image/gif") return null
+        val gpano = if (type in headerTypes) PanoramaHeaders.gpano(read) else null
+        val (width, height) = PhotoHeader.displaySize(streams) ?: return null
+        return PanoramaRules.classify(mediaId, gpano, width, height)
+    }
+
     private fun gpano(resolver: ContentResolver, item: MediaItem): GPano? {
         val key = "${item.id}:${item.dateModified}"
         cache.get(key)?.let { return it.gpano }
@@ -62,7 +77,8 @@ object Panoramas {
 
 /**
  * Accès aux panoramas pour les ViewModels (lecture sur le dispatcher d'entrées/sorties) : photos
- * panoramiques et 360° ([Panoramas]), vidéos 360° ([SphericalVideos]).
+ * panoramiques et 360° ([Panoramas]), vidéos 360° ([SphericalVideos]), de la galerie ou ouvertes
+ * depuis une autre application.
  */
 @Singleton
 class PanoramaRepository @Inject constructor(
@@ -73,5 +89,32 @@ class PanoramaRepository @Inject constructor(
         SphericalVideos.isCandidate(item) -> withContext(io) { SphericalVideos.detect(resolver, item) }
         Panoramas.isCandidate(item) -> withContext(io) { Panoramas.detect(resolver, item) }
         else -> null
+    }
+
+    /**
+     * Vue d'un fichier reçu d'une autre application, hors de l'index : en-têtes lus par accès
+     * aléatoire à son descripteur de fichier ; un fournisseur qui n'en donne pas, ou refuse la
+     * lecture, ne propose rien.
+     */
+    suspend fun find(media: ExternalMedia): Panorama? = withContext(io) {
+        try {
+            if (media.isVideo) {
+                if (SphericalVideos.isCandidate(media.mimeType)) SphericalVideoRules.classify(ExternalMedia.ID, SphericalVideos.read(resolver, media.uri)) else null
+            } else {
+                resolver.openFileDescriptor(media.uri, "r")?.let { descriptor ->
+                    ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { stream ->
+                        val channel = stream.channel
+                        Panoramas.detect(ExternalMedia.ID, media.mimeType, UriPhotoStreams(resolver, media.uri)) { offset, length -> channel.readAt(offset, length) }
+                    }
+                }
+            }
+        } catch (error: Exception) {
+            Log.d(TAG, "Lecture impossible : ${media.displayName}", error)
+            null
+        }
+    }
+
+    private companion object {
+        const val TAG = "PanoramaRepository"
     }
 }

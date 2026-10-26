@@ -47,17 +47,20 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import app.focale.MainActivity
 import app.focale.R
 import app.focale.core.settings.AppSettings
 import app.focale.core.util.Formatters
 import app.focale.data.ExternalMedia
+import app.focale.panorama.Panorama
 import app.focale.ui.navigation.LocalRootNavController
 import app.focale.ui.navigation.openFromOtherApp
 import app.focale.ui.theme.PhotoTheme
@@ -76,12 +79,14 @@ import androidx.media3.common.MediaItem as ExoMediaItem
 /**
  * Photo ou vidéo ouverte depuis une autre application. Un média de l'index rejoint la visionneuse de
  * la galerie, parmi les médias de son dossier ; un autre fichier (messagerie, téléchargements…)
- * s'affiche seul : zoom ou lecture, partage et « Ouvrir avec », sans les actions de la galerie.
+ * s'affiche seul : zoom ou lecture, vue 360° ou panoramique, partage et « Ouvrir avec », sans les
+ * actions de la galerie.
  */
 @Composable
 fun ExternalMediaScreen(onBack: () -> Unit, viewModel: ExternalMediaViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val panorama by viewModel.panorama.collectAsStateWithLifecycle()
     val rootNav = LocalRootNavController.current
     val context = LocalContext.current
     LaunchedEffect(viewModel) {
@@ -92,6 +97,7 @@ fun ExternalMediaScreen(onBack: () -> Unit, viewModel: ExternalMediaViewModel = 
             is ExternalMediaState.Standalone -> StandaloneViewer(
                 media = current.media,
                 settings = settings,
+                panorama = panorama,
                 onBack = onBack,
                 onShare = viewModel::share,
                 onOpenWith = { openWith(context, current.media) },
@@ -124,25 +130,36 @@ private fun ResolvingPreview(uri: Uri) {
     }
 }
 
-/** Visionneuse d'un fichier hors index : glisser vers le bas pour fermer, habillage au toucher. */
+/**
+ * Visionneuse d'un fichier hors index : glisser vers le bas pour fermer, habillage au toucher.
+ * Photo 360° ou panorama ([panorama]) : bouton au-dessus de la barre d'outils, puis vue plein écran
+ * par-dessus la photo ; vidéo 360° : au-dessus de ses commandes, puis vue immersive où le même
+ * lecteur dessine, comme dans la visionneuse de la galerie. [playerFactory] : lecteur de la vidéo.
+ */
 @Composable
-private fun StandaloneViewer(
+internal fun StandaloneViewer(
     media: ExternalMedia,
     settings: AppSettings,
+    panorama: Panorama?,
     onBack: () -> Unit,
     onShare: () -> Unit,
     onOpenWith: () -> Unit,
+    playerFactory: (Context) -> Player = ::galleryPlayer,
 ) {
     var chromeVisible by rememberSaveable { mutableStateOf(true) }
     // Vitesse de la vidéo, gardée après une rotation, 1× à chaque ouverture.
     var videoSpeed by rememberVideoSpeed()
     var zoomed by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    // Vue 360° ou panoramique ouverte, gardée à la recréation de l'activité.
+    var panoramaOpen by rememberSaveable { mutableStateOf(false) }
+    val immersive = panorama?.takeIf { panoramaOpen }
     // Largeur de la barre d'outils : la progression d'une vidéo s'aligne dessus.
     var toolbarWidth by remember { mutableStateOf(Dp.Unspecified) }
     val density = LocalDensity.current
     val flickState = rememberFlickToDismissState(dismissThresholdRatio = 0.15f, rotateOnDrag = false)
     val toggleChrome = { chromeVisible = !chromeVisible }
+    val closePanorama = { panoramaOpen = false }
 
     ImmersiveSystemBars(visible = chromeVisible)
     if (flickState.gestureState is FlickToDismissState.GestureState.Dismissing) {
@@ -155,8 +172,14 @@ private fun StandaloneViewer(
             .fillMaxSize()
             .background(background.copy(alpha = (1f - flickState.offsetFraction * 1.5f).coerceIn(0f, 1f))),
     ) {
-        FlickToDismiss(state = flickState, enabled = !zoomed) {
+        // Sous une vue panoramique ouverte, la photo reste en place mais sort de TalkBack.
+        FlickToDismiss(
+            state = flickState,
+            enabled = !zoomed && immersive == null,
+            modifier = if (immersive != null && !media.isVideo) Modifier.clearAndSetSemantics {} else Modifier,
+        ) {
             if (media.isVideo) {
+                val sphereVideo = rememberSphereVideo(media.uri, immersive, chromeVisible, closePanorama)
                 VideoPlayerPage(
                     key = media.uri,
                     isCurrent = true,
@@ -170,6 +193,9 @@ private fun StandaloneViewer(
                     poster = { ExternalPreview(media.uri) },
                     controlsWidth = toolbarWidth,
                     contentDescription = media.displayName,
+                    playerFactory = playerFactory,
+                    frame = sphereVideo?.frame,
+                    overlay = sphereVideo?.overlay ?: {},
                 )
             } else {
                 ExternalPhoto(media = media, onTap = toggleChrome, onZoomChanged = { zoomed = it }, onError = { failed = true })
@@ -187,7 +213,7 @@ private fun StandaloneViewer(
             )
         }
         AnimatedVisibility(
-            visible = chromeVisible,
+            visible = chromeVisible && immersive == null,
             enter = fadeIn() + slideInVertically { -it / 2 },
             exit = fadeOut() + slideOutVertically { -it / 2 },
             modifier = Modifier.align(Alignment.TopCenter),
@@ -197,7 +223,7 @@ private fun StandaloneViewer(
         // Un chemin `file://` ne se transmet pas : ni partage, ni « Ouvrir avec ».
         if (media.canHandOver) {
             AnimatedVisibility(
-                visible = chromeVisible,
+                visible = chromeVisible && immersive == null,
                 enter = fadeIn() + slideInVertically { it / 2 },
                 exit = fadeOut() + slideOutVertically { it / 2 },
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -208,6 +234,31 @@ private fun StandaloneViewer(
                     modifier = Modifier.onSizeChanged { toolbarWidth = with(density) { it.width.toDp() } },
                 )
             }
+        }
+        AnimatedVisibility(
+            visible = chromeVisible && panorama != null && immersive == null,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            if (panorama != null) {
+                PanoramaButton(
+                    kind = panorama.kind,
+                    onClick = { panoramaOpen = true },
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(bottom = ViewerChromeMetrics.panoramaButtonBottom(video = media.isVideo)),
+                )
+            }
+        }
+        if (immersive != null && !media.isVideo) {
+            PanoramaOverlay(
+                photo = remember(media.uri) { UriPanoramaPhoto(media.uri, media.displayName, previewKey(media.uri)) },
+                panorama = immersive,
+                chromeVisible = chromeVisible,
+                onToggleChrome = toggleChrome,
+                onClose = closePanorama,
+            )
         }
     }
 }

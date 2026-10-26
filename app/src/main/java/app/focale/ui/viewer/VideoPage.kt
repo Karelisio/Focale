@@ -2,7 +2,6 @@ package app.focale.ui.viewer
 
 import android.content.Context
 import android.os.SystemClock
-import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -53,7 +52,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -157,11 +155,7 @@ fun VideoPage(
     val shown = VideoCast.of(cast, item)
     val tv = shown as? VideoCast.Tv
     val immersive = sphere?.takeIf { shown == null && isCurrent && it.mediaId == item.id }
-    // « Bouger le téléphone » et cap de la vue, gardés à la recréation de l'activité.
-    var motion by rememberSaveable(item.id) { mutableStateOf(false) }
-    var resets by remember(item.id) { mutableIntStateOf(0) }
-    val camera = if (immersive != null) rememberSaveable(immersive, saver = sphereCameraSaver(immersive)) { immersive.camera() } else null
-    if (immersive != null) BackHandler(onBack = onCloseSphere)
+    val sphereVideo = rememberSphereVideo(item.id, immersive, controlsVisible, onCloseSphere)
     VideoPlayerPage(
         key = item.id,
         isCurrent = isCurrent,
@@ -183,28 +177,14 @@ fun VideoPage(
         // La TV continue quand Focale passe en arrière-plan (service au premier plan).
         pauseInBackground = tv == null,
         onPlayerChanged = onPlayer,
-        frame = if (immersive != null && camera != null) {
-            { player -> SphereVideoFrame(player, immersive, camera, motion, resets) }
-        } else {
-            null
-        },
-        overlay = {
-            if (immersive != null) {
-                SphereVideoChrome(
-                    visible = controlsVisible,
-                    motion = motion,
-                    onMotionChange = { motion = it },
-                    onReset = { resets++ },
-                    onClose = onCloseSphere,
-                )
-            }
-        },
+        frame = sphereVideo?.frame,
+        overlay = sphereVideo?.overlay ?: {},
     )
 }
 
 /** Lecteur des vidéos de la galerie : aucune donnée de diagnostic transmise à la plateforme. */
 @OptIn(UnstableApi::class)
-private fun galleryPlayer(context: Context): Player = ExoPlayer.Builder(context).setUsePlatformDiagnostics(false).build()
+internal fun galleryPlayer(context: Context): Player = ExoPlayer.Builder(context).setUsePlatformDiagnostics(false).build()
 
 /**
  * Page vidéo générique. Le lecteur n'est créé que pour la page courante et libéré dès

@@ -438,7 +438,7 @@ private fun ViewerContent(viewModel: ViewerViewModel, onBack: () -> Unit) {
         }
         if (photoPanorama != null && item != null) {
             PanoramaOverlay(
-                item = item,
+                photo = remember(item) { GalleryPanoramaPhoto(item) },
                 panorama = photoPanorama,
                 chromeVisible = chromeVisible,
                 onToggleChrome = { chromeVisible = !chromeVisible },

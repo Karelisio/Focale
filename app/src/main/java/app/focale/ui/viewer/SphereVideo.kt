@@ -1,6 +1,7 @@
 package app.focale.ui.viewer
 
 import android.opengl.GLSurfaceView
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -11,8 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,15 +39,52 @@ import app.focale.panorama.Panorama
 import app.focale.panorama.SphereCamera
 import app.focale.panorama.VideoSphereRenderer
 import app.focale.panorama.VideoTarget
+import app.focale.panorama.sphereMesh
 import app.focale.ui.theme.ViewerChromeTheme
 
 /**
- * Vue 360° d'une vidéo de la visionneuse, dans sa page ([VideoPage]) : le lecteur de la page
- * dessine dans la sphère ([VideoSphereRenderer]) au lieu de son cadre habituel, sans rien perdre
- * de sa lecture (position, vitesse, son) ; ses commandes restent celles de toutes les vidéos.
- * Glisser pour regarder autour, pincer pour le champ ; « Bouger le téléphone » suit le capteur de
- * rotation ([motion]), comme pour une photo 360° ; chaque nouvelle valeur de [resets] (« Vue
- * initiale ») ramène la vue au cap du fichier.
+ * Vue 360° d'une page vidéo ([VideoPlayerPage]) ouverte : cadre où le lecteur dessine ([frame]) et
+ * habillage par-dessus ses commandes ([overlay]), à passer à la page ; voir [rememberSphereVideo].
+ */
+internal class SphereVideoSlots(
+    val frame: @Composable (Player) -> Unit,
+    val overlay: @Composable BoxScope.() -> Unit,
+)
+
+/**
+ * Vue 360° de la vidéo [key] d'une visionneuse (galerie, autre application, coffre), tant que
+ * [sphere] n'est pas null : « Bouger le téléphone » et cap de la vue gardés à la recréation de
+ * l'activité, retour ([onClose]) vers la vidéo à plat ; [secure] : sphère exclue des captures
+ * (coffre). Null : vidéo à plat, dans le cadre habituel de la page.
+ */
+@Composable
+internal fun rememberSphereVideo(key: Any, sphere: Panorama?, controlsVisible: Boolean, onClose: () -> Unit, secure: Boolean = false): SphereVideoSlots? {
+    var motion by rememberSaveable(key) { mutableStateOf(false) }
+    var resets by remember(key) { mutableIntStateOf(0) }
+    if (sphere == null) return null
+    val camera = rememberSaveable(sphere, saver = sphereCameraSaver(sphere)) { sphere.camera() }
+    BackHandler(onBack = onClose)
+    return SphereVideoSlots(
+        frame = { player -> SphereVideoFrame(player, sphere, camera, motion, resets, secure = secure) },
+        overlay = {
+            SphereVideoChrome(
+                visible = controlsVisible,
+                motion = motion,
+                onMotionChange = { motion = it },
+                onReset = { resets++ },
+                onClose = onClose,
+            )
+        },
+    )
+}
+
+/**
+ * Vue 360° d'une vidéo, dans sa page ([VideoPage]) : le lecteur de la page dessine dans la
+ * sphère, le cube ou le maillage du fichier ([VideoSphereRenderer]), horizon redressé, au lieu de
+ * son cadre habituel, sans rien perdre de sa lecture (position, vitesse, son) ; ses commandes
+ * restent celles de toutes les vidéos. Glisser pour regarder autour, pincer pour le champ ;
+ * « Bouger le téléphone » suit le capteur de rotation ([motion]), comme pour une photo 360° ;
+ * chaque nouvelle valeur de [resets] (« Vue initiale ») ramène la vue au cap du fichier.
  */
 @Composable
 internal fun SphereVideoFrame(
@@ -54,6 +94,7 @@ internal fun SphereVideoFrame(
     motion: Boolean,
     resets: Int,
     modifier: Modifier = Modifier,
+    secure: Boolean = false,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -67,7 +108,8 @@ internal fun SphereVideoFrame(
         val main = ContextCompat.getMainExecutor(context)
         VideoSphereRenderer(
             camera = camera,
-            area = panorama.area,
+            mesh = panorama.sphereMesh(),
+            pose = panorama.pose,
             stereo = panorama.stereo,
             onTarget = { created -> main.execute { target = created } },
             onFrame = {
@@ -114,14 +156,7 @@ internal fun SphereVideoFrame(
     val description = stringResource(R.string.panorama_video_description)
     Box(modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
-            factory = { viewContext ->
-                GLSurfaceView(viewContext).apply {
-                    setEGLContextClientVersion(2)
-                    preserveEGLContextOnPause = true
-                    setRenderer(renderer)
-                    renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
-                }.also { surface = it }
-            },
+            factory = { viewContext -> sphereSurface(viewContext, renderer, secure).also { surface = it } },
             onRelease = { released ->
                 // Le contexte disparaît avec la vue ; texture et programme sont libérés avant si possible.
                 released.queueEvent(renderer::release)

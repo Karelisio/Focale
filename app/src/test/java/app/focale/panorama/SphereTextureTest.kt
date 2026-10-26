@@ -44,7 +44,7 @@ class SphereTextureTest {
     @Test
     fun `texture réduite à GL_MAX_TEXTURE_SIZE, pixels à leur place, sans couture entre les bandes`() {
         val resolver = ApplicationProvider.getApplicationContext<android.content.Context>().contentResolver
-        val texture = SphereTexture.decodeBands(resolver, gradient(), maxTextureSize = 512, maxPixels = 1L shl 25)
+        val texture = SphereTexture.decodeBands(UriPhotoStreams(resolver, gradient()), maxTextureSize = 512, maxPixels = 1L shl 25)
         assertNotNull(texture)
         texture!!
         assertEquals(512, texture.width)

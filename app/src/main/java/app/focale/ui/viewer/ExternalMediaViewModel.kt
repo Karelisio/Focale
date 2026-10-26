@@ -13,6 +13,8 @@ import app.focale.core.settings.SettingsRepository
 import app.focale.data.ExternalMedia
 import app.focale.data.ExternalMediaRepository
 import app.focale.data.MediaSharer
+import app.focale.panorama.Panorama
+import app.focale.panorama.PanoramaRepository
 import app.focale.ui.navigation.ExternalMediaRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -41,6 +43,7 @@ class ExternalMediaViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val repository: ExternalMediaRepository,
     private val sharer: MediaSharer,
+    private val panoramas: PanoramaRepository,
     settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
@@ -55,15 +58,22 @@ class ExternalMediaViewModel @Inject constructor(
     private val shareIntents = Channel<Intent>(Channel.BUFFERED)
     val shares: Flow<Intent> = shareIntents.receiveAsFlow()
 
+    private val _panorama = MutableStateFlow<Panorama?>(null)
+
+    /** Vue 360° ou panoramique proposée pour un fichier hors index (en-tête lu à l'ouverture). */
+    val panorama: StateFlow<Panorama?> = _panorama.asStateFlow()
+
     init {
         viewModelScope.launch {
             // Reconnu hors index avant une recréation : inutile de réattendre une synchronisation.
             val item = if (savedStateHandle.get<Boolean>(KEY_STANDALONE) == true) null else repository.find(uri)
-            _state.value = if (item != null) {
-                ExternalMediaState.Indexed(item)
+            if (item != null) {
+                _state.value = ExternalMediaState.Indexed(item)
             } else {
                 savedStateHandle[KEY_STANDALONE] = true
-                ExternalMediaState.Standalone(repository.describe(uri, route.mimeType))
+                val media = repository.describe(uri, route.mimeType)
+                _state.value = ExternalMediaState.Standalone(media)
+                _panorama.value = panoramas.find(media)
             }
         }
     }

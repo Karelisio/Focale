@@ -9,7 +9,7 @@ import javax.microedition.khronos.opengles.GL10
 
 /**
  * Rendu OpenGL ES 2 d'une photo 360° : la zone couverte de la sphère ([SphereMesh]) texturée
- * par la photo, vue depuis son centre par [camera] ; le reste est noir.
+ * par la photo, redressée par [pose] et vue depuis son centre par [camera] ; le reste est noir.
  *
  * La texture arrive par [setTexture], depuis le fil OpenGL (`queueEvent`) : la photo est
  * décodée ailleurs, à la taille que permet [onContext] (`GL_MAX_TEXTURE_SIZE`, appelé à chaque
@@ -19,10 +19,12 @@ import javax.microedition.khronos.opengles.GL10
 internal class SphereRenderer(
     private val camera: SphereCamera,
     area: SphereArea,
+    pose: SpherePose,
     private val onContext: (maxTextureSize: Int) -> Unit,
 ) : GLSurfaceView.Renderer {
 
-    private val sphere = SphereBuffers(area)
+    private val sphere = SphereBuffers(SphereMesh.build(area))
+    private val model = pose.matrix()
     private val wraps = area.wrapsAround
 
     private var program = 0
@@ -57,7 +59,7 @@ internal class SphereRenderer(
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         if (texture == 0 || program == 0) return
         GLES20.glUseProgram(program)
-        GLES20.glUniformMatrix4fv(matrixHandle, 1, false, camera.viewProjection(), 0)
+        GLES20.glUniformMatrix4fv(matrixHandle, 1, false, Mat4.multiply(camera.viewProjection(), model), 0)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
         GLES20.glUniform1i(samplerHandle, 0)

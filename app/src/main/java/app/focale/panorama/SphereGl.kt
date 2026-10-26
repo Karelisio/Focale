@@ -8,11 +8,10 @@ import java.nio.FloatBuffer
 import java.nio.ShortBuffer
 
 /**
- * Maillage de la zone [area] d'une sphère ([SphereMesh]) en tampons OpenGL, commun aux photos
- * ([SphereRenderer]) et aux vidéos 360° ([VideoSphereRenderer]).
+ * Maillage texturé ([TexturedMesh] : zone de sphère, cube, maillage d'une vidéo) en tampons
+ * OpenGL, commun aux photos ([SphereRenderer]) et aux vidéos 360° ([VideoSphereRenderer]).
  */
-internal class SphereBuffers(area: SphereArea) {
-    private val mesh = SphereMesh.build(area)
+internal class SphereBuffers(private val mesh: TexturedMesh) {
     private val positions: FloatBuffer = floats(mesh.positions)
     private val texCoords: FloatBuffer = floats(mesh.texCoords)
     private val indices: ShortBuffer = ByteBuffer.allocateDirect(mesh.indices.size * 2).order(ByteOrder.nativeOrder())

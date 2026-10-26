@@ -24,16 +24,18 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   logiciels ; dans la propriété `irot` des HEIF / HEIC et AVIF, sans réencodage, EXIF et XMP
   mis d'accord), panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
   copiable. Photos 360° (métadonnées GPano des JPEG, WebP et HEIF, sphères complètes ou
-  partielles) en vue immersive OpenGL : glisser pour regarder autour, pincer pour le champ,
-  « Bouger le téléphone » (capteur de rotation), retour à la vue initiale du fichier ; vidéos 360°
-  (MP4 et MOV aux métadonnées sphériques V1 ou V2, équirectangulaires, mono ou stéréoscopiques)
-  dans la même vue, avec leurs commandes habituelles (lecture, position, vitesse, ±10 s) ; panoramas
-  (GPano à plat, ou 2,5:1 et plus) en « Vue panoramique », à la hauteur de l'écran, parcourus
-  au doigt ou en tournant sur soi. Impression des photos (aperçu d'Android, une photo par page
-  dans son sens, orientation EXIF respectée).
+  partielles, horizon redressé d'après l'inclinaison et le roulis du fichier) en vue immersive
+  OpenGL : glisser pour regarder autour, pincer pour le champ, « Bouger le téléphone » (capteur
+  de rotation), retour à la vue initiale du fichier ; vidéos 360° (MP4 et MOV aux métadonnées
+  sphériques V1 ou V2 : équirectangulaires, cubes, maillages comme les cubes équi-angulaires de
+  YouTube ; mono ou stéréoscopiques ; horizon redressé) dans la même vue, avec leurs commandes
+  habituelles (lecture, position, vitesse, ±10 s) ; panoramas (GPano à plat, ou 2,5:1 et plus) en
+  « Vue panoramique », à la hauteur de l'écran, parcourus au doigt ou en tournant sur soi. Impression
+  des photos (aperçu d'Android, une photo par page dans son sens, orientation EXIF respectée).
 - **Application par défaut** : photos et vidéos des autres applications (« Ouvrir avec »,
   revue de l'appareil photo) ouvertes parmi celles de leur dossier, ou seules (messageries,
-  téléchargements) ; Réglages → Fichiers indique l'application par défaut et aide à choisir Focale.
+  téléchargements, vues 360° et panoramiques comprises) ; Réglages → Fichiers indique l'application
+  par défaut et aide à choisir Focale.
 - **Material You** : couleurs du fond d'écran (Android 12+), thème clair / sombre /
   système, noir pur AMOLED, palette « couleur depuis la photo », police variable
   Google Sans Flex, formes et morphing Expressive, retours haptiques.
@@ -89,7 +91,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   composée case par case, cases SDR au gain neutre).
 - **Coffre-fort** : photos et vidéos chiffrées (Tink, clé dans l'Android Keystore),
   retirées de MediaStore et des autres applications, déverrouillage par code ou
-  biométrie, reverrouillage automatique, captures d'écran interdites ; sauvegarde
+  biométrie, reverrouillage automatique, captures d'écran interdites ; photos et vidéos 360°
+  et panoramas dans la même vue que la galerie, déchiffrés en mémoire seulement ; sauvegarde
   chiffrée par mot de passe (`.fvault`, PBKDF2 + AES-256-GCM en flux) à restaurer sur un
   autre téléphone, manuelle ou automatique (chaque jour ou chaque semaine, dans un dossier
   choisi : carte SD, clé USB… ; les 3 dernières gardées, mot de passe non conservé). Albums

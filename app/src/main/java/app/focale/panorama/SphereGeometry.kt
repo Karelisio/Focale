@@ -77,6 +77,18 @@ object Mat4 {
         }
     }
 
+    /** Rotation de [degrees] autour de l'axe Z (sens direct : de X vers Y). */
+    fun rotationZ(degrees: Double): FloatArray {
+        val c = cos(Math.toRadians(degrees)).toFloat()
+        val s = sin(Math.toRadians(degrees)).toFloat()
+        return identity().apply {
+            this[0] = c
+            this[1] = s
+            this[4] = -s
+            this[5] = c
+        }
+    }
+
     fun multiply(a: FloatArray, b: FloatArray): FloatArray = FloatArray(16).also { out ->
         for (column in 0 until 4) {
             for (row in 0 until 4) {
@@ -115,18 +127,30 @@ object Mat4 {
 }
 
 /**
+ * Triangles texturés vus du centre de la sphère, dans le repère de [SphereMesh] (on regarde vers
+ * -Z, X à droite, Y vers le zénith) : zone d'une sphère, cube ([CubeMesh]) ou maillage d'une
+ * vidéo ([MeshProjection]).
+ *
+ * @property positions x, y, z de chaque sommet.
+ * @property texCoords u, v de chaque sommet dans l'image (d'un œil), v = 0 en haut.
+ * @property indices triangles, trois sommets chacun (indices de 16 bits d'OpenGL ES 2).
+ */
+open class TexturedMesh(val positions: FloatArray, val texCoords: FloatArray, val indices: ShortArray) {
+
+    val vertexCount: Int get() = positions.size / 3
+
+    /** Taille en mémoire, en octets (sommets et indices). */
+    val byteCount: Int get() = (positions.size + texCoords.size) * Float.SIZE_BYTES + indices.size * Short.SIZE_BYTES
+}
+
+/**
  * Maillage de la zone couverte d'une sphère de rayon 1 vue de l'intérieur : seule la zone
  * [area] est construite, et toute la texture (la photo) s'y étend, de son coin haut gauche
  * (ouest, nord) à son coin bas droit (est, sud). Les longitudes croissent vers la droite pour un
  * observateur au centre qui regarde vers -Z, l'axe Y vers le zénith.
- *
- * @property positions x, y, z de chaque sommet.
- * @property texCoords u, v de chaque sommet (v = 0 en haut de l'image).
- * @property indices triangles, trois sommets chacun.
  */
-class SphereMesh(val positions: FloatArray, val texCoords: FloatArray, val indices: ShortArray, val columns: Int, val rows: Int) {
-
-    val vertexCount: Int get() = positions.size / 3
+class SphereMesh(positions: FloatArray, texCoords: FloatArray, indices: ShortArray, val columns: Int, val rows: Int) :
+    TexturedMesh(positions, texCoords, indices) {
 
     companion object {
         /** Finesse d'une sphère complète : segments par tour et par demi-tour. */
@@ -167,6 +191,73 @@ class SphereMesh(val positions: FloatArray, val texCoords: FloatArray, val indic
             return SphereMesh(positions, texCoords, indices, columns, rows)
         }
     }
+}
+
+/**
+ * Cube d'une vidéo Spherical Video V2 (`cbmp`, disposition 0) : six faces planes de deux
+ * triangles, la perspective d'OpenGL étant exacte sur un plan ; le cube entoure la caméra (faces
+ * à 1, coins à √3, entre les plans de coupe). Faces dans l'ordre de la RFC, en 3 colonnes et 2
+ * lignes : droite, gauche, haut, puis bas, avant, arrière. Orientées comme les écrit FFmpeg (`v360`,
+ * `c3x2`) et les lit VLC : les faces latérales debout ; vues de l'intérieur, le haut de la face du
+ * haut vers l'arrière et celui de la face du bas vers l'avant, comme en levant ou en baissant les
+ * yeux depuis l'avant (la RFC décrit l'inverse pour ces deux faces, sans fichier ni lecteur qui la
+ * suive à notre connaissance).
+ *
+ * La marge ([SphereProjection.Cubemap.padding], prise aux faces voisines par l'encodeur) n'est pas
+ * affichée ; sans marge, chaque face s'arrête au centre de ses pixels du bord : le filtrage ne
+ * prend rien à la face voisine de l'image, qui n'est pas forcément sa voisine sur le cube.
+ */
+object CubeMesh {
+
+    /**
+     * Face à la colonne [column] et à la ligne [row] de l'image : [point] donne la direction
+     * (x, y, z) de son point (a, b) ∈ [-1, 1]², a vers la droite de la face, b vers son bas.
+     */
+    private class Face(val column: Int, val row: Int, val point: (a: Float, b: Float) -> FloatArray)
+
+    private val faces = listOf(
+        // Droite : l'avant à sa gauche.
+        Face(0, 0) { a, b -> floatArrayOf(1f, -b, a) },
+        // Gauche : l'arrière à sa gauche.
+        Face(1, 0) { a, b -> floatArrayOf(-1f, -b, -a) },
+        // Haut : son bas touche l'avant.
+        Face(2, 0) { a, b -> floatArrayOf(a, 1f, -b) },
+        // Bas : son haut touche l'avant.
+        Face(0, 1) { a, b -> floatArrayOf(a, -1f, b) },
+        // Avant, droit devant (-Z).
+        Face(1, 1) { a, b -> floatArrayOf(a, -b, -1f) },
+        // Arrière : sa gauche à droite du cube vu de devant.
+        Face(2, 1) { a, b -> floatArrayOf(-a, -b, 1f) },
+    )
+
+    private val corners = arrayOf(floatArrayOf(-1f, -1f), floatArrayOf(1f, -1f), floatArrayOf(-1f, 1f), floatArrayOf(1f, 1f))
+
+    fun build(cube: SphereProjection.Cubemap): TexturedMesh {
+        val cellWidth = cube.width / 3.0
+        val cellHeight = cube.height / 2.0
+        // Sans marge, une demi-largeur de pixel ; la marge bornée laisse au moins un pixel de face.
+        val inset = if (cube.padding > 0) {
+            cube.padding.toDouble().coerceAtMost((minOf(cellWidth, cellHeight) - 1) / 2)
+        } else {
+            HALF_PIXEL
+        }
+        val positions = FloatArray(faces.size * 4 * 3)
+        val texCoords = FloatArray(faces.size * 4 * 2)
+        val indices = ShortArray(faces.size * 6)
+        faces.forEachIndexed { faceIndex, face ->
+            corners.forEachIndexed { corner, (a, b) ->
+                val vertex = faceIndex * 4 + corner
+                face.point(a, b).copyInto(positions, vertex * 3)
+                texCoords[vertex * 2] = ((face.column * cellWidth + inset + (a + 1) / 2 * (cellWidth - 2 * inset)) / cube.width).toFloat()
+                texCoords[vertex * 2 + 1] = ((face.row * cellHeight + inset + (b + 1) / 2 * (cellHeight - 2 * inset)) / cube.height).toFloat()
+            }
+            val first = faceIndex * 4
+            intArrayOf(0, 2, 1, 1, 2, 3).forEachIndexed { offset, corner -> indices[faceIndex * 6 + offset] = (first + corner).toShort() }
+        }
+        return TexturedMesh(positions, texCoords, indices)
+    }
+
+    private const val HALF_PIXEL = 0.5
 }
 
 /**

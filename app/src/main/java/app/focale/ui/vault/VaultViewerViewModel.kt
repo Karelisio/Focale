@@ -16,11 +16,14 @@ import app.focale.core.settings.AppSettings
 import app.focale.core.settings.SettingsRepository
 import app.focale.core.util.UiText
 import app.focale.data.OperationResult
+import app.focale.panorama.Panorama
 import app.focale.ui.navigation.VaultViewerRoute
+import app.focale.ui.viewer.PanoramaPhoto
 import app.focale.vault.EncryptedFileDataSource
 import app.focale.vault.VaultContent
 import app.focale.vault.VaultCrypto
 import app.focale.vault.VaultItem
+import app.focale.vault.VaultPanoramas
 import app.focale.vault.VaultRepository
 import app.focale.vault.VaultSession
 import app.focale.vault.VaultStorage
@@ -32,8 +35,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -46,6 +52,7 @@ class VaultViewerViewModel @Inject constructor(
     content: VaultContent,
     private val crypto: VaultCrypto,
     private val storage: VaultStorage,
+    private val panoramas: VaultPanoramas,
     session: VaultSession,
     settingsRepository: SettingsRepository,
 ) : ViewModel() {
@@ -70,9 +77,24 @@ class VaultViewerViewModel @Inject constructor(
     private val messages = Channel<UiText>(Channel.BUFFERED)
     val events: Flow<UiText> = messages.receiveAsFlow()
 
+    private val current = MutableStateFlow<VaultItem?>(null)
+
+    /**
+     * Vue 360° ou panoramique proposée pour l'élément courant : en-tête lu dans le fichier chiffré
+     * à l'ouverture, résultat gardé avec la visionneuse seulement.
+     */
+    val panorama: StateFlow<Panorama?> = combine(current, session.unlocked) { item, unlocked -> item?.takeIf { unlocked } }
+        .distinctUntilChangedBy { it?.id to it?.fileName }
+        .mapLatest { item -> item?.let { panoramas.find(it) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     fun onPageChanged(item: VaultItem) {
         savedStateHandle[KEY_CURRENT] = item.id
+        current.value = item
     }
+
+    /** Photo de la vue panoramique de [item], déchiffrée en mémoire. */
+    internal fun panoramaPhoto(item: VaultItem): PanoramaPhoto = VaultPanoramaPhoto(item, panoramas.photoStreams(item))
 
     fun restore(item: VaultItem) = run(item, R.plurals.message_restored) { repository.restore(listOf(it)) }
 

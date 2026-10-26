@@ -36,7 +36,7 @@ data class ExternalMedia(
 
     /** Vue [MediaItem] du fichier, sans identifiant ni dossier, pour le partage (copie sans métadonnées). */
     fun asMediaItem(): MediaItem = MediaItem(
-        id = NO_ID,
+        id = ID,
         uri = uri,
         type = if (isVideo) MediaType.VIDEO else MediaType.IMAGE,
         mimeType = mimeType,
@@ -55,8 +55,9 @@ data class ExternalMedia(
         isScreenshot = false,
     )
 
-    private companion object {
-        const val NO_ID = -1L
+    companion object {
+        /** Identifiant d'un fichier hors index : aucun média de la galerie ne l'a. */
+        const val ID = -1L
     }
 }
 

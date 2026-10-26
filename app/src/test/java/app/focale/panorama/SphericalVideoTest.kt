@@ -111,14 +111,18 @@ class SphericalVideoTest {
     }
 
     @Test
-    fun `projection cubique, maillage ou inconnue, bornes incohérentes, pas de vue 360°`() {
-        val cube = requireNotNull(metadata("v2-cubemap.mp4"))
-        assertEquals(SphericalProjection.CUBEMAP, cube.projection)
-        assertNull(SphericalVideoRules.classify(11, cube))
-        for (projection in listOf(SphericalProjection.MESH, SphericalProjection.OTHER)) {
+    fun `projection inconnue, cube ou maillage illisible, bornes incohérentes, pas de vue 360°`() {
+        // Cube de disposition inconnue (FFmpeg la refuse aussi) : reconnu, mais pas proposé.
+        val layout1 = requireNotNull(metadata("v2-cubemap-layout1.mp4"))
+        assertEquals(SphericalProjection.CUBEMAP, layout1.projection)
+        assertNull(layout1.geometry)
+        assertNull(SphericalVideoRules.classify(11, layout1))
+        for (projection in listOf(SphericalProjection.CUBEMAP, SphericalProjection.MESH, SphericalProjection.OTHER)) {
             assertNull(SphericalVideoRules.classify(12, SphericalMetadata(2, projection, StereoMode.MONO, SphereArea.FULL)))
         }
         assertNull(SphericalVideoRules.classify(13, SphericalMetadata(2, SphericalProjection.EQUIRECTANGULAR, StereoMode.MONO, area = null)))
+        // Stéréoscopie propre au fichier : seul un maillage la décrit.
+        assertNull(SphericalVideoRules.classify(15, SphericalMetadata(2, SphericalProjection.EQUIRECTANGULAR, StereoMode.CUSTOM, SphereArea.FULL)))
     }
 
     @Test
@@ -133,14 +137,20 @@ class SphericalVideoTest {
 
     @Test
     fun `les données vidéo ne sont jamais lues, seulement des en-têtes`() {
-        for (name in listOf("plain.mp4", "v1-mono.mp4", "v2-equi.mp4", "v2-ffmpeg-left-right.mp4")) {
+        val names = listOf(
+            "plain.mp4", "v1-mono.mp4", "v2-equi.mp4", "v2-ffmpeg-left-right.mp4", "v2-equi-pose-ffmpeg.mp4",
+            "v2-cubemap.mp4", "v2-cubemap-padded-ffmpeg.mp4", "v2-mesh-eac.mp4", "v2-mesh-stereo.mp4",
+        )
+        for (name in names) {
             val bytes = fixture(name)
             val mdat = topLevel(bytes).first { it.first == "mdat" }
             reads.clear()
             metadata(bytes)
             // Seul l'en-tête de mdat est lu, pour le sauter.
             assertTrue(name, reads.none { (offset, _) -> offset > mdat.second && offset < mdat.third })
-            assertTrue(name, reads.all { (_, length) -> length <= 1_024 })
+            // Des en-têtes de quelques octets ; le maillage, lui, est lu en une fois (quelques kilo-octets).
+            assertTrue(name, reads.count { (_, length) -> length > 1_024 } <= 1)
+            assertTrue(name, reads.all { (_, length) -> length <= MeshProjection.MAX_BOX })
         }
     }
 
@@ -192,6 +202,11 @@ class SphericalVideoTest {
         assertEquals(1f to 0.5f, corner(StereoMode.TOP_BOTTOM, 1f, 1f))
         assertEquals(0f to 1f, corner(StereoMode.TOP_BOTTOM, 0f, 0f))
         assertEquals(0.5f to 0f, corner(StereoMode.LEFT_RIGHT, 1f, 1f))
+        // Droite-gauche : l'œil gauche dans la moitié droite.
+        assertEquals(0.5f to 1f, corner(StereoMode.RIGHT_LEFT, 0f, 0f))
+        assertEquals(1f to 0f, corner(StereoMode.RIGHT_LEFT, 1f, 1f))
+        // Propre au fichier : le maillage donne ses coordonnées dans l'image entière.
+        assertEquals(1f to 0f, corner(StereoMode.CUSTOM, 1f, 1f))
     }
 
     private fun video(file: File, id: Long, mimeType: String = "video/mp4", dateModified: Long = 1) = MediaItem(

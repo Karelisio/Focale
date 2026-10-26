@@ -1,6 +1,7 @@
 package app.focale.screenshots
 
 import android.content.Context
+import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -32,10 +33,16 @@ import androidx.test.core.app.ApplicationProvider
 import app.focale.R
 import app.focale.core.settings.AppSettings
 import app.focale.core.settings.ThemeMode
+import app.focale.data.ExternalMedia
 import app.focale.panorama.PanoramaKind
 import app.focale.ui.actions.SelectionActionsBar
 import app.focale.ui.theme.FocaleTheme
+import app.focale.ui.theme.PhotoTheme
 import app.focale.ui.theme.ViewerChromeTheme
+import app.focale.ui.vault.VaultViewerToolbar
+import app.focale.ui.vault.VaultViewerTopBar
+import app.focale.ui.viewer.ExternalViewerToolbar
+import app.focale.ui.viewer.ExternalViewerTopBar
 import app.focale.ui.viewer.PainterImageSource
 import app.focale.ui.viewer.PanoramaButton
 import app.focale.ui.viewer.PanoramaChrome
@@ -47,10 +54,12 @@ import app.focale.ui.viewer.ViewerChromeMetrics
 import app.focale.ui.viewer.ViewerToolbar
 import app.focale.ui.viewer.fakePanorama
 import app.focale.ui.viewer.fakePanoramaPainter
+import app.focale.vault.VaultItem
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
+import java.util.TimeZone
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import me.saket.telephoto.zoomable.rememberZoomableState
 import org.junit.Rule
@@ -63,9 +72,10 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Captures de référence des photos panoramiques et de l'impression, en français (couleurs
  * Material You de repli, sans couleurs dynamiques) : bouton « 360° » et « Vue panoramique » de
- * la visionneuse, bouton « 360° » d'une vidéo (au-dessus de ses commandes), vue panoramique
- * ouverte (« Bouger le téléphone » actif), commandes d'une vidéo 360° ouverte, menu de la sélection
- * avec « Imprimer ». La sphère elle-même (OpenGL) n'est pas rendue par Robolectric. Régénérer
+ * la visionneuse, bouton « 360° » d'une vidéo (au-dessus de ses commandes), dans la visionneuse
+ * d'un fichier reçu d'une autre application et dans celle du coffre, vue panoramique ouverte
+ * (« Bouger le téléphone » actif), commandes d'une vidéo 360° ouverte, menu de la sélection avec
+ * « Imprimer ». La sphère elle-même (OpenGL) n'est pas rendue par Robolectric. Régénérer
  * avec `./gradlew recordRoborazziStandardDebug` quand le changement est voulu.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -122,6 +132,71 @@ class PanoramaScreenshotTest {
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
+        }
+    }
+
+    /**
+     * Photo 360° reçue d'une autre application (hors index) : bouton « 360° » au-dessus de la barre
+     * d'outils de la visionneuse simple (partage, « Ouvrir avec »), nom et taille du fichier en haut.
+     */
+    @Test
+    fun bouton360AutreApplication() = capture(dark = true) {
+        val media = ExternalMedia(Uri.parse("content://com.whatsapp.provider.media/item/360"), "image/jpeg", "IMG-20261020-WA0360.jpg", 6_291_456)
+        PhotoTheme(seed = null, forceDark = true) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+            ) {
+                Equirectangular(Modifier.align(Alignment.Center))
+                Box(Modifier.align(Alignment.TopCenter)) { ExternalViewerTopBar(media = media, onBack = {}) }
+                PanoramaButton(
+                    kind = PanoramaKind.SPHERE,
+                    onClick = {},
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = ViewerChromeMetrics.panoramaButtonBottom(video = false)),
+                )
+                Box(Modifier.align(Alignment.BottomCenter)) { ExternalViewerToolbar(onShare = {}, onOpenWith = {}) }
+            }
+        }
+    }
+
+    /**
+     * Vidéo 360° du coffre : bouton « 360° » au-dessus de ses commandes, alignées sur la barre
+     * « Restaurer » / supprimer du coffre ; date et nom en haut.
+     */
+    @Test
+    fun bouton360VideoCoffre() {
+        val zone = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("Europe/Paris"))
+        try {
+            val item = VaultItem(
+                id = 7, displayName = "VID_20261018_163005.mp4", mimeType = "video/mp4", isVideo = true, originalPath = "DCIM/Camera/",
+                dateTaken = 1_792_333_805_000, size = 48_234_496, durationMs = 214_000, fileName = "item-7.bin", thumbFileName = null, addedAt = 0,
+            )
+            capture(dark = true) {
+                PhotoTheme(seed = null, forceDark = true) {
+                    VideoFrame { toolbarWidth, measured ->
+                        VideoControls(toolbarWidth)
+                        PanoramaButton(
+                            kind = PanoramaKind.SPHERE,
+                            onClick = {},
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(bottom = ViewerChromeMetrics.panoramaButtonBottom(video = true)),
+                        )
+                        Box(Modifier.align(Alignment.TopCenter)) { VaultViewerTopBar(item = item, onBack = {}) }
+                        Box(Modifier.align(Alignment.BottomCenter)) {
+                            VaultViewerToolbar(busy = false, onRestore = {}, onDelete = {}, modifier = measured)
+                        }
+                    }
+                }
+            }
+        } finally {
+            TimeZone.setDefault(zone)
         }
     }
 
@@ -220,6 +295,13 @@ class PanoramaScreenshotTest {
             onSpeedChange = {},
             barWidth = barWidth,
         )
+    }
+
+    /** Photo 360° (2:1) ajustée à la largeur de l'écran. */
+    @Composable
+    private fun Equirectangular(modifier: Modifier) {
+        val image = remember { BitmapPainter(fakePanorama(width = 600, height = 300)) }
+        Image(painter = image, contentDescription = null, contentScale = ContentScale.Fit, modifier = modifier.fillMaxWidth())
     }
 
     /** Visionneuse : photo de proportions [ratio] ajustée à l'écran, bouton de [kind] et barre d'outils. */

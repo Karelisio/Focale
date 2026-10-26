@@ -103,7 +103,7 @@ app/src/main/java/app/focale/
 ├── collage/                    collages : dispositions, géométrie, cadrage, orientation, rendu
 ├── ml/                         étiquetage, dictionnaire FR/EN, pHash, flou, géocodeur, texte
 ├── people/                     visages : détection, alignement, SFace, regroupement
-├── panorama/                   GPano (XMP), vidéos 360° (MP4), choix de la vue, sphère OpenGL ES, capteur de rotation
+├── panorama/                   GPano (XMP), vidéos 360° (MP4 : équirectangulaire, cube, maillage), pose, choix de la vue, sphère OpenGL ES, capteur de rotation
 ├── print/                      impression : mise en page, document PDF du framework d'impression
 ├── work/                       workers
 ├── vault/                      crypto, stockage, verrouillage
@@ -903,29 +903,84 @@ application ouvre les photos et proposer de choisir Focale.
   128 lignes (`BitmapRegionDecoder` sous-échantillonné, une bande de l'original en mémoire à
   la fois ; `ImageDecoder` si l'orientation EXIF tourne la photo), envoyée au contexte puis
   libérée ; texture et contexte disparaissent avec la vue, rechargés si le contexte est perdu.
-  Pas de vue 360° dans le coffre.
+- Horizon redressé (`SpherePose`) : `PosePitchDegrees` (centre de l'image au-dessus de
+  l'horizon réel) et `PoseRollDegrees` (l'horizon tourne d'autant, dans le sens inverse des
+  aiguilles d'une montre, dans l'image) font tourner la sphère, comme Photo Sphere Viewer et
+  Pannellum : roulis autour de l'axe du centre de l'image, puis inclinaison (matrice du modèle,
+  `SphereRenderer`, `VideoSphereRenderer`). Glisser, « Bouger le téléphone » et vue initiale
+  sont dans le repère redressé : le capteur garde l'horizon à l'horizontale. Le cap
+  (`PoseHeadingDegrees`) ne fait que déplacer la vue initiale. Panoramas à plat : pas redressés.
+  Sphère partielle inclinée : sa zone est bornée dans le repère de l'image (approximation).
+- Cap initial (`PanoramaRules.initialView`), vérifié sur des métadonnées réelles : la
+  spécification GPano compte `InitialViewHeadingDegrees` « depuis le nord réel, pas depuis le
+  centre du panorama », et `PoseHeadingDegrees` est le cap du centre : la vue initiale est à
+  leur différence (exemple Photo Sphere de Google, 350 et 90 : 100° à droite du centre) ; c'est
+  la lecture de Photo Sphere Viewer, Pannellum comptant au contraire depuis le centre. RICOH
+  THETA Z1 : `PoseHeadingDegrees` (boussole, 68,8 dans l'exemple publié par Trek View), pose
+  nulle si l'appareil a redressé l'image (l'API RICOH dit d'utiliser `PosePitchDegrees` /
+  `PoseRollDegrees` sinon), pas de vue initiale : on part du centre (objectif avant). GoPro MAX
+  et Samsung Gear 360 (exemples réels de Trek View et de PhotoPrism) : pose et vue initiale à 0.
+  Pas d'exemple Insta360 ni Google Camera récent vérifié : à contrôler sur appareil.
 - Vidéos 360° (`SphericalVideos`, `SphericalVideoHeaders`, `SphericalVideoRules`) : détection à
   l'ouverture comme pour les photos (même `PanoramaRepository`, résultat en mémoire par média et
-  date de modification, LRU de 512, rien dans la base), pour les MP4, MOV et 3GP. Seuls les
-  en-têtes des boîtes menant à la piste vidéo (`hdlr` `vide`) sont lus, `moov` au début ou à la
-  fin, jamais les données : V2 (`st3d` et `sv3d` → `proj` → `prhd`, `equi` / `cbmp` / `mshp` dans
-  l'entrée `stsd`), sinon V1 (boîte `uuid` `ffcc8263-…` de la piste ou de `moov`, XML GSpherical
-  lu par `XmpPanorama.properties`). Fichier mal formé (taille trop petite, qui déborde, fichier
-  tronqué) : rien, sans erreur. Proposée en 360° : projection équirectangulaire aux bornes
-  cohérentes (`equi`, ou recadrage GSpherical façon GPano), sphère complète ou partielle ; vue
-  initiale au cap V1, ou d'après le cap de `prhd` (positif : sphère tournée vers la droite, comme
-  FFmpeg ; inclinaison et roulis de la pose ignorés), sinon au centre. Cube et maillage : pas
-  proposés. Bouton « 360° » au-dessus des commandes de la vidéo (pas pendant une diffusion, qu'il
-  referme) ; la vue s'ouvre dans la page même (`VideoPage`, paramètre `sphere`) : le lecteur de la
-  page dessine dans une texture externe (`SurfaceTexture`, `GL_TEXTURE_EXTERNAL_OES`,
-  `VideoTarget`) au lieu de son cadre, sans être recréé (position, vitesse, son gardés), sur la
-  sphère des photos (`VideoSphereRenderer`, `SphereBuffers`, `SphereCamera`) ; d'une vidéo
-  stéréoscopique, seule l'image de l'œil gauche (`VideoFrame`). Commandes vidéo habituelles
-  (lecture, curseur, vitesse, son, double appui ±10 s), barre « Bouger le téléphone » / « Vue
-  initiale » à la place de la barre d'outils, pager figé (glisser regarde autour). Fichiers de
-  test réels (FFmpeg / libx264, métadonnées injectées comme le fait Spatial Media, ou écrites par
-  FFmpeg, vérifiées par ffprobe) produits par `tools/spherical/make_fixtures.py`. Pas de vidéo 360°
-  dans le coffre : il faudrait relire l'en-tête du fichier chiffré.
+  date de modification, LRU de 512 entrées, un maillage comptant pour une entrée par 16 Ko, rien
+  dans la base), pour les MP4, MOV et 3GP. Seuls les en-têtes des boîtes menant à la piste vidéo
+  (`hdlr` `vide`) sont lus, `moov` au début ou à la fin, jamais les données : V2 (`st3d` et
+  `sv3d` → `proj` → `prhd`, `equi` / `cbmp` / `mshp` dans l'entrée `stsd`, dont la largeur et la
+  hauteur), sinon V1 (boîte `uuid` `ffcc8263-…` de la piste ou de `moov`, XML GSpherical lu par
+  `XmpPanorama.properties`). Fichier mal formé (taille trop petite, qui déborde, fichier
+  tronqué) : rien, sans erreur. Stéréoscopie `st3d` : mono, haut-bas, gauche-droite,
+  droite-gauche, ou propre au fichier (décrite par les maillages seulement) ; seule l'image de
+  l'œil gauche est montrée (`VideoFrame`). Proposée en 360° : projection équirectangulaire aux
+  bornes cohérentes (`equi`, ou recadrage GSpherical façon GPano), sphère complète ou partielle ;
+  cube `cbmp` de disposition 0 (la seule de la RFC, que FFmpeg seul accepte aussi) dont la marge
+  laisse quelque chose de chaque face ; maillage `mshp` lisible. Projection inconnue, autre
+  disposition de cube, maillage illisible : pas proposés. Pose de `prhd` lue comme FFmpeg
+  (`spherical.h`) : cap positif, sphère tournée vers la droite (vue initiale à gauche du centre) ;
+  inclinaison et roulis redressent l'horizon comme ceux d'une photo. VLC lit au contraire le cap
+  comme la direction de la vue initiale.
+- Cube (`CubeMesh`) : six faces planes de deux triangles (la perspective d'OpenGL est exacte sur
+  un plan), dans l'ordre de la RFC (droite, gauche, haut / bas, avant, arrière). Orientation des
+  faces du haut et du bas : celle qu'écrit FFmpeg (`v360`, `c3x2`) et que lit VLC (haut de la
+  face du haut vers l'arrière, de la face du bas vers l'avant), l'inverse de la phrase de la RFC.
+  Marge de `cbmp` (pixels autour de chaque face de l'image d'un œil, dimensions de l'entrée
+  vidéo) hors du rendu ; sans marge, la face s'arrête au centre des pixels du bord, le filtrage
+  ne prend rien à la face voisine de l'image.
+- Maillage (`MeshProjection`) : `mshp` (ou `ytmp` des premiers fichiers de YouTube) lu en entier
+  (1 Mo au plus), `raw ` ou `dfl8` (deflate brut, 8 Mo décompressés au plus), première boîte
+  `mesh` (œil gauche) ; coordonnées distinctes, sommets en index zigzag de ⌈log₂(2n)⌉ bits,
+  listes en triangles, bande ou éventail dépliées en triangles, listes d'une image fixe (texture
+  autre que 0) ignorées ; 65 535 sommets au plus (index de 16 bits d'OpenGL ES 2). Positions
+  ramenées au rayon le plus grand (image inchangée, entre les plans de coupe), coordonnées de
+  texture d'OpenGL retournées (v = 0 en haut). CRC non vérifié, comme ExoPlayer. C'est ainsi que
+  YouTube décrit ses cubes équi-angulaires (EAC, marges comprises) : la RFC ne définit pour
+  `cbmp` que la disposition 0, sans variante équi-angulaire.
+- Lecture d'une vidéo 360° : bouton « 360° » au-dessus des commandes de la vidéo (pas pendant une
+  diffusion, qu'il referme) ; la vue s'ouvre dans la page même (`rememberSphereVideo`, cadre et
+  habillage passés à `VideoPlayerPage`) : le lecteur de la page dessine dans une texture externe
+  (`SurfaceTexture`, `GL_TEXTURE_EXTERNAL_OES`, `VideoTarget`) au lieu de son cadre, sans être
+  recréé (position, vitesse, son gardés), sur la zone de sphère, le cube ou le maillage
+  (`Panorama.sphereMesh`, `VideoSphereRenderer`, `SphereBuffers`, `SphereCamera`). Commandes vidéo
+  habituelles (lecture, curseur, vitesse, son, double appui ±10 s), barre « Bouger le
+  téléphone » / « Vue initiale » à la place de la barre d'outils, pager figé (glisser regarde
+  autour). Fichiers de test réels (FFmpeg / libx264, métadonnées injectées comme le fait Spatial
+  Media, ou écrites par FFmpeg, vérifiées par ffprobe ; images de cubes `c3x2` et `eac` du
+  filtre `v360`, dont chaque pixel a pour couleur sa direction : la géométrie se vérifie point
+  par point) produits par `tools/spherical/make_fixtures.py`.
+- Autres sources : fichier reçu d'une autre application et hors index (`StandaloneViewer`,
+  `ExternalMediaViewModel.panorama`, `PanoramaRepository.find(ExternalMedia)`) : en-têtes lus par
+  accès aléatoire au descripteur de fichier (un fournisseur qui n'en donne pas ne propose rien),
+  dimensions et orientation dans l'en-tête de la photo (`PhotoHeader`) ; mêmes boutons et vues
+  que la galerie, photo par son URI (`UriPanoramaPhoto`). Coffre (`VaultViewerPages`,
+  `VaultViewerViewModel.panorama`, `VaultPanoramas`) : en-têtes lus dans le fichier chiffré par le
+  canal déchiffrant à accès aléatoire de Tink (celui de la lecture vidéo), dimensions par un flux
+  déchiffrant ; texture décodée du flux déchiffré, en mémoire (`PhotoStreams` : le décodeur par
+  régions garde l'image compressée en mémoire, `ImageDecoder` lit un `ByteBuffer`), panorama à
+  plat décodé par Coil en mémoire au plus à 4 096 px de long, donné tout fait à telephoto (qui
+  demanderait sinon l'écriture d'un cache disque pour découper l'image) ; vidéo lue par
+  `EncryptedFileDataSource`. Jamais de copie en clair sur le disque, résultat gardé avec la
+  visionneuse seulement ; surfaces OpenGL `setSecure(true)` en plus de `FLAG_SECURE` de la
+  fenêtre.
 - Vue panoramique (`FlatPanoramaViewer`) : telephoto en `ContentScale.FillHeight`, image à la
   hauteur de l'écran, centrée, parcourue au doigt avec l'inertie et le sous-échantillonnage de
   la visionneuse ; « Bouger le téléphone » fait défiler d'un degré du panorama par degré

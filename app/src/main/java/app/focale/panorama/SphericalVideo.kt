@@ -1,13 +1,14 @@
 package app.focale.panorama
 
 import android.content.ContentResolver
+import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.util.LruCache
 import app.focale.core.model.MediaItem
 import app.focale.data.readAt
 
-/** Projection d'une vidéo sphérique ; seule l'équirectangulaire est proposée en 360°. */
+/** Projection d'une vidéo sphérique ; une projection inconnue n'est pas proposée en 360°. */
 enum class SphericalProjection { EQUIRECTANGULAR, CUBEMAP, MESH, OTHER }
 
 /**
@@ -15,11 +16,13 @@ enum class SphericalProjection { EQUIRECTANGULAR, CUBEMAP, MESH, OTHER }
  *
  * @property version 1 (XMP GSpherical, boîte `uuid`) ou 2 (boîtes `st3d` et `sv3d`).
  * @property area zone de la sphère couverte par l'image (d'un œil), null si les bornes sont
- *   incohérentes.
+ *   incohérentes ; un cube ou un maillage couvre toute la sphère.
  * @property yaw longitude (degrés) du centre de la vue initiale, null si le fichier n'en dit rien :
- *   cap initial (V1) ou d'après le cap de la pose de la projection (`prhd`, V2 ; inclinaison et
- *   roulis de la pose ignorés).
+ *   cap initial (V1) ou d'après le cap de la pose de la projection (`prhd`, V2).
  * @property pitch latitude (degrés) du centre de la vue initiale (V1), null sinon.
+ * @property pose inclinaison et roulis de la pose de la projection (`prhd`, V2) : horizon redressé.
+ * @property geometry cube ou maillage lisible ; null pour l'équirectangulaire, ou un cube et un
+ *   maillage inutilisables (disposition inconnue, marge trop grande, maillage mal formé).
  */
 data class SphericalMetadata(
     val version: Int,
@@ -28,6 +31,8 @@ data class SphericalMetadata(
     val area: SphereArea?,
     val yaw: Double? = null,
     val pitch: Double? = null,
+    val pose: SpherePose = SpherePose.LEVEL,
+    val geometry: SphereProjection? = null,
 )
 
 /**
@@ -37,7 +42,9 @@ data class SphericalMetadata(
  *
  * - **V2** (Spherical Video V2, Google) : dans l'entrée de description (`stsd`) de la piste
  *   vidéo, `st3d` (stéréoscopie) et `sv3d` → `proj` → `prhd` (pose) et la projection : `equi`
- *   (équirectangulaire, bornes de l'image sur la sphère), `cbmp` (cube) ou `mshp` (maillage) ;
+ *   (équirectangulaire, bornes de l'image sur la sphère), `cbmp` (cube : disposition et marge,
+ *   avec les dimensions de l'entrée) ou `mshp` (maillage, lu en entier : quelques kilo-octets,
+ *   [MeshProjection.MAX_BOX] au plus) ;
  * - **V1** : boîte `uuid` `ffcc8263-f855-4a93-8814-587a02521fdd` de la piste vidéo (ou de `moov`),
  *   document XML GSpherical (`Spherical`, `ProjectionType`, `StereoMode`, cap et inclinaison
  *   initiaux, recadrage façon GPano).
@@ -66,6 +73,9 @@ internal object SphericalVideoHeaders {
 
     /** Champs d'une `VisualSampleEntry` (ISO/IEC 14496-12), avant ses boîtes filles. */
     private const val VISUAL_SAMPLE_ENTRY = 78
+
+    /** Largeur puis hauteur (16 bits chacune) dans ces champs. */
+    private const val ENTRY_WIDTH = 24
 
     private class Box(val type: String, val start: Long, private val header: Int, val size: Long) {
         val content: Long get() = start + header
@@ -100,46 +110,83 @@ internal object SphericalVideoHeaders {
         return reader.read(handler.content + 8, 4)?.let { String(it, Charsets.ISO_8859_1) } == "vide"
     }
 
-    /** Boîtes filles de la première entrée de `mdia/minf/stbl/stsd`. */
-    private fun sampleEntry(reader: Reader, media: List<Box>): List<Box>? {
+    /** Entrée de description d'une piste vidéo : dimensions de l'image, en pixels, et boîtes filles. */
+    private class SampleEntry(val width: Int, val height: Int, val boxes: List<Box>)
+
+    /** Première entrée de `mdia/minf/stbl/stsd`. */
+    private fun sampleEntry(reader: Reader, media: List<Box>): SampleEntry? {
         val minf = media.firstOrNull { it.type == "minf" } ?: return null
         val stbl = children(reader, minf.content, minf.end).firstOrNull { it.type == "stbl" } ?: return null
         val stsd = children(reader, stbl.content, stbl.end).firstOrNull { it.type == "stsd" } ?: return null
         // Boîte pleine, puis le nombre d'entrées.
         val entry = children(reader, stsd.content + 8, stsd.end).firstOrNull() ?: return null
         if (entry.contentLength < VISUAL_SAMPLE_ENTRY) return null
-        return children(reader, entry.content + VISUAL_SAMPLE_ENTRY, entry.end)
+        // Champs de VisualSampleEntry : réservés, référence, prédéfinis, puis largeur et hauteur.
+        val size = reader.read(entry.content + ENTRY_WIDTH, 4) ?: return null
+        val width = size.u16(0)
+        val height = size.u16(2)
+        return SampleEntry(width, height, children(reader, entry.content + VISUAL_SAMPLE_ENTRY, entry.end))
     }
 
-    private fun v2(reader: Reader, entry: List<Box>): SphericalMetadata? {
-        val sv3d = entry.firstOrNull { it.type == "sv3d" } ?: return null
-        val stereo = entry.firstOrNull { it.type == "st3d" }?.let { st3d ->
-            // Boîte pleine, puis stereo_mode : 0 mono, 1 haut-bas, 2 gauche-droite.
+    private fun v2(reader: Reader, entry: SampleEntry): SphericalMetadata? {
+        val sv3d = entry.boxes.firstOrNull { it.type == "sv3d" } ?: return null
+        val stereo = entry.boxes.firstOrNull { it.type == "st3d" }?.let { st3d ->
+            // Boîte pleine, puis stereo_mode : 0 mono, 1 haut-bas, 2 gauche-droite, 3 propre au
+            // fichier (maillages), 4 droite-gauche.
             when (reader.read(st3d.content, 5)?.get(4)?.toInt()) {
                 1 -> StereoMode.TOP_BOTTOM
                 2 -> StereoMode.LEFT_RIGHT
+                3 -> StereoMode.CUSTOM
+                4 -> StereoMode.RIGHT_LEFT
                 else -> StereoMode.MONO
             }
         } ?: StereoMode.MONO
         val proj = children(reader, sv3d.content, sv3d.end).firstOrNull { it.type == "proj" }
             ?: return SphericalMetadata(2, SphericalProjection.OTHER, stereo, null)
         val parts = children(reader, proj.content, proj.end)
-        // Pose de la projection, en 16.16 : seul le cap sert, comme vue initiale. Un cap positif
-        // tourne la sphère vers la droite (convention de FFmpeg) : on voit d'abord ce qui était à
-        // gauche du centre de l'image.
-        val yaw = parts.firstOrNull { it.type == "prhd" }?.let { prhd -> reader.read(prhd.content, 8) }
-            ?.let { -it.s32(4) / 65_536.0 }?.takeIf { it.isFinite() }
+        // Pose de la projection, en 16.16, lue comme FFmpeg : un cap positif tourne la sphère vers
+        // la droite (on voit d'abord ce qui était à gauche du centre de l'image : vue initiale),
+        // une inclinaison positive la fait monter, un roulis positif la penche vers la droite
+        // (horizon redressé, [SpherePose]).
+        val pose = parts.firstOrNull { it.type == "prhd" }?.takeIf { it.contentLength >= 16 }?.let { prhd -> reader.read(prhd.content, 16) }
+        val yaw = pose?.let { -it.s32(4) / 65_536.0 }
+        val level = pose?.let { SpherePose.of(it.s32(8) / 65_536.0, it.s32(12) / 65_536.0) } ?: SpherePose.LEVEL
         val equi = parts.firstOrNull { it.type == "equi" }
         if (equi != null) {
             val bounds = reader.read(equi.content, 20) ?: return null
-            return SphericalMetadata(2, SphericalProjection.EQUIRECTANGULAR, stereo, bounded(bounds), yaw = yaw)
+            return SphericalMetadata(2, SphericalProjection.EQUIRECTANGULAR, stereo, bounded(bounds), yaw = yaw, pose = level)
         }
-        val projection = when {
-            parts.any { it.type == "cbmp" } -> SphericalProjection.CUBEMAP
-            parts.any { it.type == "mshp" } -> SphericalProjection.MESH
-            else -> SphericalProjection.OTHER
+        val cbmp = parts.firstOrNull { it.type == "cbmp" }
+        if (cbmp != null) {
+            return SphericalMetadata(2, SphericalProjection.CUBEMAP, stereo, SphereArea.FULL, yaw = yaw, pose = level, geometry = cubemap(reader, cbmp, entry, stereo))
         }
-        return SphericalMetadata(2, projection, stereo, null, yaw = yaw)
+        // `ytmp` : nom des premiers fichiers de YouTube.
+        val mshp = parts.firstOrNull { it.type == "mshp" || it.type == "ytmp" }
+        if (mshp != null) {
+            val mesh = mshp.takeIf { it.contentLength <= MeshProjection.MAX_BOX }
+                ?.let { reader.read(it.content, it.contentLength.toInt()) }
+                ?.let(MeshProjection::decode)
+            return SphericalMetadata(2, SphericalProjection.MESH, stereo, SphereArea.FULL, yaw = yaw, pose = level, geometry = mesh?.let(SphereProjection::Mesh))
+        }
+        return SphericalMetadata(2, SphericalProjection.OTHER, stereo, null, yaw = yaw, pose = level)
+    }
+
+    /**
+     * Cube de la boîte `cbmp` (boîte pleine, puis disposition et marge, entiers de 32 bits) :
+     * disposition 0 seulement (3 × 2, la seule que définit la RFC), dans l'image d'un œil de
+     * l'entrée ; null sinon, ou si la stéréoscopie n'est décrite que par des maillages.
+     */
+    private fun cubemap(reader: Reader, cbmp: Box, entry: SampleEntry, stereo: StereoMode): SphereProjection.Cubemap? {
+        if (cbmp.contentLength < 12) return null
+        val fields = reader.read(cbmp.content, 12) ?: return null
+        if (fields.u32(4) != 0L) return null
+        val (width, height) = when (stereo) {
+            StereoMode.MONO -> entry.width to entry.height
+            StereoMode.TOP_BOTTOM -> entry.width to entry.height / 2
+            StereoMode.LEFT_RIGHT, StereoMode.RIGHT_LEFT -> entry.width / 2 to entry.height
+            StereoMode.CUSTOM -> return null
+        }
+        return SphereProjection.Cubemap.of(fields.u32(8), width, height)
     }
 
     /**
@@ -230,6 +277,8 @@ internal object SphericalVideoHeaders {
 
     private fun ByteArray.s32(at: Int): Int = u32(at).toInt()
 
+    private fun ByteArray.u16(at: Int): Int = ((this[at].toInt() and 0xFF) shl 8) or (this[at + 1].toInt() and 0xFF)
+
     /** Taille 64 bits ; au-delà de 2⁶³ (négative), la boîte est refusée. */
     private fun ByteArray.u64(at: Int): Long = (u32(at) shl 32) or u32(at + 4)
 }
@@ -237,14 +286,20 @@ internal object SphericalVideoHeaders {
 /**
  * Choix du mode d'une vidéo d'après ses métadonnées sphériques : vue immersive (« 360° ») pour
  * une projection équirectangulaire aux bornes cohérentes, sphère complète ou partielle (VR180,
- * bande horizontale) ; rien pour une vidéo ordinaire, un cube ou un maillage (non pris en charge).
- * Vue initiale : le cap du fichier, sinon le centre de l'image ; l'inclinaison V1, sinon l'horizon
- * s'il est couvert ; ramenés dans la zone.
+ * bande horizontale), un cube de disposition connue ou un maillage lisible ; rien pour une vidéo
+ * ordinaire, une projection inconnue, ou une stéréoscopie propre au fichier sans maillage pour la
+ * décrire. Vue initiale : le cap du fichier, sinon le centre de l'image ; l'inclinaison V1, sinon
+ * l'horizon s'il est couvert ; ramenés dans la zone. Horizon redressé d'après la pose (V2).
  */
 object SphericalVideoRules {
 
     fun classify(mediaId: Long, metadata: SphericalMetadata?): Panorama? {
-        if (metadata?.projection != SphericalProjection.EQUIRECTANGULAR) return null
+        metadata ?: return null
+        val projection = when (metadata.projection) {
+            SphericalProjection.EQUIRECTANGULAR -> SphereProjection.Equirectangular.takeIf { metadata.stereo != StereoMode.CUSTOM }
+            SphericalProjection.CUBEMAP, SphericalProjection.MESH -> metadata.geometry
+            SphericalProjection.OTHER -> null
+        } ?: return null
         val area = metadata.area ?: return null
         val yaw = SphereMath.clampYaw(metadata.yaw ?: area.centerLongitude, area)
         val pitch = metadata.pitch ?: if (0.0 in area.south..area.north) 0.0 else (area.north + area.south) / 2
@@ -255,6 +310,8 @@ object SphericalVideoRules {
             initialYaw = yaw,
             initialPitch = pitch.coerceIn(area.south, area.north),
             stereo = metadata.stereo,
+            projection = projection,
+            pose = metadata.pose,
         )
     }
 }
@@ -262,21 +319,30 @@ object SphericalVideoRules {
 /**
  * Détection des vidéos 360°, à l'ouverture dans la visionneuse, comme celle des photos
  * panoramiques ([Panoramas]) : rien n'est analysé en arrière-plan ni enregistré dans la base, les
- * métadonnées lues (absence comprise) restent en mémoire par média et date de modification.
+ * métadonnées lues (absence comprise) restent en mémoire par média et date de modification. Un
+ * maillage compte pour autant d'entrées qu'il occupe de fois [MESH_BYTES_PER_ENTRY] : 8 Mo au plus
+ * de maillages en mémoire.
  */
 object SphericalVideos {
 
     private const val TAG = "SphericalVideos"
     private const val CACHE_SIZE = 512
+    private const val MESH_BYTES_PER_ENTRY = 16 * 1024
 
     /** Conteneurs ISO BMFF, les seuls qui portent ces métadonnées. */
     private val types = setOf("video/mp4", "video/quicktime", "video/3gpp", "video/3gpp2", "video/x-m4v")
 
     private class Detection(val metadata: SphericalMetadata?)
 
-    private val cache = LruCache<String, Detection>(CACHE_SIZE)
+    private val cache = object : LruCache<String, Detection>(CACHE_SIZE) {
+        override fun sizeOf(key: String, value: Detection): Int =
+            1 + ((value.metadata?.geometry as? SphereProjection.Mesh)?.mesh?.byteCount ?: 0) / MESH_BYTES_PER_ENTRY
+    }
 
-    fun isCandidate(item: MediaItem): Boolean = item.isVideo && item.mimeType.lowercase() in types
+    fun isCandidate(item: MediaItem): Boolean = item.isVideo && isCandidate(item.mimeType)
+
+    /** Type d'un conteneur ISO BMFF. */
+    fun isCandidate(mimeType: String): Boolean = mimeType.lowercase() in types
 
     /** Bloquant : lit au besoin les en-têtes du fichier. À appeler hors du fil principal. */
     fun detect(resolver: ContentResolver, item: MediaItem): Panorama? {
@@ -287,12 +353,7 @@ object SphericalVideos {
             known.metadata
         } else {
             val read = try {
-                resolver.openFileDescriptor(item.uri, "r")?.let { descriptor ->
-                    ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { stream ->
-                        val channel = stream.channel
-                        SphericalVideoHeaders.read { offset, length -> channel.readAt(offset, length) }
-                    }
-                }
+                read(resolver, item.uri)
             } catch (error: Exception) {
                 // Fichier illisible pour l'instant (permission, suppression…) : rien n'est mémorisé.
                 Log.d(TAG, "Lecture impossible : ${item.displayName}", error)
@@ -303,4 +364,16 @@ object SphericalVideos {
         }
         return SphericalVideoRules.classify(item.id, metadata)
     }
+
+    /**
+     * Bloquant : métadonnées de la vidéo [uri], par accès aléatoire à son descripteur de fichier
+     * (un fournisseur qui n'en donne pas : rien) ; lève l'erreur de lecture.
+     */
+    fun read(resolver: ContentResolver, uri: Uri): SphericalMetadata? =
+        resolver.openFileDescriptor(uri, "r")?.let { descriptor ->
+            ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { stream ->
+                val channel = stream.channel
+                SphericalVideoHeaders.read { offset, length -> channel.readAt(offset, length) }
+            }
+        }
 }

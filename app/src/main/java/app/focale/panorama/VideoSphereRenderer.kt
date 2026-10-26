@@ -13,24 +13,26 @@ import javax.microedition.khronos.opengles.GL10
 
 /**
  * Texture de l'image d'une vidéo 360° : quelle partie de l'image va sur la sphère. Le maillage
- * ([SphereMesh]) va de (0, 0) en haut à gauche à (1, 1) en bas à droite ; une texture de
- * `SurfaceTexture` a son origine en bas à gauche, et sa propre transformation (recadrage,
- * retournement) s'applique ensuite.
+ * ([TexturedMesh] : zone de sphère, cube ou maillage du fichier) va de (0, 0) en haut à gauche à
+ * (1, 1) en bas à droite de l'image d'un œil ; une texture de `SurfaceTexture` a son origine en bas
+ * à gauche, et sa propre transformation (recadrage, retournement) s'applique ensuite.
  */
 object VideoFrame {
 
     /**
      * Matrice 4 × 4 (colonnes à la suite) des coordonnées du maillage vers celles de l'image,
      * avant la transformation de la `SurfaceTexture` : l'image entière, ou celle de l'œil gauche
-     * d'une vidéo stéréoscopique (moitié haute, ou gauche).
+     * d'une vidéo stéréoscopique (moitié haute, gauche ou droite). Stéréoscopie propre au fichier :
+     * le maillage donne déjà ses coordonnées dans l'image entière.
      */
     fun matrix(stereo: StereoMode): FloatArray {
-        val scaleX = if (stereo == StereoMode.LEFT_RIGHT) 0.5f else 1f
+        val scaleX = if (stereo == StereoMode.LEFT_RIGHT || stereo == StereoMode.RIGHT_LEFT) 0.5f else 1f
         val scaleY = if (stereo == StereoMode.TOP_BOTTOM) 0.5f else 1f
-        // s = scaleX · u ; t = 1 - scaleY · v (l'œil gauche en haut : t de 1 à 0,5).
+        // s = décalage + scaleX · u ; t = 1 - scaleY · v (l'œil gauche en haut : t de 1 à 0,5).
         return Mat4.identity().apply {
             this[0] = scaleX
             this[5] = -scaleY
+            this[12] = if (stereo == StereoMode.RIGHT_LEFT) 0.5f else 0f
             this[13] = 1f
         }
     }
@@ -89,10 +91,10 @@ internal class VideoTarget(val textureId: Int, onFrame: () -> Unit) {
 }
 
 /**
- * Rendu OpenGL ES 2 d'une vidéo 360° : la sphère des photos ([SphereBuffers], vue par [camera]),
- * texturée par les images de la vidéo, que le lecteur dessine dans une texture externe
- * (`GL_TEXTURE_EXTERNAL_OES`) ; seule l'image de l'œil gauche d'une vidéo stéréoscopique
- * ([VideoFrame]).
+ * Rendu OpenGL ES 2 d'une vidéo 360° : la zone de sphère des photos, le cube ou le maillage du
+ * fichier ([mesh], [SphereBuffers]), redressé par [pose] et vu par [camera], texturé par les
+ * images de la vidéo, que le lecteur dessine dans une texture externe (`GL_TEXTURE_EXTERNAL_OES`) ;
+ * seule l'image de l'œil gauche d'une vidéo stéréoscopique ([VideoFrame]).
  *
  * Chaque contexte OpenGL crée sa surface ([VideoTarget]), passée à [onTarget] depuis le fil
  * OpenGL : le lecteur doit y être rebranché (l'ancienne est perdue avec son contexte). [onFrame] :
@@ -100,13 +102,15 @@ internal class VideoTarget(val textureId: Int, onFrame: () -> Unit) {
  */
 internal class VideoSphereRenderer(
     private val camera: SphereCamera,
-    area: SphereArea,
+    mesh: TexturedMesh,
+    pose: SpherePose,
     stereo: StereoMode,
     private val onTarget: (VideoTarget) -> Unit,
     private val onFrame: () -> Unit,
 ) : GLSurfaceView.Renderer {
 
-    private val sphere = SphereBuffers(area)
+    private val sphere = SphereBuffers(mesh)
+    private val model = pose.matrix()
     private val frame = VideoFrame.matrix(stereo)
     private val surfaceMatrix = FloatArray(16)
 
@@ -152,7 +156,7 @@ internal class VideoSphereRenderer(
         val current = target ?: return
         if (program == 0 || !current.latch(surfaceMatrix)) return
         GLES20.glUseProgram(program)
-        GLES20.glUniformMatrix4fv(matrixHandle, 1, false, camera.viewProjection(), 0)
+        GLES20.glUniformMatrix4fv(matrixHandle, 1, false, Mat4.multiply(camera.viewProjection(), model), 0)
         GLES20.glUniformMatrix4fv(texMatrixHandle, 1, false, Mat4.multiply(surfaceMatrix, frame), 0)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, current.textureId)

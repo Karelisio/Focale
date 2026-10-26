@@ -17,6 +17,9 @@ import org.xml.sax.helpers.DefaultHandler
  *   un panorama à plat ; null si la propriété manque.
  * @property usePanoramaViewer faux : l'auteur demande l'affichage d'une image ordinaire.
  * @property poseHeadingDegrees cap (boussole) du centre du panorama complet.
+ * @property posePitchDegrees inclinaison du centre du panorama au-dessus de l'horizon réel.
+ * @property poseRollDegrees roulis : l'horizon tourne d'autant, dans le sens inverse des aiguilles
+ *   d'une montre, dans l'image.
  * @property initialViewHeadingDegrees cap de la vue initiale, sur la même boussole.
  * @property initialHorizontalFovDegrees champ horizontal de la vue initiale.
  */
@@ -30,6 +33,8 @@ data class GPano(
     val fullWidth: Int? = null,
     val fullHeight: Int? = null,
     val poseHeadingDegrees: Double? = null,
+    val posePitchDegrees: Double? = null,
+    val poseRollDegrees: Double? = null,
     val initialViewHeadingDegrees: Double? = null,
     val initialViewPitchDegrees: Double? = null,
     val initialHorizontalFovDegrees: Double? = null,
@@ -89,6 +94,8 @@ internal object XmpPanorama {
             fullWidth = int("FullPanoWidthPixels"),
             fullHeight = int("FullPanoHeightPixels"),
             poseHeadingDegrees = real("PoseHeadingDegrees"),
+            posePitchDegrees = real("PosePitchDegrees"),
+            poseRollDegrees = real("PoseRollDegrees"),
             initialViewHeadingDegrees = real("InitialViewHeadingDegrees"),
             initialViewPitchDegrees = real("InitialViewPitchDegrees"),
             initialHorizontalFovDegrees = real("InitialHorizontalFOVDegrees"),

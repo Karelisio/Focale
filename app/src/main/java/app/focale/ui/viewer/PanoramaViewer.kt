@@ -1,6 +1,9 @@
 package app.focale.ui.viewer
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.hardware.SensorManager
+import android.net.Uri
 import android.opengl.GLSurfaceView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -43,7 +46,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -84,6 +89,7 @@ import app.focale.panorama.PanoramaKind
 import app.focale.panorama.SphereCamera
 import app.focale.panorama.SphereRenderer
 import app.focale.panorama.SphereTexture
+import app.focale.panorama.UriPhotoStreams
 import app.focale.ui.theme.ViewerChromeTheme
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
@@ -125,24 +131,104 @@ fun PanoramaButton(kind: PanoramaKind, onClick: () -> Unit, modifier: Modifier =
 }
 
 /**
+ * Photo d'une vue panoramique, d'où qu'elle vienne : galerie ([GalleryPanoramaPhoto]), autre
+ * application ([UriPanoramaPhoto]) ou coffre, déchiffrée en mémoire. [key] l'identifie : l'état de
+ * la vue (« Bouger le téléphone ») est gardé par photo.
+ */
+@Stable
+internal interface PanoramaPhoto {
+    val key: Any
+    val contentDescription: String?
+
+    /** Bloquant : texture d'une photo 360° ([SphereTexture]), null si elle est illisible. */
+    fun texture(context: Context, maxTextureSize: Int, maxPixels: Long): Bitmap?
+
+    /** Image d'un panorama à plat, pour telephoto. */
+    @Composable
+    fun flatImage(): ZoomableImageSource
+}
+
+/** Photo de la galerie : même requête que la visionneuse, l'image en mémoire s'affiche aussitôt. */
+@Immutable
+internal data class GalleryPanoramaPhoto(val item: MediaItem) : PanoramaPhoto {
+    override val key: Any get() = item.id
+    override val contentDescription: String get() = item.displayName
+
+    override fun texture(context: Context, maxTextureSize: Int, maxPixels: Long): Bitmap? =
+        SphereTexture.decode(UriPhotoStreams(context.contentResolver, item.uri), item.orientation, maxTextureSize, maxPixels)
+
+    @Composable
+    override fun flatImage(): ZoomableImageSource {
+        val context = LocalContext.current
+        val request = remember(item.id, item.dateModified) {
+            ImageRequest.Builder(context)
+                .data(item.uri)
+                .version(item)
+                .placeholderMemoryCacheKey(MemoryCache.Key(ThumbnailSizes.memoryKey(item.id, item.dateModified, ThumbnailSizes.lastGridBucket)))
+                .build()
+        }
+        return ZoomableImageSource.coil(request)
+    }
+}
+
+/**
+ * Fichier reçu d'une autre application, hors de l'index ([uri]) : orientation lue dans son
+ * en-tête ; [placeholderKey], clé mémoire de l'aperçu déjà affiché.
+ */
+@Immutable
+internal data class UriPanoramaPhoto(val uri: Uri, override val contentDescription: String?, val placeholderKey: String?) : PanoramaPhoto {
+    override val key: Any get() = uri
+
+    override fun texture(context: Context, maxTextureSize: Int, maxPixels: Long): Bitmap? =
+        SphereTexture.decode(UriPhotoStreams(context.contentResolver, uri), orientation = null, maxTextureSize, maxPixels)
+
+    @Composable
+    override fun flatImage(): ZoomableImageSource {
+        val context = LocalContext.current
+        val request = remember(uri) {
+            ImageRequest.Builder(context)
+                .data(uri)
+                .apply { placeholderKey?.let { placeholderMemoryCacheKey(it) } }
+                .build()
+        }
+        return ZoomableImageSource.coil(request)
+    }
+}
+
+/**
  * Vue plein écran d'une photo panoramique, par-dessus la visionneuse (qui reste dessous, intacte,
  * zoom compris) : sphère OpenGL ou panorama à plat selon [panorama]. Retour et appui sur la
- * photo comme dans la visionneuse, dont elle partage l'affichage des commandes.
+ * photo comme dans la visionneuse, dont elle partage l'affichage des commandes. [secure] : la
+ * sphère est exclue des captures et des écrans non sécurisés (coffre), comme sa fenêtre.
  */
 @Composable
-fun PanoramaOverlay(
-    item: MediaItem,
+internal fun PanoramaOverlay(
+    photo: PanoramaPhoto,
     panorama: Panorama,
     chromeVisible: Boolean,
     onToggleChrome: () -> Unit,
     onClose: () -> Unit,
+    secure: Boolean = false,
 ) {
     BackHandler(onBack = onClose)
     when (panorama.kind) {
-        PanoramaKind.SPHERE -> SphereViewer(item, panorama, chromeVisible, onToggleChrome, onClose)
-        PanoramaKind.FLAT -> FlatPanoramaViewer(item, panorama, chromeVisible, onToggleChrome, onClose)
+        PanoramaKind.SPHERE -> SphereViewer(photo, panorama, chromeVisible, onToggleChrome, onClose, secure)
+        PanoramaKind.FLAT -> FlatPanoramaViewer(photo, panorama, chromeVisible, onToggleChrome, onClose)
     }
 }
+
+/**
+ * Surface OpenGL ES 2 d'une vue 360°, rendue à la demande, contexte gardé en pause ; [secure] :
+ * contenu exclu des captures et des écrans non sécurisés (avant la création de sa surface).
+ */
+internal fun sphereSurface(context: Context, renderer: GLSurfaceView.Renderer, secure: Boolean): GLSurfaceView =
+    GLSurfaceView(context).apply {
+        setSecure(secure)
+        setEGLContextClientVersion(2)
+        preserveEGLContextOnPause = true
+        setRenderer(renderer)
+        renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
+    }
 
 /**
  * Habillage commun des deux vues : barre supérieure (retour, titre) et barre flottante
@@ -276,31 +362,33 @@ private enum class SphereLoad { LOADING, READY, FAILED }
 private data class GlContext(val generation: Int, val maxTextureSize: Int)
 
 /**
- * Photo 360° : sphère OpenGL ES ([SphereRenderer]) vue de l'intérieur. Glisser pour regarder
- * autour, pincer pour le champ ; « Bouger le téléphone » suit le capteur de rotation ; « Vue
- * initiale » revient au cap GPano. La photo est décodée hors du fil principal à la taille que
- * permet le contexte, et libérée (texture comprise, avec le contexte) en quittant la vue.
+ * Photo 360° : sphère OpenGL ES ([SphereRenderer]) vue de l'intérieur, horizon redressé d'après
+ * la pose GPano. Glisser pour regarder autour, pincer pour le champ ; « Bouger le téléphone » suit
+ * le capteur de rotation ; « Vue initiale » revient au cap GPano. La photo est décodée hors du fil
+ * principal à la taille que permet le contexte, et libérée (texture comprise, avec le contexte) en
+ * quittant la vue.
  */
 @Composable
 private fun SphereViewer(
-    item: MediaItem,
+    photo: PanoramaPhoto,
     panorama: Panorama,
     chromeVisible: Boolean,
     onToggleChrome: () -> Unit,
     onClose: () -> Unit,
+    secure: Boolean,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val (sensorManager, sensor) = rememberMotionSensor()
-    var motion by rememberSaveable(item.id) { mutableStateOf(false) }
+    var motion by rememberSaveable(photo.key) { mutableStateOf(false) }
     val camera = rememberSaveable(panorama, saver = sphereCameraSaver(panorama)) { panorama.camera() }
     var surface by remember { mutableStateOf<GLSurfaceView?>(null) }
     var glContext by remember { mutableStateOf<GlContext?>(null) }
     var load by remember { mutableStateOf(SphereLoad.LOADING) }
     val renderer = remember(camera) {
         val main = ContextCompat.getMainExecutor(context)
-        SphereRenderer(camera, panorama.area) { maxTextureSize ->
+        SphereRenderer(camera, panorama.area, panorama.pose) { maxTextureSize ->
             main.execute { glContext = GlContext((glContext?.generation ?: 0) + 1, maxTextureSize) }
         }
     }
@@ -310,7 +398,7 @@ private fun SphereViewer(
         load = SphereLoad.LOADING
         // Décodage mené à terme même si la vue se ferme entre-temps : le bitmap est alors libéré.
         val bitmap = withContext(Dispatchers.IO + NonCancellable) {
-            SphereTexture.decode(context.contentResolver, item.uri, item.orientation, gl.maxTextureSize, SphereTexture.pixelBudget(context))
+            photo.texture(context, gl.maxTextureSize, SphereTexture.pixelBudget(context))
         }
         val target = surface
         if (bitmap == null) {
@@ -355,14 +443,7 @@ private fun SphereViewer(
         onClose = onClose,
     ) {
         AndroidView(
-            factory = { viewContext ->
-                GLSurfaceView(viewContext).apply {
-                    setEGLContextClientVersion(2)
-                    preserveEGLContextOnPause = true
-                    setRenderer(renderer)
-                    renderMode = GLSurfaceView.RENDERMODE_WHEN_DIRTY
-                }.also { surface = it }
-            },
+            factory = { viewContext -> sphereSurface(viewContext, renderer, secure).also { surface = it } },
             onRelease = { released ->
                 // Le contexte disparaît avec la vue ; la texture est libérée avant si possible.
                 released.queueEvent(renderer::release)
@@ -413,27 +494,18 @@ internal fun sphereCameraSaver(panorama: Panorama) = Saver<SphereCamera, DoubleA
  */
 @Composable
 private fun FlatPanoramaViewer(
-    item: MediaItem,
+    photo: PanoramaPhoto,
     panorama: Panorama,
     chromeVisible: Boolean,
     onToggleChrome: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val context = LocalContext.current
     val view = LocalView.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
     val (sensorManager, sensor) = rememberMotionSensor()
-    var motion by rememberSaveable(item.id) { mutableStateOf(false) }
+    var motion by rememberSaveable(photo.key) { mutableStateOf(false) }
     val state = rememberZoomableImageState(rememberZoomableState())
-    // Même requête que la visionneuse : l'image en mémoire s'affiche aussitôt.
-    val request = remember(item.id, item.dateModified) {
-        ImageRequest.Builder(context)
-            .data(item.uri)
-            .version(item)
-            .placeholderMemoryCacheKey(MemoryCache.Key(ThumbnailSizes.memoryKey(item.id, item.dateModified, ThumbnailSizes.lastGridBucket)))
-            .build()
-    }
     if (motion && sensorManager != null && sensor != null) {
         LaunchedEffect(sensor, state) {
             val tracker = HeadingTracker()
@@ -459,8 +531,8 @@ private fun FlatPanoramaViewer(
         modifier = Modifier.onSizeChanged { viewportWidth = it.width },
     ) {
         PanoramaStrip(
-            image = ZoomableImageSource.coil(request),
-            contentDescription = item.displayName,
+            image = photo.flatImage(),
+            contentDescription = photo.contentDescription,
             state = state,
             onClick = onToggleChrome,
         )

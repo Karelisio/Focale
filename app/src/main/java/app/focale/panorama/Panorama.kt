@@ -47,6 +47,73 @@ enum class StereoMode {
 
     /** Œil gauche dans la moitié gauche de l'image. */
     LEFT_RIGHT,
+
+    /** Œil gauche dans la moitié droite de l'image. */
+    RIGHT_LEFT,
+
+    /**
+     * Disposition propre au fichier (« stereo-custom » de Spherical Video V2) : seul un maillage
+     * la décrit, par ses coordonnées de texture dans l'image entière.
+     */
+    CUSTOM,
+}
+
+/**
+ * Redressement de l'horizon d'une sphère, en degrés : [pitch] positive, le centre de l'image est
+ * au-dessus de l'horizon ; [roll] positif, l'horizon tourne dans le sens inverse des aiguilles
+ * d'une montre dans l'image (`PosePitchDegrees` et `PoseRollDegrees` de GPano). La pose d'une
+ * vidéo (`prhd`) se lit de la même façon, comme le fait FFmpeg : inclinaison positive, l'avant de
+ * la sphère monte ; roulis positif, il penche vers la droite. Le cap, lui, ne fait que déplacer
+ * la vue initiale.
+ */
+data class SpherePose(val pitch: Double = 0.0, val roll: Double = 0.0) {
+
+    val isLevel: Boolean get() = pitch == 0.0 && roll == 0.0
+
+    /**
+     * Matrice 4 × 4 de l'image vers le monde (repère de [SphereMesh]) : roulis corrigé autour de
+     * l'axe du centre de l'image, puis inclinaison autour de l'axe gauche-droite.
+     */
+    fun matrix(): FloatArray = Mat4.multiply(Mat4.rotationX(pitch), Mat4.rotationZ(-roll))
+
+    companion object {
+        val LEVEL = SpherePose()
+
+        /** Pose lue dans un fichier : valeurs finies seulement, inclinaison bornée à ±90°. */
+        fun of(pitch: Double?, roll: Double?): SpherePose = SpherePose(
+            pitch = pitch?.takeIf { it.isFinite() }?.coerceIn(-90.0, 90.0) ?: 0.0,
+            roll = roll?.takeIf { it.isFinite() }?.let(SphereMath::wrap) ?: 0.0,
+        )
+    }
+}
+
+/**
+ * Projection de l'image (d'un œil) sur la sphère. Une photo est toujours équirectangulaire ; une
+ * vidéo Spherical Video V2 peut aussi être un cube ou un maillage.
+ */
+sealed interface SphereProjection {
+
+    /** Équirectangulaire : l'image couvre la zone [Panorama.area] d'un coin à l'autre ([SphereMesh]). */
+    data object Equirectangular : SphereProjection
+
+    /**
+     * Cube de Spherical Video V2 (`cbmp`, disposition 0, [CubeMesh]) : six faces en 3 colonnes et
+     * 2 lignes d'une image (d'un œil) de [width] × [height] pixels, chacune entourée d'une marge
+     * de [padding] pixels, qui n'est pas affichée.
+     */
+    data class Cubemap(val padding: Int, val width: Int, val height: Int) : SphereProjection {
+        companion object {
+            /** Cube aux dimensions cohérentes (la marge laisse quelque chose de chaque face), ou null. */
+            fun of(padding: Long, width: Int, height: Int): Cubemap? {
+                if (width < 3 || height < 2 || padding < 0) return null
+                if (2.0 * padding >= minOf(width / 3.0, height / 2.0)) return null
+                return Cubemap(padding.toInt(), width, height)
+            }
+        }
+    }
+
+    /** Maillage du fichier (`mshp`, [MeshProjection]) : sommets et coordonnées dans l'image (d'un œil). */
+    class Mesh(val mesh: TexturedMesh) : SphereProjection
 }
 
 /**
@@ -57,6 +124,9 @@ enum class StereoMode {
  * @property initialPitch latitude (degrés) au centre de la vue initiale.
  * @property initialHorizontalFov champ horizontal initial demandé par le fichier, s'il y en a un.
  * @property stereo images d'une vidéo stéréoscopique ; une photo n'en a qu'une.
+ * @property projection image sur la sphère : équirectangulaire (photos), cube ou maillage (vidéos).
+ * @property pose redressement de l'horizon d'une sphère ; vue initiale, glisser et capteur sont
+ *   dans le repère redressé.
  */
 data class Panorama(
     val mediaId: Long,
@@ -66,14 +136,23 @@ data class Panorama(
     val initialPitch: Double,
     val initialHorizontalFov: Double? = null,
     val stereo: StereoMode = StereoMode.MONO,
+    val projection: SphereProjection = SphereProjection.Equirectangular,
+    val pose: SpherePose = SpherePose.LEVEL,
 )
+
+/** Maillage texturé de la sphère : zone couverte (équirectangulaire), cube ou maillage du fichier. */
+internal fun Panorama.sphereMesh(): TexturedMesh = when (val shape = projection) {
+    SphereProjection.Equirectangular -> SphereMesh.build(area)
+    is SphereProjection.Cubemap -> CubeMesh.build(shape)
+    is SphereProjection.Mesh -> shape.mesh
+}
 
 /**
  * Choix de la vue d'une photo d'après ses propriétés GPano et ses dimensions affichées
  * (orientation EXIF appliquée) :
  * - sphère : GPano équirectangulaire, visionneuse panoramique non refusée, couverture verticale
  *   d'au moins [SPHERE_MIN_HEIGHT] degrés (la moitié de la sphère) ; partielle, seule la zone
- *   couverte sera texturée ;
+ *   couverte sera texturée ; horizon redressé d'après l'inclinaison et le roulis de la pose ;
  * - à plat : GPano sur une image plus large que haute qui n'est pas une sphère (panorama
  *   horizontal partiel, projection cylindrique…), ou, sans GPano, photo d'au moins
  *   [FLAT_MIN_RATIO]:1 ;
@@ -100,7 +179,15 @@ object PanoramaRules {
         if (usable != null && area != null) {
             if (usable.isEquirectangular && area.height >= SPHERE_MIN_HEIGHT) {
                 val (yaw, pitch) = initialView(usable, area)
-                return Panorama(mediaId, PanoramaKind.SPHERE, area, yaw, pitch, usable.initialHorizontalFovDegrees?.takeIf { it > 0 })
+                return Panorama(
+                    mediaId = mediaId,
+                    kind = PanoramaKind.SPHERE,
+                    area = area,
+                    initialYaw = yaw,
+                    initialPitch = pitch,
+                    initialHorizontalFov = usable.initialHorizontalFovDegrees?.takeIf { it > 0 },
+                    pose = SpherePose.of(usable.posePitchDegrees, usable.poseRollDegrees),
+                )
             }
             if (ratio > 1) return Panorama(mediaId, PanoramaKind.FLAT, area, area.centerLongitude, 0.0)
         } else if (usable != null && ratio > 1) {
@@ -158,7 +245,10 @@ object PanoramaRules {
      * Vue initiale d'une sphère : cap et inclinaison GPano s'ils existent, sinon centre de la
      * zone, à l'horizon s'il est couvert ; ramenée dans la zone. Le cap initial se lit sur la
      * boussole du fichier, où le centre du panorama est à [GPano.poseHeadingDegrees] (0 à
-     * défaut, comme le fait Photo Sphere Viewer) : sa longitude est leur différence.
+     * défaut, comme le fait Photo Sphere Viewer) : sa longitude est leur différence. GPano compte
+     * en effet `InitialViewHeadingDegrees` depuis le nord réel, « pas depuis le centre du
+     * panorama » (Pannellum, lui, le compte depuis le centre) ; l'inclinaison initiale, depuis
+     * l'horizon réel, celui de la photo redressée ([SpherePose]).
      */
     internal fun initialView(gpano: GPano, area: SphereArea): Pair<Double, Double> {
         val heading = gpano.initialViewHeadingDegrees
