@@ -147,7 +147,10 @@ dans leur ordre sans trier la bibliothèque : (`is_trashed`, `date_taken`) pour 
 | `media_label` | (media, étiquette ML Kit canonique, confiance) ; index (`label`, `confidence`, `media_id`), version 7 |
 | `label_count` | nombre de médias hors corbeille de chaque étiquette (onglet Recherche), tenu à jour à chaque écriture des médias ou des étiquettes (`LabelCountQueries`), version 8 |
 | `media_name` | index plein texte FTS4 des noms de fichiers : chaque suite de lettres du nom et ses suffixes (`MediaNames`), tenu à jour avec `media` (`MediaDao.upsert`, `deleteByIds`), version 8 |
-| `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée |
+| `media_name_pending` | médias dont les mots du nom attendent d'être écrits dans `media_name` : la première indexation les y laisse, `MediaSyncManager.indexNames` les écrit ensuite en arrière-plan, version 9 |
+| `media_text` | texte reconnu dans la photo (une ligne par ligne) et sa clé de recherche normalisée (lettres et chiffres collés aussi séparés) |
+| `media_text_fts` | index plein texte FTS4 des clés de `media_text` (`unicode61`, sans accents), à contenu externe : tenu à jour par les déclencheurs que Room crée avec lui, version 9 |
+| `place_count` | nombre d'analyses de chaque clé de lieu (`place_key`), tenu à jour à chaque écriture des analyses (`PlaceCountQueries`), version 9 |
 | `media_embedding` | empreinte TinyCLIP de chaque photo (512 flottants, norme 1) |
 | `favorite` | médias favoris |
 | `album` / `album_media` | albums virtuels et leur contenu |
@@ -167,7 +170,13 @@ migrations (`DatabaseMigrations`) reprennent le SQL exporté par Room dans
 Ce que l'utilisateur a construit (`favorite`, `album`, `album_media`, `person`, `face`,
 `face_scan`, `person_refusal`, `media_date`, `search_history`), avec les dossiers masqués et les
 réglages, part dans la sauvegarde des données (§ 6.11) ; ce que l'analyse recalcule, ce qui se
-déduit de l'index (`label_count`, `media_name`), le coffre et la corbeille, non.
+déduit de l'index ou de l'analyse (`label_count`, `place_count`, `media_name`, `media_name_pending`,
+`media_text_fts`), le coffre et la corbeille, non.
+
+Les comptes tenus à jour (`label_count`, `place_count`) ne sont justes que si toutes les écritures
+passent par les méthodes prévues des DAO : au début de chaque passage d'analyse,
+`AnalysisDao.checkCounts` compare le total de chacun aux lignes qu'il compte et le recalcule en cas
+d'écart.
 
 ### 5.3 `MediaQuery` : une requête pour tout
 
@@ -262,7 +271,8 @@ dictionnaire FR/EN des 447 étiquettes (avec synonymes et hyperonymes :
 « chien » couvre aussi les races détectées), aux lieux (début d'un mot de l'un de leurs noms :
 « Lisbonne » comme « Lisbon » ; une carte de lieu cherche le nom GeoNames exact), aux dates
 (« 2023 », « juillet 2022 », « 14/07/2021 »), aux noms de fichiers et au texte reconnu
-dans les photos (« wifi » trouve aussi « Wi-Fi »).
+dans les photos (un mot du texte qui commence par le mot cherché : « fact » trouve « facture »,
+« wifi » « Wi-Fi », « 2024 » « #vacances2024 »).
 
 Index de la recherche (base v8, voir [PERFORMANCE.md](PERFORMANCE.md)) : un mot d'au moins trois
 lettres ASCII cherché dans les noms de fichiers passe par l'index plein texte `media_name` (FTS4,
@@ -274,6 +284,16 @@ chaque nom. Un mois de toutes les années (« juillet ») est borné en Kotlin d
 de 1900 à 2049 (minuit local du premier jour, comme les en-têtes), puis cherché par dichotomie sur
 la date de chaque média ; hors de ces années, le mois local de SQLite. Les étiquettes de l'onglet
 Recherche sont lues dans `label_count`, sans recompter `media_label`.
+
+Base v9 : le texte reconnu passe par l'index plein texte `media_text_fts` (FTS4, `unicode61` sans
+accents, sur la clé normalisée), par début de mot ; quand rien d'autre dans la bibliothèque ne
+répond au mot (étiquette, lieu, pays, nom de fichier, personne, début d'un mot d'un texte), l'ancien
+`LIKE` le cherche n'importe où dans les textes (`MediaTexts`) : « fi » trouve encore « WIFI » quand
+rien d'autre ne correspond, mais « crème » ne trouve plus « demi-écrémé » (voir
+[PERFORMANCE.md](PERFORMANCE.md)). Un mot est cherché parmi les clés distinctes des lieux
+(`place_count`), puis les médias de ces lieux par l'index de `place_key`. La première indexation de
+la bibliothèque écrit les mots des noms après coup, en arrière-plan (`media_name_pending`) ; d'ici
+là, les noms en attente sont comparés par `LIKE`, sans résultat perdu.
 
 Recherche en langage naturel : l'étape d'analyse « empreintes » (`EmbeddingStep`) calcule
 l'empreinte TinyCLIP de chaque photo (miniature MediaStore, prétraitement CLIP, modèle

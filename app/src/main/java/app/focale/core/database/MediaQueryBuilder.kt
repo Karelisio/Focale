@@ -313,54 +313,76 @@ object MediaQueryBuilder {
     }
 
     private fun termClause(term: SearchTerm, args: MutableList<Any?>): String {
+        val alternatives = alternatives(term, "m", args, main = true)
+        return if (alternatives.isEmpty()) "0" else alternatives.joinToString(" OR ", "(", ")")
+    }
+
+    /**
+     * Voies par lesquelles un média d'alias [m] répond à [term] (une seule suffit) ; arguments ajoutés
+     * à [args] dans l'ordre de leurs « ? ». [main] faux : ni repli du texte reconnu ni résultats de la
+     * recherche par le sens, ce qui sert de condition au repli ([MediaTexts.fallbackClause]).
+     */
+    private fun alternatives(term: SearchTerm, m: String, args: MutableList<Any?>, main: Boolean): List<String> {
         val alternatives = mutableListOf<String>()
         if (term.labels.isNotEmpty()) {
-            alternatives += "m.id IN (SELECT media_id FROM media_label WHERE label IN " +
+            alternatives += "$m.id IN (SELECT media_id FROM media_label WHERE label IN " +
                 "(${term.labels.joinToString(",") { "?" }}))"
             args.addAll(term.labels)
         }
         term.place?.takeIf { it.isNotBlank() }?.let { place ->
             if (term.exactPlace) {
                 // Clé du nom GeoNames, seule ou suivie de ses traductions (« lisbon | lisbonne »).
-                alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE place_key = ? OR place_key GLOB ?)"
+                alternatives += "$m.id IN (SELECT media_id FROM media_analysis WHERE place_key = ? OR place_key GLOB ?)"
                 args += place
                 args += place + PlaceTranslations.SEPARATOR + "*"
             } else {
                 // Préfixe d'un mot du lieu : « malo » trouve « saint malo », « nice » ne trouve pas « venice ».
-                alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE (' ' || place_key) LIKE ? ESCAPE '\\')"
+                // Cherché parmi les clés distinctes (place_count), puis les médias de ces lieux par
+                // l'index de place_key, au lieu d'un LIKE sur chaque analyse (docs/PERFORMANCE.md).
+                alternatives += "$m.id IN (SELECT media_id FROM media_analysis WHERE place_key IN " +
+                    "(SELECT place_key FROM place_count WHERE count > 0 AND (' ' || place_key) LIKE ? ESCAPE '\\'))"
                 args += "% " + likePattern(place).removePrefix("%")
             }
         }
         if (term.countries.isNotEmpty()) {
-            alternatives += "m.id IN (SELECT media_id FROM media_analysis WHERE country IN " +
+            alternatives += "$m.id IN (SELECT media_id FROM media_analysis WHERE country IN " +
                 "(${term.countries.joinToString(",") { "?" }}))"
             args.addAll(term.countries)
         }
         term.text?.takeIf { it.isNotBlank() }?.let { text ->
             val word = text.trim()
             alternatives += if (MediaNames.searchable(word)) {
-                // Mot de lettres : noms candidats par l'index plein texte, revérifiés par le même LIKE
+                // Mot de lettres : noms candidats par l'index plein texte, et ceux dont les mots
+                // attendent encore la fin de la première indexation, revérifiés par le même LIKE
                 // (MediaNames) ; sans quoi le LIKE, évalué sur chaque ligne, oblige à lire toute la
                 // table (docs/PERFORMANCE.md).
                 args += MediaNames.match(word)
-                "(m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ?) AND m.display_name LIKE ? ESCAPE '\\')"
+                "($m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ? UNION ALL SELECT media_id FROM media_name_pending) " +
+                    "AND $m.display_name LIKE ? ESCAPE '\\')"
             } else {
-                "m.display_name LIKE ? ESCAPE '\\'"
+                "$m.display_name LIKE ? ESCAPE '\\'"
             }
             args += likePattern(text)
-            // Texte reconnu dans la photo, comparé sous forme normalisée (sans accents).
-            alternatives += "m.id IN (SELECT media_id FROM media_text WHERE text_key LIKE ? ESCAPE '\\')"
-            args += likePattern(LabelDictionary.normalize(text))
+            // Texte reconnu dans la photo, comparé sous forme normalisée (sans accents) : début d'un
+            // mot, par l'index plein texte ; n'importe où (LIKE, comme avant) quand rien d'autre dans
+            // la bibliothèque ne répond au terme (MediaTexts).
+            val key = LabelDictionary.normalize(text)
+            if (key.isEmpty()) {
+                alternatives += MediaTexts.likeClause(m, key, args)
+            } else {
+                alternatives += MediaTexts.prefixClause(m, key, args)
+                if (main) alternatives += MediaTexts.fallbackClause(m, key, args) { others -> alternatives(term, others, args, main = false) }
+            }
         }
-        term.recognizedText?.let { alternatives += recognizedTextClause(it, args) }
-        if (term.similarIds.isNotEmpty()) {
+        term.recognizedText?.let { alternatives += recognizedTextClause(it, m, args) }
+        if (main && term.similarIds.isNotEmpty()) {
             // Identifiants numériques insérés littéralement (limite de paramètres SQLite).
-            alternatives += "m.id IN (${term.similarIds.joinToString(",")})"
+            alternatives += "$m.id IN (${term.similarIds.joinToString(",")})"
         }
         if (term.personIds.isNotEmpty()) {
-            alternatives += "m.id IN (SELECT media_id FROM face WHERE person_id IN (${term.personIds.joinToString(",")}))"
+            alternatives += "$m.id IN (SELECT media_id FROM face WHERE person_id IN (${term.personIds.joinToString(",")}))"
         }
-        return if (alternatives.isEmpty()) "0" else alternatives.joinToString(" OR ", "(", ")")
+        return alternatives
     }
 
     /**
@@ -368,7 +390,7 @@ object MediaQueryBuilder {
      * est cherché entier dans la clé normalisée (espaces simples entre les mots), un symbole
      * dans le texte brut ; les correspondances (0 ou 1 en SQLite) s'additionnent.
      */
-    private fun recognizedTextClause(criteria: TextCriteria, args: MutableList<Any?>): String {
+    private fun recognizedTextClause(criteria: TextCriteria, m: String, args: MutableList<Any?>): String {
         var condition = "length(text_key) >= ?"
         args += criteria.minLength
         // Un mot n'est compté qu'une fois, quelle que soit sa graphie (« Reçu », « recu »).
@@ -389,7 +411,7 @@ object MediaQueryBuilder {
             condition += " AND ($hits) >= ?"
             args += criteria.minKeywords
         }
-        return "(m.is_screenshot = 0 AND m.id IN (SELECT media_id FROM media_text WHERE $condition))"
+        return "($m.is_screenshot = 0 AND $m.id IN (SELECT media_id FROM media_text WHERE $condition))"
     }
 
     fun orderBy(sort: MediaSort): String {

@@ -4,12 +4,18 @@ import android.Manifest
 import android.app.Application
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.preferencesDataStoreFile
+import androidx.paging.PagingSource.LoadResult
+import androidx.paging.testing.TestPager
 import androidx.test.core.app.ApplicationProvider
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaEntity
+import app.focale.core.database.MediaQueryBuilder
 import app.focale.core.mediastore.MediaStoreSource
 import app.focale.core.mediastore.MediaSyncManager
+import app.focale.core.model.MediaQuery
+import app.focale.core.model.SearchTerm
 import app.focale.core.permissions.MediaAccessManager
+import app.focale.data.MediaRepository
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +24,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -80,7 +87,25 @@ class MediaSyncLoadTest {
         library.media.filterIndexed { index, _ -> index % 997 == 0 }.forEach { expected ->
             assertEquals(expected, database.mediaDao().get(expected.id))
         }
-        report.check("complète (50 000 médias)", full, budgetMs = FULL_SYNC_BUDGET_MS, detail = "lots de 1 000, transaction par lot")
+        report.check("complète (50 000 médias)", full, budgetMs = FULL_SYNC_BUDGET_MS, detail = "lots de 1 000, transaction par lot, sans les mots des noms")
+
+        // Mots des noms écrits ensuite, en arrière-plan : la timeline se lit pendant ce temps, et la
+        // recherche par nom reste exacte (noms en attente comparés par LIKE).
+        val repository = MediaRepository(database.mediaDao(), Dispatchers.IO, database.invalidationTracker)
+        val timeline = library.timelineOrder
+        val firstPage = report.once {
+            val page = TestPager(MediaRepository.PAGING_CONFIG, repository.pagingSource(MediaQuery.Timeline)).refresh() as LoadResult.Page
+            assertEquals(timeline.take(page.data.size).map { it.id }, page.data.map { it.id })
+            assertEquals(timeline.size, page.itemsBefore + page.data.size + page.itemsAfter)
+        }
+        val shot = MediaQuery(terms = listOf(SearchTerm(text = "shot")))
+        val shots = timeline.count { it.displayName.contains("shot", ignoreCase = true) }
+        assertEquals(shots, database.mediaDao().count(MediaQueryBuilder.count(shot)))
+        val names = report.once { manager.indexNames() }
+        assertFalse(database.mediaDao().hasPendingNames())
+        assertEquals(shots, database.mediaDao().count(MediaQueryBuilder.count(shot)))
+        report.check("première page de la timeline, index des noms en cours", firstPage, budgetMs = FIRST_PAGE_BUDGET_MS)
+        report.check("index des noms après la synchronisation complète (arrière-plan)", names, budgetMs = NAMES_BUDGET_MS, detail = "lots de 1 000")
 
         // Bibliothèque analysée : la purge des métadonnées orphelines porte sur des tables réalistes.
         database.insertAnalysis(library)
@@ -155,5 +180,7 @@ class MediaSyncLoadTest {
         const val FULL_SYNC_BUDGET_MS = 5_000.0
         const val INCREMENTAL_SYNC_BUDGET_MS = 1_500.0
         const val IDLE_SYNC_BUDGET_MS = 300.0
+        const val FIRST_PAGE_BUDGET_MS = 300.0
+        const val NAMES_BUDGET_MS = 3_000.0
     }
 }

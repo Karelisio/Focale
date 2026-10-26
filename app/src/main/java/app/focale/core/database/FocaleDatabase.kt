@@ -30,8 +30,11 @@ import androidx.room.RoomDatabase
         MediaDateEntity::class,
         LabelCountEntity::class,
         MediaNameEntity::class,
+        MediaTextFtsEntity::class,
+        PlaceCountEntity::class,
+        MediaNamePendingEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class FocaleDatabase : RoomDatabase() {

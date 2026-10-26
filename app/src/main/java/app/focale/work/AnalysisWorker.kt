@@ -56,6 +56,9 @@ class AnalysisWorker @AssistedInject constructor(
         // Chaque lot reprend après le précédent : coût de sélection constant au fil du passage.
         val queue = AnalysisQueue(dao)
         try {
+            // Comptes des étiquettes et des lieux, tenus à jour par les DAO : un écart avec les lignes
+            // qu'ils comptent (écriture qui les aurait contournés) les fait recalculer.
+            dao.checkCounts().takeIf { it.isNotEmpty() }?.let { Log.w(TAG, "Comptes recalculés : $it") }
             // Clés de recherche des lieux (noms traduits compris) : celles des médias déjà analysés
             // suivent la base embarquée, sans nouvelle analyse.
             val translations = placeNames.translations()

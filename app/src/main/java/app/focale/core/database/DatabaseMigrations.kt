@@ -2,6 +2,7 @@ package app.focale.core.database
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import app.focale.ml.text.RecognizedText
 
 /** Migrations de [FocaleDatabase] ; le SQL reprend celui exporté par Room dans app/schemas. */
 object DatabaseMigrations {
@@ -75,7 +76,57 @@ object DatabaseMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+    /**
+     * Version 9 : index plein texte du texte reconnu (`media_text_fts`, FTS4 à contenu externe, et
+     * ses déclencheurs), comptes des clés de lieux (`place_count`), mots des noms en attente
+     * (`media_name_pending`, vide : ceux des médias déjà là sont écrits depuis la version 8) ;
+     * calculés pour les textes et les lieux déjà là, recalculables, sans sauvegarde. Les clés des
+     * textes déjà lus gagnent d'abord leurs lettres et chiffres collés, séparés
+     * ([RecognizedText.searchKey]), sans nouvelle lecture des photos.
+     */
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            refreshTextKeys(db)
+            CHANGES_V9.forEach(db::execSQL)
+        }
+    }
+
+    /**
+     * Recalcule en Kotlin la clé de recherche des textes déjà lus ([RecognizedText.searchKey]), par
+     * tranches dans l'ordre des identifiants ; seules celles qui changent sont réécrites. À faire
+     * avant de créer l'index du texte, que ses déclencheurs tiendraient sinon à jour ligne à ligne.
+     * Renvoie le nombre de clés réécrites.
+     */
+    fun refreshTextKeys(db: SupportSQLiteDatabase): Int {
+        var updated = 0
+        var after = Long.MIN_VALUE
+        db.compileStatement("UPDATE media_text SET text_key = ? WHERE media_id = ?").use { update ->
+            while (true) {
+                val rows = db.query(
+                    "SELECT media_id, text, text_key FROM media_text WHERE media_id > ? AND text != '' ORDER BY media_id LIMIT $TEXT_KEYS_BATCH",
+                    arrayOf<Any?>(after),
+                ).use { cursor ->
+                    buildList { while (cursor.moveToNext()) add(Triple(cursor.getLong(0), cursor.getString(1), cursor.getString(2))) }
+                }
+                for ((id, text, oldKey) in rows) {
+                    val key = RecognizedText.searchKey(text)
+                    if (key == oldKey) continue
+                    update.bindString(1, key)
+                    update.bindLong(2, id)
+                    update.executeUpdateDelete()
+                    updated++
+                }
+                if (rows.size < TEXT_KEYS_BATCH) return updated
+                after = rows.last().first
+            }
+        }
+    }
+
+    /** Textes relus par tranche ([refreshTextKeys]) : quelques Mo au plus pour des captures très bavardes. */
+    private const val TEXT_KEYS_BATCH = 500
+
+    val ALL: Array<Migration> =
+        arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
 
     private val CREATE_V2 = listOf(
         "CREATE TABLE IF NOT EXISTS `media_text` (`media_id` INTEGER NOT NULL, `analyzed_modified` INTEGER NOT NULL, `version` INTEGER NOT NULL, `text` TEXT NOT NULL, `text_key` TEXT NOT NULL, PRIMARY KEY(`media_id`))",
@@ -132,5 +183,25 @@ object DatabaseMigrations {
         "INSERT INTO `label_count` (`label`, `count`) SELECT l.label, COUNT(*) FROM media_label l " +
             "WHERE +l.media_id IN (SELECT id FROM media WHERE is_trashed = 0) GROUP BY l.label",
         "CREATE VIRTUAL TABLE IF NOT EXISTS `media_name` USING FTS4(`words` TEXT NOT NULL)",
+    )
+
+    private val CHANGES_V9 = listOf(
+        // Texte reconnu, lieux et noms de la recherche par mot sans parcourir leurs tables (docs/PERFORMANCE.md).
+        "CREATE VIRTUAL TABLE IF NOT EXISTS `media_text_fts` USING FTS4(`text_key` TEXT NOT NULL, " +
+            "tokenize=unicode61 `remove_diacritics=1`, content=`media_text`)",
+        "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_media_text_fts_BEFORE_UPDATE BEFORE UPDATE ON `media_text` " +
+            "BEGIN DELETE FROM `media_text_fts` WHERE `docid`=OLD.`rowid`; END",
+        "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_media_text_fts_BEFORE_DELETE BEFORE DELETE ON `media_text` " +
+            "BEGIN DELETE FROM `media_text_fts` WHERE `docid`=OLD.`rowid`; END",
+        "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_media_text_fts_AFTER_UPDATE AFTER UPDATE ON `media_text` " +
+            "BEGIN INSERT INTO `media_text_fts`(`docid`, `text_key`) VALUES (NEW.`rowid`, NEW.`text_key`); END",
+        "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_media_text_fts_AFTER_INSERT AFTER INSERT ON `media_text` " +
+            "BEGIN INSERT INTO `media_text_fts`(`docid`, `text_key`) VALUES (NEW.`rowid`, NEW.`text_key`); END",
+        // Textes déjà lus : l'index se construit depuis sa table de contenu.
+        "INSERT INTO `media_text_fts`(`media_text_fts`) VALUES ('rebuild')",
+        "CREATE TABLE IF NOT EXISTS `place_count` (`place_key` TEXT NOT NULL, `count` INTEGER NOT NULL, PRIMARY KEY(`place_key`))",
+        "INSERT INTO `place_count` (`place_key`, `count`) SELECT place_key, COUNT(*) FROM media_analysis " +
+            "WHERE place_key IS NOT NULL GROUP BY place_key",
+        "CREATE TABLE IF NOT EXISTS `media_name_pending` (`media_id` INTEGER NOT NULL, PRIMARY KEY(`media_id`))",
     )
 }

@@ -200,6 +200,30 @@ data class MediaNameEntity(
     val words: String,
 )
 
+/**
+ * Média dont les mots du nom restent à écrire dans `media_name` : la première indexation les laisse
+ * en attente ([MediaDao.upsertNamesLater]) et les écrit ensuite en arrière-plan
+ * ([MediaDao.indexPendingNames]). La recherche par nom compare ces médias par `LIKE`, sans l'index
+ * ([MediaNames]) : elle reste exacte entre-temps. Recalculable, sans sauvegarde.
+ */
+@Entity(tableName = "media_name_pending")
+data class MediaNamePendingEntity(
+    @PrimaryKey @ColumnInfo(name = "media_id") val mediaId: Long,
+)
+
+/**
+ * Nombre d'analyses (`media_analysis`) qui portent chaque clé de lieu, corbeille et médias absents
+ * compris : la recherche d'un mot parmi les lieux lit ces quelques dizaines de clés distinctes, puis
+ * les médias des clés trouvées par l'index de `place_key`, au lieu d'un `LIKE` sur chaque analyse.
+ * Tenu à jour comme `label_count` ([PlaceCountQueries]) ; recalculable, sans sauvegarde
+ * (docs/PERFORMANCE.md).
+ */
+@Entity(tableName = "place_count")
+data class PlaceCountEntity(
+    @PrimaryKey @ColumnInfo(name = "place_key") val placeKey: String,
+    val count: Int,
+)
+
 /** Élément de la corbeille applicative (Android 10 uniquement). */
 @Entity(tableName = "trash_item")
 data class TrashItemEntity(

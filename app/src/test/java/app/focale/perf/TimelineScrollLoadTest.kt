@@ -7,6 +7,7 @@ import androidx.paging.testing.TestPager
 import androidx.paging.testing.asSnapshot
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.test.core.app.ApplicationProvider
+import app.focale.core.database.DatabaseMigrations
 import app.focale.core.database.FocaleDatabase
 import app.focale.core.database.MediaEntity
 import app.focale.core.database.MediaQueryBuilder
@@ -267,6 +268,72 @@ class TimelineScrollLoadTest {
         }
         report.check("recherche « shot » (nom de fichier) : première page", shotPage, budgetMs = SEARCH_PAGE_BUDGET_MS)
 
+        // Texte reconnu, début de mot (« fact ») et mot entier (« wifi ») : médias dont un mot du texte
+        // commence ainsi, ou dont le nom le contient. Ni l'un ni l'autre n'est contenu ailleurs qu'au
+        // début d'un mot des textes de synthèse : même résultat qu'avec LIKE.
+        for (word in listOf("fact", "wifi")) {
+            val query = MediaQuery(terms = listOf(SearchTerm(text = word)))
+            val matching = expected.filter { media ->
+                media.displayName.contains(word, ignoreCase = true) || textKeys[media.id].orEmpty().split(' ').any { it.startsWith(word) }
+            }
+            assertEquals(expected.filter { it.displayName.contains(word, ignoreCase = true) || textKeys[it.id]?.contains(word) == true }, matching)
+            val wordCount = report.samples(repeat = 5) { assertEquals(matching.size, repository.observeCount(query).first()) }
+            report.check("texte « $word » (nom ou texte reconnu) : nombre de résultats", wordCount, budgetMs = TEXT_COUNT_BUDGET_MS, detail = "${matching.size} résultats")
+            val wordPage = report.samples(repeat = 3) {
+                val page = TestPager(MediaRepository.PAGING_CONFIG, repository.pagingSource(query)).refresh()
+                assertEquals(matching.take(360).map { it.id }, (page as LoadResult.Page).data.map { it.id })
+            }
+            report.check("texte « $word » (nom ou texte reconnu) : première page", wordPage, budgetMs = TEXT_PAGE_BUDGET_MS)
+        }
+        // Aucun mot des textes ne commence par « ture » : repli sur LIKE, « facture » trouvé comme avant.
+        val ture = MediaQuery(terms = listOf(SearchTerm(text = "ture")))
+        assertTrue(textKeys.values.none { key -> key.split(' ').any { it.startsWith("ture") } })
+        val tureMedia = expected.filter { it.displayName.contains("ture", ignoreCase = true) || textKeys[it.id]?.contains("ture") == true }
+        assertTrue(tureMedia.isNotEmpty())
+        val tureCount = report.samples(repeat = 5) { assertEquals(tureMedia.size, repository.observeCount(ture).first()) }
+        report.check("texte « ture » (milieu de mot, repli sur LIKE) : nombre de résultats", tureCount, budgetMs = SEARCH_COUNT_BUDGET_MS, detail = "${tureMedia.size} résultats")
+        // Texte reconnu seul, avant et après l'index plein texte : LIKE sur chaque texte, ou MATCH.
+        val textLike = report.samples(repeat = 5) {
+            withContext(Dispatchers.IO) {
+                database.query(SimpleSQLiteQuery("SELECT COUNT(*) FROM media_text WHERE text_key LIKE '%facture%'")).use { it.moveToFirst() }
+            }
+        }
+        report.check("texte reconnu « facture », LIKE sur chaque texte (avant)", textLike, budgetMs = 150.0)
+        val textMatch = report.samples(repeat = 5) {
+            withContext(Dispatchers.IO) {
+                database.query(SimpleSQLiteQuery("SELECT COUNT(*) FROM media_text_fts WHERE media_text_fts MATCH '\"facture*\"'")).use { it.moveToFirst() }
+            }
+        }
+        report.check("texte reconnu « facture », index plein texte", textMatch, budgetMs = 10.0)
+
+        // Lot de l'étape « texte » (16 photos) relu dans une bibliothèque déjà lue : index du texte compris.
+        val textBatches = library.texts.filter { it.text.isNotEmpty() }.take(16 * 21).chunked(16)
+        val textWrites = report.samples(repeat = textBatches.size - 1) { index ->
+            database.textDao().upsert(textBatches[index + 1].map { it.copy(analyzedModified = it.analyzedModified + 1) })
+        }
+        report.check("enregistrement d'un lot de textes (16 photos lues)", textWrites, budgetMs = 50.0)
+        // Taille de l'index du texte, à côté de celle des textes.
+        val sizes = withContext(Dispatchers.IO) {
+            database.query(
+                SimpleSQLiteQuery(
+                    "SELECT (SELECT COALESCE(SUM(length(block)), 0) FROM media_text_fts_segments) + " +
+                        "(SELECT COALESCE(SUM(length(root)), 0) FROM media_text_fts_segdir) + " +
+                        "(SELECT COALESCE(SUM(length(size)), 0) FROM media_text_fts_docsize), " +
+                        "(SELECT SUM(length(text) + length(text_key)) FROM media_text), (SELECT COUNT(*) FROM place_count WHERE count > 0)",
+                ),
+            ).use { it.moveToFirst(); Triple(it.getLong(0), it.getLong(1), it.getLong(2)) }
+        }
+        report.note("taille de l'index du texte", sizes.first / 1_048_576.0, unit = "Mio", detail = "textes et clés : ${LoadReport.format(sizes.second / 1_048_576.0)} Mio")
+        report.note("clés de lieux distinctes", sizes.third.toDouble(), unit = "clés")
+
+        // Lieu, début d'un mot de son nom (« malo » : Saint-Malo), critère seul : clés des lieux.
+        val placeKeys = library.analyses.associate { it.mediaId to it.placeKey }
+        val malo = MediaQuery(terms = listOf(SearchTerm(place = "malo")))
+        val maloMedia = expected.filter { media -> placeKeys[media.id]?.let { " $it".contains(" malo") } == true }
+        assertTrue(maloMedia.isNotEmpty())
+        val placeCount = report.samples(repeat = 5) { assertEquals(maloMedia.size, repository.observeCount(malo).first()) }
+        report.check("lieu « malo » seul : nombre de résultats", placeCount, budgetMs = PLACE_COUNT_BUDGET_MS, detail = "${maloMedia.size} résultats")
+
         // Mois de toutes les années (« juillet ») : mois local de chaque média, comme les en-têtes.
         val zone = ZoneId.systemDefault()
         val july = SearchQueryParser.parse("juillet")
@@ -303,6 +370,17 @@ class TimelineScrollLoadTest {
         assertTrue(stats.all { (it.coverId to it.label) in labeled && it.coverId in visible })
         val places = report.samples(repeat = 3) { database.analysisDao().placeStats(40) }
         report.check("onglet Recherche : lieux", places, budgetMs = 200.0)
+
+        // Migration 8 → 9, une fois : clés des textes recalculées (rien ne change ici, toutes déjà à
+        // jour), puis index du texte reconstruit depuis media_text.
+        val db = database.openHelper.writableDatabase
+        var rewritten = -1
+        val keys = report.once { withContext(Dispatchers.IO) { rewritten = DatabaseMigrations.refreshTextKeys(db) } }
+        assertEquals(0, rewritten)
+        report.check("migration 8 → 9 : clés des textes recalculées", keys, budgetMs = 5_000.0, detail = "${library.texts.size} textes")
+        val rebuild = report.once { withContext(Dispatchers.IO) { db.execSQL("INSERT INTO media_text_fts(media_text_fts) VALUES ('rebuild')") } }
+        report.check("migration 8 → 9 : index du texte reconstruit", rebuild, budgetMs = 5_000.0)
+        assertEquals(invoices, repository.observeCount(invoice).first())
     }
 
     /** Grille complète (médias et en-têtes de [level]) produite par Paging à partir de ces données. */
@@ -325,6 +403,14 @@ class TimelineScrollLoadTest {
         const val THINGS_BUDGET_MS = 20.0
         const val MONTH_COUNT_BUDGET_MS = 50.0
         const val MONTH_PAGE_BUDGET_MS = 60.0
+
+        // Texte reconnu par son index plein texte : 3,5 à 7,5 ms et 10 à 19 ms, 23 à 37 ms et 52 à 72 ms
+        // avec LIKE sur chaque texte. Lieu parmi les clés distinctes : 1,2 à 1,6 ms, 6 à 10 ms sur chaque
+        // analyse. Des écarts trop faibles pour un budget sur une machine chargée : QueryPlanTest garde
+        // les plans (index plein texte, clés distinctes).
+        const val TEXT_COUNT_BUDGET_MS = 25.0
+        const val TEXT_PAGE_BUDGET_MS = 60.0
+        const val PLACE_COUNT_BUDGET_MS = 10.0
 
         const val DAY_MS = 86_400_000L
         const val OLDER_FIRST_ID = 10_000_000L

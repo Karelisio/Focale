@@ -47,7 +47,7 @@ data class PlaceKeyRow(
 )
 
 @Dao
-interface AnalysisDao : LabelCountQueries {
+interface AnalysisDao : LabelCountQueries, PlaceCountQueries {
 
     /**
      * Médias à analyser (jamais analysés, modifiés depuis, ou analysés par une ancienne version),
@@ -96,8 +96,15 @@ interface AnalysisDao : LabelCountQueries {
     )
     suspend fun pendingCount(version: Int): Int
 
+    /** Enregistre [analysis], reportées dans les comptes des lieux (`place_count`). */
+    @Transaction
+    suspend fun upsert(analysis: List<MediaAnalysisEntity>) = withPlaceCounts(analysis.map { it.mediaId }) {
+        upsertRows(analysis)
+    }
+
+    /** Lignes seules : passer par [upsert]. */
     @Upsert
-    suspend fun upsert(analysis: List<MediaAnalysisEntity>)
+    suspend fun upsertRows(analysis: List<MediaAnalysisEntity>)
 
     @Query("DELETE FROM media_label WHERE media_id IN (:mediaIds)")
     suspend fun deleteLabels(mediaIds: List<Long>)
@@ -107,7 +114,8 @@ interface AnalysisDao : LabelCountQueries {
 
     /**
      * Enregistre un lot d'analyses et remplace les étiquettes correspondantes, reportées dans
-     * `label_count` : une écriture de plus par lot, pour ne plus relire toutes les étiquettes.
+     * `label_count` : une écriture de plus par lot, pour ne plus relire toutes les étiquettes ; les
+     * lieux, dans `place_count` ([upsert]).
      */
     @Transaction
     suspend fun save(analysis: List<MediaAnalysisEntity>, labels: List<MediaLabelEntity>) =
@@ -117,15 +125,60 @@ interface AnalysisDao : LabelCountQueries {
             insertLabels(labels)
         }
 
-    /** Recalcule `label_count` depuis toutes les étiquettes (contrôle des tests). */
+    /** Recalcule `label_count` depuis toutes les étiquettes (contrôle des tests, [checkCounts]). */
     @Transaction
     suspend fun rebuildLabelCounts() {
         clearLabelCounts()
         countAllLabels()
     }
 
+    /** Recalcule `place_count` depuis toutes les analyses (contrôle des tests, [checkCounts]). */
+    @Transaction
+    suspend fun rebuildPlaceCounts() = recountPlaces()
+
+    @Query("SELECT COALESCE(SUM(count), 0) FROM label_count")
+    suspend fun labelCountTotal(): Long
+
+    /**
+     * Étiquettes des médias de l'index hors corbeille, ce que totalisent les comptes de
+     * `label_count` : l'index de la clé primaire de `media_label` seul, le média de chacune par la
+     * sienne (« + » écarte l'index de la corbeille), sans regroupement : 20 ms pour 157 000
+     * étiquettes, contre 40 à 60 ms en partant des médias.
+     */
+    @Query("SELECT COUNT(*) FROM media m JOIN media_label l ON l.media_id = m.id WHERE +m.is_trashed = 0")
+    suspend fun visibleLabelTotal(): Long
+
+    @Query("SELECT COALESCE(SUM(count), 0) FROM place_count")
+    suspend fun placeCountTotal(): Long
+
+    /** Analyses avec un lieu, ce que totalisent les comptes de `place_count` : l'index de `place_key` seul. */
+    @Query("SELECT COUNT(*) FROM media_analysis WHERE place_key IS NOT NULL")
+    suspend fun placedTotal(): Long
+
+    /**
+     * Garde-fou des comptes tenus à jour (`label_count`, `place_count`), justes tant que toutes les
+     * écritures passent par les méthodes prévues ([withLabelCounts], [withPlaceCounts]) : le total
+     * de chacun est comparé au nombre de lignes qu'il compte, et la table est recalculée s'ils
+     * diffèrent. Appelé au début de chaque passage d'analyse ; renvoie les tables recalculées.
+     * Un écart qui se compenserait (une étiquette de trop, une autre de moins) passerait inaperçu.
+     */
+    @Transaction
+    suspend fun checkCounts(): List<String> = buildList {
+        if (labelCountTotal() != visibleLabelTotal()) {
+            rebuildLabelCounts()
+            add("label_count")
+        }
+        if (placeCountTotal() != placedTotal()) {
+            recountPlaces()
+            add("place_count")
+        }
+    }
+
     @Query("SELECT label, count FROM label_count WHERE count != 0 ORDER BY label")
     suspend fun labelCounts(): List<LabelTally>
+
+    @Query("SELECT place_key, count FROM place_count WHERE count != 0 ORDER BY place_key")
+    suspend fun placeCounts(): List<PlaceTally>
 
     @Query("SELECT * FROM media_analysis WHERE media_id = :mediaId")
     fun observe(mediaId: Long): Flow<MediaAnalysisEntity?>
@@ -202,6 +255,7 @@ interface AnalysisDao : LabelCountQueries {
     @Query("SELECT place, country, place_key FROM media_analysis WHERE place IS NOT NULL GROUP BY place, country, place_key")
     suspend fun placeKeys(): List<PlaceKeyRow>
 
+    /** Lignes seules : passer par [refreshPlaceKeys], qui recompte les lieux. */
     @Query("UPDATE media_analysis SET place_key = :key WHERE place = :place AND country IS :country")
     suspend fun updatePlaceKey(place: String, country: String?, key: String)
 
@@ -220,6 +274,8 @@ interface AnalysisDao : LabelCountQueries {
                 updated++
             }
         }
+        // Clés de tous les médias d'un lieu changées d'un coup : comptes des lieux recalculés.
+        if (updated > 0) recountPlaces()
         return updated
     }
 }

@@ -72,7 +72,10 @@ interface EmbeddingDao {
     )
     suspend fun page(version: Int, after: Long, limit: Int): List<StoredEmbedding>
 
-    /** Vrai si [word] est un mot entier du nom d'un lieu de la bibliothèque (forme normalisée). */
-    @Query("SELECT EXISTS(SELECT 1 FROM media_analysis WHERE (' ' || place_key || ' ') LIKE '% ' || :word || ' %')")
+    /**
+     * Vrai si [word] est un mot entier du nom d'un lieu de la bibliothèque (forme normalisée), parmi
+     * les clés distinctes des lieux (`place_count`) plutôt que dans chaque analyse.
+     */
+    @Query("SELECT EXISTS(SELECT 1 FROM place_count WHERE count > 0 AND (' ' || place_key || ' ') LIKE '% ' || :word || ' %')")
     suspend fun isPlaceWord(word: String): Boolean
 }
