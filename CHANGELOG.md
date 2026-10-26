@@ -5,6 +5,26 @@ lancement après une mise à jour, Focale affiche les sections plus récentes qu
 version installée auparavant ; la CI reprend la section de la version comme
 description de la version GitHub.
 
+## 1.12.0
+
+- Vidéos 360° : les cubes et les maillages (dont les cubes équi-angulaires des vidéos
+  YouTube) s'ouvrent aussi en vue immersive, et l'horizon des photos et vidéos 360° est redressé
+  d'après l'inclinaison enregistrée dans le fichier.
+- Photos et vidéos 360° et panoramas reçus d'une autre application ou rangés dans le
+  coffre-fort : même bouton « 360° » ou « Vue panoramique » ; dans le coffre, rien n'est
+  déchiffré sur le disque.
+- Recherche plus rapide dans le texte des photos (un mot qui commence par le mot cherché :
+  « fact » trouve « facture ») et dans les lieux ; un mot que rien d'autre ne trouve est encore
+  cherché au milieu des mots. Premier lancement plus rapide.
+- Diffusion vers une TV : les touches de volume du téléphone règlent la TV ; les TV qui se
+  désignent par leur nom et celles d'un réseau sans IPv4 sont trouvées aussi.
+- Rotation sans perte des HEIC étendue aux photos des Galaxy, aux photos animées et aux photos
+  HDR des iPhone.
+- Restauration des données plus rapide depuis Drive ou un autre service en ligne : le fichier
+  n'est lu qu'une fois.
+- Éditeur : un trait de flou parti d'une zone peint au lieu de la déplacer (appui long puis
+  glisser pour déplacer une zone). Collages : une photo très agrandie reste nette.
+
 ## 1.11.0
 
 - Vidéos 360° : « 360° » ouvre la vidéo en vue immersive, avec ses commandes habituelles

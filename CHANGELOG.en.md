@@ -4,6 +4,24 @@ English version of CHANGELOG.md, with the same "## X.Y.Z" sections in the same o
 recent first). Focale shows these notes when its language is not French; the CI adds this
 version's section below the French one in the GitHub release description.
 
+## 1.12.0
+
+- 360° videos: cubemaps and meshes (including the equi-angular cubemaps of YouTube videos)
+  open in the immersive view too, and the horizon of 360° photos and videos is levelled using
+  the tilt stored in the file.
+- 360° photos and videos and panoramas received from another app or kept in the vault: same
+  "360°" or "Panorama view" button; in the vault, nothing is decrypted to storage.
+- Faster search in the text of photos (a word that starts with the searched word: "fact"
+  finds "facture") and in places; a word nothing else finds is still looked for inside words.
+  Faster first launch.
+- Cast to a TV: the phone's volume keys set the TV volume; TVs that identify themselves by
+  name and TVs on networks without IPv4 are found too.
+- Lossless rotation of HEIC photos now also covers Galaxy photos, motion photos and iPhone
+  HDR photos.
+- Faster data restore from Drive or another online service: the file is read only once.
+- Editor: a blur stroke that starts on a zone paints instead of moving it (long-press then
+  drag to move a zone). Collages: a photo zoomed in a lot stays sharp.
+
 ## 1.11.0
 
 - 360° videos: "360°" opens the video in an immersive view with its usual controls (play,
