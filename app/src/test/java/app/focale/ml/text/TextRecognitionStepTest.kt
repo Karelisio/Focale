@@ -22,7 +22,8 @@ class TextRecognitionStepTest {
 
         val row = dao.rows.getValue(1L)
         assertEquals("Code Wi-Fi\nMOT DE PASSE : Été2024", row.text)
-        assertEquals("code wi fi mot de passe ete2024 wifi", row.textKey)
+        // Forme compacte de « Wi-Fi », puis lettres et chiffres de « Été2024 » séparés.
+        assertEquals("code wi fi mot de passe ete2024 wifi ete 2024", row.textKey)
         assertEquals(TextRecognitionStep.VERSION, row.version)
         assertEquals(5_000L, row.analyzedModified)
     }

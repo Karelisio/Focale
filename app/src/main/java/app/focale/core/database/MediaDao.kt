@@ -11,6 +11,9 @@ import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 
+/** Média dont les mots du nom restent à écrire ([MediaDao.pendingNames]) ; [name] null : retiré de l'index depuis. */
+data class PendingName(val id: Long, val name: String?)
+
 /** Ligne de [MediaQueryBuilder.summaries] : rang de la requête, nombre de médias et couverture. */
 data class SummaryRow(
     val position: Int,
@@ -27,11 +30,13 @@ data class SummaryRow(
  * se rafraîchit dès qu'un favori, un album ou une étiquette change. Les pages des grilles
  * ([MediaPagingSource]) et leur histogramme suivent les mêmes tables (`MediaRepository`).
  *
- * Toute écriture de l'index passe par [upsert] et [deleteByIds], qui tiennent à jour avec lui les
- * mots des noms de fichiers ([MediaNames]) et les comptes des étiquettes ([LabelCountQueries]).
+ * Toute écriture de l'index passe par [upsert] (ou [upsertNamesLater]) et [deleteByIds], qui
+ * tiennent à jour avec lui les mots des noms de fichiers ([MediaNames]) et les comptes des
+ * étiquettes ([LabelCountQueries]) ; la purge des analyses orphelines, les comptes des lieux
+ * ([PlaceCountQueries]).
  */
 @Dao
-interface MediaDao : LabelCountQueries {
+interface MediaDao : LabelCountQueries, PlaceCountQueries {
 
     @RawQuery(observedEntities = [MediaEntity::class, FavoriteEntity::class, AlbumMediaEntity::class, MediaLabelEntity::class, MediaAnalysisEntity::class])
     fun observeList(query: SupportSQLiteQuery): Flow<List<MediaEntity>>
@@ -117,6 +122,47 @@ interface MediaDao : LabelCountQueries {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertNames(names: List<MediaNameEntity>)
 
+    /**
+     * Comme [upsert], mots des noms laissés en attente ([MediaNamePendingEntity]) : la première
+     * indexation de toute la bibliothèque, qui s'affiche sans attendre l'index des noms (0,35 s pour
+     * 50 000 médias, docs/PERFORMANCE.md), écrit ensuite par [indexPendingNames].
+     */
+    @Transaction
+    suspend fun upsertNamesLater(items: List<MediaEntity>) = withLabelCounts(items.map { it.id }) {
+        upsertRows(items)
+        insertPendingNames(items.map { MediaNamePendingEntity(it.id) })
+    }
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertPendingNames(pending: List<MediaNamePendingEntity>)
+
+    /** Les [limit] premiers médias en attente de leurs mots, par identifiant, avec leur nom actuel. */
+    @Query(
+        "SELECT p.media_id AS id, m.display_name AS name FROM media_name_pending p LEFT JOIN media m ON m.id = p.media_id " +
+            "ORDER BY p.media_id LIMIT :limit",
+    )
+    suspend fun pendingNames(limit: Int): List<PendingName>
+
+    @Query("DELETE FROM media_name_pending WHERE media_id <= :last")
+    suspend fun deletePendingNames(last: Long)
+
+    @Query("SELECT EXISTS (SELECT 1 FROM media_name_pending)")
+    suspend fun hasPendingNames(): Boolean
+
+    /**
+     * Écrit les mots du nom des [limit] premiers médias en attente, lus et écrits dans la même
+     * transaction (un renommage entre les deux ne peut pas être écrasé) ; ceux retirés de l'index
+     * entre-temps sont oubliés. Renvoie le nombre de médias traités, 0 quand plus rien n'attend.
+     */
+    @Transaction
+    suspend fun indexPendingNames(limit: Int): Int {
+        val pending = pendingNames(limit)
+        if (pending.isEmpty()) return 0
+        upsertNames(pending.mapNotNull { row -> row.name?.let { MediaNameEntity(row.id, MediaNames.document(it)) } })
+        deletePendingNames(pending.last().id)
+        return pending.size
+    }
+
     /** Retire de l'index les médias [ids] (au plus 500), leurs mots et leurs étiquettes des comptes. */
     @Transaction
     suspend fun deleteByIds(ids: List<Long>) = withLabelCounts(ids) {
@@ -159,8 +205,16 @@ interface MediaDao : LabelCountQueries {
     @Query("DELETE FROM media_label WHERE media_id NOT IN (SELECT id FROM media)")
     suspend fun deleteOrphanLabels()
 
+    /** Analyses des médias disparus, puis comptes des lieux recalculés (quelques millisecondes). */
+    @Transaction
+    suspend fun deleteOrphanAnalysis() {
+        deleteOrphanAnalysisRows()
+        recountPlaces()
+    }
+
+    /** Lignes seules : passer par [deleteOrphanAnalysis]. */
     @Query("DELETE FROM media_analysis WHERE media_id NOT IN (SELECT id FROM media)")
-    suspend fun deleteOrphanAnalysis()
+    suspend fun deleteOrphanAnalysisRows()
 
     /** Résultats des étapes d'analyse complémentaires (texte, visages, empreintes). */
     @Query("DELETE FROM media_text WHERE media_id NOT IN (SELECT id FROM media)")

@@ -3,6 +3,8 @@ package app.focale.core.database
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Fts4
+import androidx.room.FtsOptions
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -20,6 +22,24 @@ data class MediaTextEntity(
     /** Texte brut, une ligne par ligne reconnue. */
     val text: String,
     /** [text] normalisé (minuscules, sans accents, espaces simples) pour la recherche. */
+    @ColumnInfo(name = "text_key") val textKey: String,
+)
+
+/**
+ * Index plein texte (FTS4) des clés de recherche du texte reconnu ([MediaTextEntity.textKey]) :
+ * un mot du texte qui commence par le mot cherché, sans `LIKE` sur chaque texte ([MediaTexts]).
+ * Table à contenu externe : elle ne garde que l'index, et les déclencheurs que Room crée avec elle
+ * la tiennent à jour à chaque écriture de `media_text`, purge des orphelines comprise. Tokenizer
+ * `unicode61` sans accents, comme la clé ; recalculable, sans sauvegarde.
+ */
+@Fts4(
+    contentEntity = MediaTextEntity::class,
+    tokenizer = FtsOptions.TOKENIZER_UNICODE61,
+    tokenizerArgs = ["remove_diacritics=1"],
+)
+@Entity(tableName = "media_text_fts")
+data class MediaTextFtsEntity(
+    @PrimaryKey @ColumnInfo(name = "rowid") val mediaId: Long,
     @ColumnInfo(name = "text_key") val textKey: String,
 )
 

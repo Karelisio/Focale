@@ -12,6 +12,10 @@ package app.focale.core.database
  * Les candidats sont revérifiés par le même `LIKE` qu'avant : aucun résultat perdu ni ajouté. Un
  * texte plus court, avec un chiffre, un séparateur ou une lettre non ASCII garde le `LIKE` sur
  * toute la table ([searchable]).
+ *
+ * La première indexation de la bibliothèque laisse les mots de côté (`media_name_pending`,
+ * [MediaDao.upsertNamesLater]) et les écrit ensuite en arrière-plan : les médias en attente sont
+ * candidats eux aussi, revérifiés par le même `LIKE`, si bien que la recherche reste exacte.
  */
 object MediaNames {
 

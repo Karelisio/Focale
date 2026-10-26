@@ -33,7 +33,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 
 /** État de la synchronisation, affiché par l'interface lors de la première indexation. */
 sealed interface SyncState {
@@ -50,7 +52,8 @@ sealed interface SyncState {
  *   comparaison complète (identifiant + date de modification).
  *
  * Les écritures sont faites par lots dans des transactions ; Room invalide les
- * PagingSource et l'interface se met à jour d'elle-même.
+ * PagingSource et l'interface se met à jour d'elle-même. À la première indexation, les mots
+ * des noms de fichiers (recherche) sont écrits ensuite, en arrière-plan ([indexNames]).
  */
 @Singleton
 class MediaSyncManager @Inject constructor(
@@ -115,10 +118,29 @@ class MediaSyncManager @Inject constructor(
                     .getOrDefault(0)
             } while (rerunRequested)
             if (changed > 0) _changes.tryEmit(changed)
+            // Mots des noms laissés par la première indexation (ou par un passage interrompu).
+            if (runCatching { dao.hasPendingNames() }.getOrDefault(false)) {
+                scope.launch { runCatching { indexNames() }.onFailure { Log.w(TAG, "Index des noms impossible", it) } }
+            }
             return changed
         } finally {
             _state.value = SyncState.Idle
             mutex.unlock()
+        }
+    }
+
+    private val namesMutex = Mutex()
+
+    /**
+     * Écrit les mots des noms laissés en attente par la première indexation
+     * ([MediaDao.upsertNamesLater]), par lots, chacun dans sa transaction : lancé en arrière-plan
+     * après la synchronisation, il n'en retarde ni la fin ni l'affichage de la timeline (qui ne lit
+     * pas ces tables), et la recherche par nom reste exacte pendant ce temps. Un appel pendant
+     * l'écriture attend qu'elle se termine.
+     */
+    suspend fun indexNames() = withContext(io) {
+        namesMutex.withLock {
+            while (dao.indexPendingNames(NAMES_BATCH_SIZE) > 0) yield()
         }
     }
 
@@ -143,16 +165,18 @@ class MediaSyncManager @Inject constructor(
         var maxGeneration = lastGeneration
         var seen = 0
 
+        // Première indexation : les mots des noms viennent après (indexNames), la timeline s'affiche sans eux.
+        val firstIndexing = existing.isEmpty()
+
         suspend fun flush() {
             if (batch.isEmpty()) return
             val rows = batch.toList()
             batch.clear()
-            database.withTransaction { dao.upsert(rows) }
+            database.withTransaction { if (firstIndexing) dao.upsertNamesLater(rows) else dao.upsert(rows) }
             changed += rows.size
         }
 
         // 1. Ajouts et modifications, écrits par lots pendant le parcours du curseur.
-        val firstIndexing = existing.isEmpty()
         if (firstIndexing) _state.value = SyncState.Running(0)
         source.scan(if (incremental) lastGeneration else null, originalDates) { row ->
             seen++
@@ -207,6 +231,7 @@ class MediaSyncManager @Inject constructor(
     private companion object {
         const val TAG = "MediaSync"
         const val BATCH_SIZE = 1000
+        const val NAMES_BATCH_SIZE = 1000
         val KEY_VERSION = stringPreferencesKey("mediastore_version")
         val KEY_GENERATION = longPreferencesKey("mediastore_generation")
         val KEY_ACCESS = stringPreferencesKey("mediastore_access")

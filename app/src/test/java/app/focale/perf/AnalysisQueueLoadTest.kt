@@ -105,6 +105,16 @@ class AnalysisQueueLoadTest {
         report.check("enregistrement d'un lot (analyse et étiquettes)", saving.toDoubleArray(), budgetMs = SAVE_BUDGET_MS)
         report.note("enregistrement des $batches lots, total", saving.sum())
 
+        // Début de chaque passage : comptes des étiquettes et des lieux comparés aux lignes qu'ils
+        // comptent (garde-fou) ; recalculés seulement en cas d'écart.
+        val check = report.samples(repeat = 5) { assertEquals(emptyList<String>(), dao.checkCounts()) }
+        report.check("contrôle des comptes (début de chaque passage)", check, budgetMs = CHECK_BUDGET_MS)
+        val rebuild = report.samples(repeat = 3) {
+            dao.rebuildLabelCounts()
+            dao.rebuildPlaceCounts()
+        }
+        report.check("recalcul des comptes (écart trouvé)", rebuild, budgetMs = 10 * CHECK_BUDGET_MS)
+
         // Début de chaque passage : clés de recherche des lieux recalculées (noms traduits) ; rien à
         // réécrire d'ordinaire, chaque lieu une fois après une nouvelle base de lieux.
         val translations = SyntheticLibrary.placeTranslations
@@ -238,6 +248,9 @@ class AnalysisQueueLoadTest {
         const val SAVE_BUDGET_MS = 15.0
         const val REFRESH_BUDGET_MS = 500.0
         const val REWRITE_BUDGET_MS = 2_000.0
+
+        /** Garde-fou des comptes : 20 ms (étiquettes des médias visibles, sans regroupement), 90 ms à tout recompter. */
+        const val CHECK_BUDGET_MS = 100.0
 
         /** Lots écrits pendant la mesure du compteur échantillonné, un toutes les 50 ms. */
         const val SAMPLED_BATCHES = 40

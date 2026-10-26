@@ -61,11 +61,17 @@ class MediaQueryBuilderTest {
             args,
         )
         assertTrue(where.contains("label IN (?,?)"))
-        assertTrue(where.contains("(' ' || place_key) LIKE ?"))
+        // Lieu : parmi les clés distinctes, puis les médias de ces clés par leur index.
+        assertTrue(where, where.contains("place_key IN (SELECT place_key FROM place_count WHERE count > 0 AND (' ' || place_key) LIKE ?"))
         assertTrue(where.contains("country IN (?)"))
         assertTrue(where.contains(" OR "))
-        assertTrue(where.contains("SELECT media_id FROM media_text WHERE text_key LIKE ?"))
-        assertEquals(listOf<Any?>("Dog", "Cat", "% paris%", "FR", "%IMG\\_1%", "%img 1%"), args)
+        // Texte reconnu : débuts de mots par l'index plein texte ; repli sur LIKE si rien d'autre ne
+        // répond au terme (mêmes voies, sur les médias hors corbeille).
+        assertTrue(where, where.contains("m.id IN (SELECT docid FROM media_text_fts WHERE media_text_fts MATCH ?)"))
+        assertTrue(where, where.contains("(SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM media o WHERE +o.is_trashed = 0 AND (o.id IN (SELECT media_id FROM media_label"))
+        assertTrue(where, where.contains("o.id IN (SELECT docid FROM media_text_fts WHERE media_text_fts MATCH ?)))) g CROSS JOIN media_text t WHERE t.text_key LIKE ?"))
+        val others = listOf<Any?>("Dog", "Cat", "% paris%", "FR", "%IMG\\_1%", "\"img 1*\"")
+        assertEquals(others + others + "%img 1%", args)
     }
 
     @Test
@@ -89,17 +95,32 @@ class MediaQueryBuilderTest {
         )
         assertTrue(where.contains("m.id IN (SELECT media_id FROM face WHERE person_id IN (4,12))"))
         // Étiquettes, nom de fichier, texte reconnu ou personne : une seule voie suffit.
-        assertTrue(where.contains("label IN (?)) OR (m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ?) AND m.display_name LIKE ?"))
+        assertTrue(
+            where,
+            where.contains(
+                "label IN (?)) OR (m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ? UNION ALL SELECT media_id FROM media_name_pending) " +
+                    "AND m.display_name LIKE ?",
+            ),
+        )
         assertTrue(where.contains(" OR m.id IN (SELECT media_id FROM face WHERE person_id IN (4,12)))"))
-        assertEquals(listOf<Any?>("Beach", "\"marie*\"", "%marie%", "%marie%"), args)
+        val others = listOf<Any?>("Beach", "\"marie*\"", "%marie%", "\"marie*\"")
+        assertEquals(others + others + "%marie%", args)
     }
 
     @Test
     fun `un mot de lettres est cherché dans les noms par l'index plein texte, revérifié par LIKE`() {
         val args = mutableListOf<Any?>()
         val where = MediaQueryBuilder.where(MediaQuery(terms = listOf(SearchTerm(text = " Facture "))), args)
-        assertTrue(where, where.contains("(m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ?) AND m.display_name LIKE ? ESCAPE '\\')"))
-        assertEquals(listOf<Any?>("\"Facture*\"", "%Facture%", "%facture%"), args)
+        // Médias dont les mots du nom attendent la fin de la première indexation : candidats aussi.
+        assertTrue(
+            where,
+            where.contains(
+                "(m.id IN (SELECT rowid FROM media_name WHERE media_name MATCH ? UNION ALL SELECT media_id FROM media_name_pending) " +
+                    "AND m.display_name LIKE ? ESCAPE '\\')",
+            ),
+        )
+        val others = listOf<Any?>("\"Facture*\"", "%Facture%", "\"facture*\"")
+        assertEquals(others + others + "%facture%", args)
         // Chiffre, séparateur ou lettre non ASCII : LIKE sur chaque nom, comme avant.
         for (text in listOf("img2024", "img_1", "été")) {
             val other = MediaQueryBuilder.where(MediaQuery(terms = listOf(SearchTerm(text = text))), mutableListOf())

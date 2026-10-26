@@ -241,9 +241,59 @@ class QueryPlanTest {
         wordPage.assertSearches("m", TIMELINE_INDEX)
         wordPage.assertFullText("media_name")
         wordPage.assertNoTempBTree()
+        // Texte reconnu : débuts de mots par son index plein texte ; le LIKE sur chaque texte (repli
+        // quand aucun mot ne commence ainsi) ne se lit qu'à travers la ligne du repli, vide sinon.
+        for (plan in listOf(wordCount, wordPage)) {
+            plan.assertFullText("media_text_fts")
+            plan.assertGated(gate = "g", table = "media_text", alias = "t")
+        }
         // Texte avec un chiffre ou un séparateur : le nom de chaque média, `media` lue dans l'ordre des identifiants.
         val digits = MediaQuery(terms = listOf(SearchTerm(labels = listOf("Dog"), text = "img2024")))
         plansOf { database.mediaDao().observeCountWithAnalysis(MediaQueryBuilder.count(digits)).first() }.single().assertScans("m")
+    }
+
+    @Test
+    fun `un lieu se cherche parmi les clés distinctes, puis ses médias par l'index des clés`() = runBlocking<Unit> {
+        val malo = MediaQuery(terms = listOf(SearchTerm(place = "malo")))
+        val count = plansOf { database.mediaDao().observeCountWithAnalysis(MediaQueryBuilder.count(malo)).first() }.single()
+        val page = plansOf { page(repository.pagingSource(malo), key = 0) }.single { it.sql.startsWith("SELECT m.* FROM media m") }
+        for (plan in listOf(count, page)) {
+            plan.assertScans("place_count")
+            plan.assertSearches("media_analysis", PLACE_INDEX, constraint = "place_key=?")
+            plan.assertNoScan("media_analysis")
+        }
+        // Mot d'un lieu (recherche par le sens) : les clés distinctes seules.
+        val word = plansOf { database.embeddingDao().isPlaceWord("malo") }.single()
+        word.assertScans("place_count")
+        word.assertNoScan("media_analysis")
+        // Comptes des lieux tenus à chaque lot : les analyses du lot par leur clé primaire ;
+        // recalcul complet par l'index des clés, sans tri.
+        for (tally in listOf(
+            plansOf(writes = true) { database.analysisDao().uncountPlaces(listOf(1L, 2L, 3L)) }.single(),
+            plansOf(writes = true) { database.analysisDao().countPlaces(listOf(1L, 2L, 3L)) }.single(),
+        )) {
+            tally.assertSearches("media_analysis", "INTEGER PRIMARY KEY")
+            tally.assertNoScan("media_analysis")
+        }
+        val recount = plansOf(writes = true) { database.analysisDao().countAllPlaces() }.single()
+        recount.assertIndexOnly("media_analysis", PLACE_INDEX)
+        recount.assertNoTempBTree()
+    }
+
+    @Test
+    fun `le contrôle des comptes lit les lignes comptées sans les regrouper`() = runBlocking<Unit> {
+        val analysis = database.analysisDao()
+        // Étiquettes des médias visibles : media_label par l'index de sa clé primaire seul, le média
+        // de chacune par la sienne, sans regroupement.
+        val labels = plansOf { analysis.visibleLabelTotal() }.single()
+        labels.assertIndexOnly("l", "sqlite_autoindex_media_label_1")
+        labels.assertSearches("m", "INTEGER PRIMARY KEY")
+        labels.assertNoTempBTree()
+        // Analyses avec un lieu : l'index des clés seul.
+        plansOf { analysis.placedTotal() }.single().assertIndexOnly("media_analysis", PLACE_INDEX)
+        for (total in listOf(plansOf { analysis.labelCountTotal() }.single(), plansOf { analysis.placeCountTotal() }.single())) {
+            total.assertNoTempBTree()
+        }
     }
 
     @Test
@@ -346,6 +396,12 @@ class QueryPlanTest {
             assertTrue("$table devrait être lue par l'index $index seul : $text\n$sql", rows.any { pattern.containsMatchIn(it.detail) })
         }
 
+        /** Lecture de [table] par l'index [index] seul, en entier ou par une plage. */
+        fun assertIndexOnly(table: String, index: String) {
+            val pattern = Regex("""^(SCAN|SEARCH) (TABLE )?(\w+ AS )?$table USING COVERING INDEX $index\b""")
+            assertTrue("$table devrait être lue par l'index $index seul : $text\n$sql", rows.any { pattern.containsMatchIn(it.detail) })
+        }
+
         fun assertNoTempBTree() = assertFalse("tri temporaire : $text\n$sql", rows.any { "TEMP B-TREE" in it.detail })
 
         /** Parcours de toute la table [table] dans l'ordre de ses identifiants, sans index. */
@@ -360,6 +416,16 @@ class QueryPlanTest {
             assertTrue("$table devrait être cherchée par son index plein texte : $text\n$sql", rows.any { pattern.containsMatchIn(it.detail) })
         }
 
+        /**
+         * [table] (alias [alias]) parcourue seulement sous la sous-requête [gate], boucle extérieure
+         * de leur jointure : rien n'est lu quand elle ne rend aucune ligne.
+         */
+        fun assertGated(gate: String, table: String, alias: String) {
+            val outer = rows.indexOfFirst { Regex("""^SCAN (SUBQUERY \d+ AS )?$gate$""").matches(it.detail) }
+            val inner = rows.indexOfFirst { Regex("""^SCAN (TABLE )?($table AS )?$alias$""").matches(it.detail) }
+            assertTrue("$table devrait être lue sous $gate : $text\n$sql", outer >= 0 && inner > outer && rows[outer].parent == rows[inner].parent)
+        }
+
         /** Aucun parcours complet de [table] (SCAN), alors qu'un index permet de la chercher. */
         fun assertNoScan(table: String) {
             val pattern = Regex("""^SCAN (TABLE )?(\w+ AS )?$table\b""")
@@ -372,6 +438,7 @@ class QueryPlanTest {
         const val FOLDER_INDEX = "index_media_bucket_id_is_trashed_date_taken"
         const val TYPE_INDEX = "index_media_media_type_is_trashed_date_taken"
         const val LABEL_INDEX = "index_media_label_label_confidence_media_id"
+        const val PLACE_INDEX = "index_media_analysis_place_key"
         const val DAY_MS = 86_400_000L
     }
 }

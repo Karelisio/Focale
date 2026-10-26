@@ -20,7 +20,8 @@ import org.robolectric.annotation.Config
  * Mots des noms de fichiers cherchés par l'index plein texte (`media_name`) : exactement les
  * médias que trouvait `LIKE '%mot%'` sur chaque nom, pour tous les mots de lettres contenus dans
  * des noms variés (majuscules, accents, chiffres, longues suites de lettres, lettre hors du plan
- * de base, accent décomposé), et l'index suit les noms renommés et les médias retirés.
+ * de base, accent décomposé), et l'index suit les noms renommés et les médias retirés ; de même
+ * pendant que la première indexation écrit les mots après coup (`media_name_pending`).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -81,6 +82,33 @@ class MediaNameSearchTest {
         dao.deleteByIds(listOf(2L))
         assertEquals(emptyList<Long>(), found(shot))
         assertEquals(0L, count("SELECT COUNT(*) FROM media_name WHERE rowid = 2"))
+    }
+
+    @Test
+    fun `pendant la première indexation, les noms sans leurs mots restent trouvés`() = runBlocking<Unit> {
+        // Première indexation : médias écrits, mots des noms en attente, puis écrits par tranches.
+        val dao = database.mediaDao()
+        dao.deleteByIds(names.indices.map { it + 1L })
+        dao.upsertNamesLater(names.mapIndexed { index, name -> media(index + 1L, name) })
+        assertEquals(0L, count("SELECT COUNT(*) FROM media_name"))
+        val words = listOf("shot", "Screenshot", "whatsapp", "facture", "EDF", "naïve", "café", "ete", "ÉCRAN", "zut", "jpg", "img", "mp", "dsc")
+        suspend fun sameAsLike() {
+            for (word in words) assertEquals(word, like(word), found(MediaQuery(terms = listOf(SearchTerm(text = word)))))
+        }
+        sameAsLike()
+        // Un média renommé ou retiré pendant ce temps : son nom actuel, ou rien.
+        dao.upsert(listOf(media(2, "Capture_plage.jpg")))
+        dao.deleteByIds(listOf(4L))
+        assertEquals(5, dao.indexPendingNames(5))
+        sameAsLike()
+        assertEquals(listOf(2L), found(MediaQuery(terms = listOf(SearchTerm(text = "plage")))))
+        while (dao.indexPendingNames(5) > 0) Unit
+        assertFalse(dao.hasPendingNames())
+        sameAsLike()
+        // Tous les mots écrits, médias retirés exceptés, chacun d'après son nom actuel.
+        assertEquals(names.size - 1L, count("SELECT COUNT(*) FROM media_name"))
+        val words2 = database.openHelper.readableDatabase.query("SELECT words FROM media_name WHERE rowid = 2").use { it.moveToFirst(); it.getString(0) }
+        assertEquals(MediaNames.document("Capture_plage.jpg"), words2)
     }
 
     /** Médias de [query], par identifiant croissant. */

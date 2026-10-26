@@ -4,6 +4,8 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
+import app.focale.ml.SearchQueryParser
+import app.focale.ml.text.RecognizedText
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -21,7 +23,7 @@ class DatabaseMigrationsTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun `la migration 1 vers 8 conserve les données et produit le schéma attendu par Room`() {
+    fun `la migration 1 vers 9 conserve les données et produit le schéma attendu par Room`() {
         val file = databaseAt(version = 1) { db ->
             db.execSQL("INSERT INTO favorite (media_id, added_at) VALUES (42, 1000)")
             db.execSQL(vaultItem(id = 3))
@@ -199,6 +201,73 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun `la migration 8 vers 9 indexe les textes déjà lus et compte les lieux déjà analysés`() {
+        // Base de la 1.11.0 (version 8 publiée) : textes lus, lieux analysés (dont un média absent de
+        // l'index, accès partiel), mots des noms déjà indexés.
+        val file = databaseAt(version = 8) { db ->
+            db.execSQL(media(id = 7, name = "IMG_7.jpg"))
+            db.execSQL(media(id = 8, name = "IMG_8.jpg"))
+            db.execSQL(media(id = 9, name = "Screenshot_9.png"))
+            db.execSQL("INSERT INTO media_name (rowid, words) VALUES (7, 'IMG'), (8, 'IMG'), (9, '${MediaNames.document("Screenshot_9.png")}')")
+            db.execSQL(
+                "INSERT INTO media_text (media_id, analyzed_modified, version, text, text_key) VALUES " +
+                    "(7, 1000, 1, 'FACTURE N° 2024-118', 'facture n 2024 118 2024118'), (8, 1000, 1, 'WIFI gratuit · Code CAFE2024', " +
+                    "'wifi gratuit code cafe2024'), " +
+                    "(9, 1000, 1, 'Réseau Wi-Fi', 'reseau wi fi wifi')",
+            )
+            db.execSQL(
+                "INSERT INTO media_analysis (media_id, analyzed_modified, version, phash, blur_score, latitude, longitude, place, place_key, country) " +
+                    "VALUES (7, 1000, 2, NULL, NULL, 47.2, -1.5, 'Nantes', 'nantes', 'FR'), (8, 1000, 2, NULL, NULL, 47.2, -1.5, 'Nantes', 'nantes', 'FR'), " +
+                    "(9, 1000, 2, NULL, NULL, NULL, NULL, NULL, NULL, NULL), (12, 1000, 2, NULL, NULL, 48.6, -2.0, 'Saint-Malo', 'saint malo', 'FR')",
+            )
+        }
+        val database = Room.databaseBuilder(context, FocaleDatabase::class.java, file.path)
+            .addMigrations(*DatabaseMigrations.ALL)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val db = database.openHelper.writableDatabase
+            assertEquals(LATEST, db.version)
+            // Textes déjà lus : cherchés par l'index plein texte, par début de mot.
+            assertEquals(7L, db.longOf("SELECT docid FROM media_text_fts WHERE media_text_fts MATCH '\"fact*\"'"))
+            assertEquals(listOf("8", "9"), db.strings("SELECT docid FROM media_text_fts WHERE media_text_fts MATCH '\"wifi*\"' ORDER BY docid"))
+            // Clés recalculées d'abord : lettres et chiffres collés, aussi séparés.
+            assertEquals(RecognizedText.searchKey("WIFI gratuit · Code CAFE2024"), db.stringOf("SELECT text_key FROM media_text WHERE media_id = 8"))
+            assertEquals(listOf("7", "8"), db.strings("SELECT docid FROM media_text_fts WHERE media_text_fts MATCH '\"2024*\"' ORDER BY docid"))
+            // Lieux : une clé par lieu, médias absents compris, comme le recalcul complet.
+            val analysis = database.analysisDao()
+            val tallies = "SELECT place_key || '=' || count FROM place_count ORDER BY place_key"
+            assertEquals(listOf("nantes=2", "saint malo=1"), db.strings(tallies))
+            runBlocking { analysis.rebuildPlaceCounts() }
+            assertEquals(listOf("nantes=2", "saint malo=1"), db.strings(tallies))
+            assertEquals(emptyList<String>(), runBlocking { analysis.checkCounts() })
+            // Aucun nom en attente : ceux des médias déjà là sont indexés depuis la version 8.
+            assertEquals(0L, db.longOf("SELECT COUNT(*) FROM media_name_pending"))
+            runBlocking {
+                val dao = database.mediaDao()
+                fun search(word: String) = MediaQueryBuilder.ids(SearchQueryParser.parse(word))
+                assertEquals(listOf(7L), dao.ids(search("fact")))
+                assertEquals(listOf(9L), dao.ids(search("shot")))
+                assertEquals(listOf(8L, 7L), dao.ids(search("nantes")))
+                // Écritures suivantes tenues à jour : l'index du texte suit ses déclencheurs.
+                database.textDao().upsert(listOf(MediaTextEntity(8, 2000, 1, "Facture EDF", "facture edf")))
+                database.textDao().upsert(listOf(MediaTextEntity(7, 2000, 1, "Menu", "menu")))
+                assertEquals(listOf(8L), dao.ids(search("fact")))
+                assertEquals(listOf(7L), dao.ids(search("menu")))
+                dao.deleteByIds(listOf(9L))
+                dao.deleteOrphanTexts()
+                assertEquals(0L, db.longOf("SELECT COUNT(*) FROM media_text_fts WHERE media_text_fts MATCH '\"wifi*\"'"))
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    private fun SupportSQLiteDatabase.strings(sql: String): List<String> = query(sql).use { cursor ->
+        buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+    }
+
     private fun SupportSQLiteDatabase.indexNames(table: String): Set<String> = query("PRAGMA index_list(`$table`)").use { cursor ->
         buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) }
     }
@@ -263,10 +332,13 @@ class DatabaseMigrationsTest {
             val entity = entities.getJSONObject(i)
             val table = entity.getString("tableName")
             db.execSQL(entity.getString("createSql").replace(TABLE_NAME, table))
-            val indices = entity.optJSONArray("indices") ?: continue
-            for (j in 0 until indices.length()) {
-                db.execSQL(indices.getJSONObject(j).getString("createSql").replace(TABLE_NAME, table))
+            val indices = entity.optJSONArray("indices")
+            for (j in 0 until (indices?.length() ?: 0)) {
+                db.execSQL(indices!!.getJSONObject(j).getString("createSql").replace(TABLE_NAME, table))
             }
+            // Index plein texte à contenu externe : ses déclencheurs, créés par Room avec la table.
+            val triggers = entity.optJSONArray("contentSyncTriggers")
+            for (j in 0 until (triggers?.length() ?: 0)) db.execSQL(triggers!!.getString(j))
         }
         val setup = schema.getJSONArray("setupQueries")
         for (i in 0 until setup.length()) db.execSQL(setup.getString(i))
@@ -276,6 +348,6 @@ class DatabaseMigrationsTest {
         /** Dossier courant des tests : le module app. */
         val SCHEMAS = File("schemas/app.focale.core.database.FocaleDatabase")
         const val TABLE_NAME = "\${TABLE_NAME}"
-        const val LATEST = 8
+        const val LATEST = 9
     }
 }

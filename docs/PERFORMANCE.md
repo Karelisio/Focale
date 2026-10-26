@@ -21,9 +21,9 @@ Gradle n'est donc nécessaire.
 
 | Classe | Ce qu'elle mesure |
 |---|---|
-| `MediaSyncLoadTest` | `MediaSyncManager` depuis un faux MediaStore (`FakeMediaStore`, fournisseur Robolectric de l'autorité `media`) : synchronisation complète, puis incrémentale (300 modifiés, 150 ajoutés, 50 supprimés), puis sans changement |
-| `TimelineScrollLoadTest` | pages Paging de la timeline (continu et sauts, `initialKey`, nombre total de chaque source), en-têtes (`insertSeparators`), histogramme de la bulle et position dans la grille (comparés aux en-têtes, sur dix et trente ans), position dans la visionneuse, dossiers, compteurs, recherche par étiquette, par texte, par nom de fichier, par mois de toutes les années, par une étiquette ou une personne seule (résultats vérifiés), onglet Recherche (étiquettes vérifiées) |
-| `AnalysisQueueLoadTest` | sélection et enregistrement des 2 078 lots de l'analyse principale, sélection des lots des étapes (texte, visages, empreintes) et compteurs d'avancement, au fil de l'avancement ; compteur affiché pendant 40 lots écrits en 2 s, relu à chaque lot ou échantillonné (§ 5.6) |
+| `MediaSyncLoadTest` | `MediaSyncManager` depuis un faux MediaStore (`FakeMediaStore`, fournisseur Robolectric de l'autorité `media`) : synchronisation complète, index des noms écrit ensuite en arrière-plan (première page de la timeline et recherche par nom pendant ce temps), puis incrémentale (300 modifiés, 150 ajoutés, 50 supprimés), puis sans changement |
+| `TimelineScrollLoadTest` | pages Paging de la timeline (continu et sauts, `initialKey`, nombre total de chaque source), en-têtes (`insertSeparators`), histogramme de la bulle et position dans la grille (comparés aux en-têtes, sur dix et trente ans), position dans la visionneuse, dossiers, compteurs, recherche par étiquette, par texte (début de mot, repli au milieu d'un mot), par nom de fichier, par lieu, par mois de toutes les années, par une étiquette ou une personne seule (résultats vérifiés), onglet Recherche (étiquettes vérifiées), écriture d'un lot de textes, migration 8 → 9 (clés des textes, index du texte) |
+| `AnalysisQueueLoadTest` | sélection et enregistrement des 2 078 lots de l'analyse principale, contrôle des comptes du début de chaque passage (§ 5.17), sélection des lots des étapes (texte, visages, empreintes) et compteurs d'avancement, au fil de l'avancement ; compteur affiché pendant 40 lots écrits en 2 s, relu à chaque lot ou échantillonné (§ 5.6) |
 | `AnalysisComputeLoadTest` | calculs par photo exécutables sur la JVM : dHash et netteté, géocodage, alignement et SFace, prétraitement et TinyCLIP, recherche par le sens, regroupement des visages |
 | `DataBackupLoadTest` | sauvegarde des données de toute la bibliothèque (20 000 visages et leurs empreintes, albums, historique), vérification de l'archive, restauration sur un autre téléphone (autres `_ID`, dossiers en partie déplacés) : durées et mémoire retenue |
 | `core/database/QueryPlanTest` | `EXPLAIN QUERY PLAN` des requêtes chaudes, sur le SQL réellement émis par Room (§ 6) |
@@ -79,6 +79,9 @@ le sens est mesurée en mémoire (§ 4.4).
   alternés avec 3 après, la machine étant plus chargée (charge moyenne de 3 à 7) : les durées
   absolues varient davantage, les rapports peu ; la recherche, 3 passages alternés de plus sur
   une machine moins chargée (charge de 1,4 à 2,6), dont les médianes sont reprises ici.
+  Corrections des § 5.14 à 5.17 (version 9) : 5 passages sur la 1.11.0 (« 1.11.0 » ci-dessous),
+  alternés avec 5 après (3 de toute la suite, 2 du seul défilement), sur une machine chargée par
+  deux autres compilations (charge moyenne de 2 à 8) : étendues larges, médianes reprises ici.
 - Les temps sont ceux d'une JVM de bureau, pas d'un téléphone : voir les limites (§ 8).
 
 ---
@@ -89,7 +92,7 @@ le sens est mesurée en mémoire (§ 4.4).
 
 | Opération | Avant | Après |
 |---|---|---|
-| Complète, 50 000 médias (premier lancement) | 1,5 s (0,8 à 2,3) | 1,25 s (1,17 à 1,30 ; 1.10.0 : 0,84 à 0,92, sans les mots des noms, § 5.11) |
+| Complète, 50 000 médias (premier lancement) | 1,5 s (0,8 à 2,3) | **1,0 s** (0,98 à 1,43 ; 1.11.0 : 1,19 à 1,55, mots des noms compris, § 5.11), puis 0,28 à 0,39 s d'index des noms en arrière-plan (§ 5.16) |
 | Incrémentale : 300 modifiés, 150 ajoutés, 50 supprimés | 300 ms | 295 ms (270 à 660) |
 | Sans changement (retour au premier plan) | 81 ms | 66 ms |
 
@@ -97,8 +100,8 @@ La synchronisation n'avait pas de point chaud : l'incrémentale lit les seules l
 (`GENERATION_MODIFIED`), puis les 50 000 identifiants pour les suppressions, et purge les
 métadonnées orphelines (`NOT IN`, par la clé primaire). Les nouveaux index composés ne la
 ralentissent pas de façon mesurable ; les mots des noms de fichiers (§ 5.11), écrits avec chaque
-média, ajoutent 0,35 s à l'indexation complète, rien de mesurable à l'incrémentale, et les comptes
-des étiquettes (§ 5.10) rien sans étiquette. Le coût de MediaStore lui-même (IPC, `CursorWindow`)
+média, n'ajoutent rien de mesurable à l'incrémentale ; la première indexation les laisse à
+l'arrière-plan (§ 5.16) ; les comptes des étiquettes (§ 5.10) n'ajoutent rien sans étiquette. Le coût de MediaStore lui-même (IPC, `CursorWindow`)
 n'est pas mesuré.
 
 ### 4.2 Défilement, grilles et recherche
@@ -120,9 +123,12 @@ n'est pas mesuré.
 | … média le plus ancien d'une bibliothèque de trente ans, vingt premières années clairsemées (§ 5.13) | — | **20 ms** (1.10.0 : 34 à 40) |
 | En-têtes de jour (`insertSeparators`) sur 50 000 médias | 25 à 50 ms | (inchangé) |
 | Conversion de 50 000 `MediaEntity` en `MediaItem` | ≈ 50 ms | (inchangé) |
-| Recherche « chien » (races comprises, 5 004 résultats) : nombre / première page (§ 5.9, 5.11) | 75 / 170 ms | **37 / 90 ms** (1.9.0 : 96 à 107 / 164 à 200 ; 1.10.0 : 60 à 94 / 106 à 135) |
-| Recherche « facture » (nom de fichier ou texte reconnu) : nombre / première page | 68 / 162 ms | **31 / 60 ms** (1.9.0 : 108 à 139 / 146 à 149 ; 1.10.0 : 60 à 87 / 93 à 100) |
-| Recherche « shot » (« Screenshot_… », nom de fichier ou texte reconnu, 4 023 résultats) : nombre / première page (§ 5.11) | — | 33 / 55 ms (1.10.0 : 45 à 56 / 70 à 81) |
+| Recherche « chien » (races comprises, 5 004 résultats) : nombre / première page (§ 5.9, 5.11, 5.14) | 75 / 170 ms | **15 / 47 ms** (1.9.0 : 96 à 107 / 164 à 200 ; 1.10.0 : 60 à 94 / 106 à 135 ; 1.11.0 : 38 à 69 / 96 à 184) |
+| Recherche « facture » (nom de fichier ou texte reconnu) : nombre / première page (§ 5.14) | 68 / 162 ms | **6,7 / 18 ms** (1.9.0 : 108 à 139 / 146 à 149 ; 1.10.0 : 60 à 87 / 93 à 100 ; 1.11.0 : 28 à 41 / 64 à 90) |
+| Recherche « shot » (« Screenshot_… », nom de fichier ou texte reconnu, 4 023 résultats) : nombre / première page (§ 5.11, 5.14) | — | **11,5 / 20 ms** (1.10.0 : 45 à 56 / 70 à 81 ; 1.11.0 : 29 à 40 / 54 à 104) |
+| Texte « fact » / « wifi » (nom de fichier ou début d'un mot du texte, 1 452 / 2 572 résultats) : nombre / première page (§ 5.14) | — | **4,5 / 15 ms ; 6,2 / 17 ms** (1.11.0 : 23 à 35 / 51 à 72 ; 25 à 37 / 52 à 72) |
+| Texte « ture » (milieu de mot : rien d'autre ne répond, repli sur `LIKE`, 1 452 résultats) : nombre (§ 5.14) | — | 24 ms (23 à 26 ; 1.11.0 : 24 à 32) |
+| Lieu « malo » seul (début d'un mot du lieu, 314 résultats) : nombre (§ 5.15) | — | **1,4 ms** (1,1 à 2,4 ; 1.11.0 : 5,8 à 10,5) |
 | Recherche « juillet » (mois de toutes les années, 3 767 résultats) : nombre / première page (§ 5.12) | — | **12 / 18 ms** (1.10.0 : 73 à 85 / 84 à 100) |
 | Étiquette seule (ouverte depuis l'onglet Recherche) / personne : nombre, `Flow` compris | — | 24 / 12 ms (SQL seul : 24 → 11 ms) |
 | Onglet Recherche : étiquettes les plus présentes / lieux (§ 5.8, 5.10) | 376 / 96 ms | **1,2** / 30 ms (1.9.0 : 364 à 426 / 28 à 39 ; 1.10.0 : 90 à 106 / 29 à 38), au plus une fois par 5 s |
@@ -138,7 +144,7 @@ Analyse principale, 2 078 lots de 24 (`AnalysisWorker.BATCH_SIZE`) sur toute la 
 |---|---|---|
 | Sélection d'un lot, au début / à la fin de l'analyse | 23 / 17 ms (tri de toute la bibliothèque à chaque lot) | **0,8 / 0,6 ms** |
 | Sélection des 2 078 lots | ≈ 42 s (estimé, 2 078 × 20 ms) | **1,5 s** (mesuré) |
-| Enregistrement d'un lot (analyse et étiquettes) | (inchangé) | 3,1 ms, comptes des étiquettes compris (7,3 s pour les 2 078 ; 1.10.0 : 2,3 ms, 5,0 s ; § 5.10) |
+| Enregistrement d'un lot (analyse et étiquettes) | (inchangé) | 3,7 ms, comptes des étiquettes et des lieux compris (7,8 à 10,2 s pour les 2 078 ; 1.11.0 : 3,2 ms, 7,3 à 7,6 s ; 1.10.0 : 2,3 ms, 5,0 s ; § 5.10, 5.15) |
 | Premier lot d'un passage (sans curseur), à 0 / 49 / 94 % | 23 / 19 / 17 ms | 2,6 / 31 / 87 ms |
 | Compteur d'avancement (`pendingCount`), une lecture, à 0 / 49 / 94 % | 9 / 19 / 25 ms | 13 / 17 / 15 ms |
 | Compteur affiché pendant 40 lots écrits en 2 s (§ 5.6) : lectures, temps de lecture | 41 lectures, 595 à 661 ms (1.9.0, une par lot) | **2 lectures, 25 à 35 ms** |
@@ -153,12 +159,16 @@ Analyse principale, 2 078 lots de 24 (`AnalysisWorker.BATCH_SIZE`) sur toute la 
 | Empreintes (2 961 lots) | 0,7 ms | 0,8 à 171 ms | 2,1 s | 13 à 75 ms |
 
 L'« avancement observé » est le coût d'une lecture ; affiché, chacun est désormais lu au plus
-toutes les 3 s au lieu d'une fois par lot de son étape (§ 5.6).
+toutes les 3 s au lieu d'une fois par lot de son étape (§ 5.6). Un lot de 16 textes lus s'écrit en
+4,6 à 14 ms, index du texte compris (1.11.0 : 3,7 à 7,1 ms ; § 5.14), à côté de 2 à 8 s de
+reconnaissance.
 
-Début de chaque passage : `AnalysisDao.refreshPlaceKeys` recalcule les clés de recherche des
-lieux (noms traduits) ; rien n'est réécrit d'ordinaire (12 ms pour les 15 300 médias
-géolocalisés), et chaque lieu dont la clé change l'est une fois après une nouvelle base de lieux
-(49 ms ici pour 16 lieux : une requête par lieu, sur les médias de son pays).
+Début de chaque passage : `AnalysisDao.checkCounts` compare les comptes des étiquettes et des
+lieux aux lignes qu'ils comptent (22 à 32 ms, 93 à 110 ms de plus s'il faut les recalculer ;
+§ 5.17), puis `refreshPlaceKeys` recalcule les clés de recherche des lieux (noms traduits) ; rien
+n'est réécrit d'ordinaire (12 ms pour les 15 300 médias géolocalisés), et chaque lieu dont la clé
+change l'est une fois après une nouvelle base de lieux (49 ms ici pour 16 lieux : une requête par
+lieu, sur les médias de son pays ; les comptes des lieux sont alors recalculés, quelques ms).
 
 Sans curseur, chaque lot de ces étapes relisait depuis le début les photos déjà traitées : avec
 les anciens index, un tri de toutes les photos par lot (≈ 18 ms, soit près d'une minute par
@@ -450,6 +460,108 @@ trente ans : 34 à 40 → 20 à 24 ms.
 Tests : `MediaPeriodsTest` (positions égales à celles de la grille, mois d'abord compris),
 `MediaQueryBuilderTest`, `QueryPlanTest`, `TimelineScrollLoadTest` (dix et trente ans).
 
+### 5.14 Texte reconnu dans la recherche par mot : un index plein texte, par débuts de mots
+
+Chaque mot cherchait aussi dans le texte reconnu (`text_key LIKE '%…%'`), une alternative
+qu'aucun index ne sert : la clé de chacun des 47 000 textes relue à chaque recherche, 16 à 33 ms
+par mot (médiane 18), pour le nombre de résultats comme pour la première page, l'essentiel d'une
+recherche après le § 5.11. Le SQLite d'Android n'a pas FTS5 (pas de tokenizer trigramme) ; FTS4
+ne trouve que des débuts de mots, et les suffixes de chaque mot, comme pour les noms, feraient un
+index trop gros (des dizaines de mots par capture d'écran).
+
+Correction (version 9, `MIGRATION_8_9`) : l'index FTS4 `media_text_fts` des clés normalisées
+(tokenizer `unicode61`, sans accents), à contenu externe : il ne garde que l'index (0,57 Mio pour
+2,1 Mio de textes et de clés), tenu à jour par les déclencheurs que Room crée avec lui à chaque
+écriture de `media_text`, purge des orphelines comprise. Un mot du texte doit commencer par le mot
+cherché (`MATCH '"fact*"'` : « facture », « factures » ; 0,3 à 1 ms au lieu de 16 à 33). Quand rien
+d'autre dans la bibliothèque ne répond au terme (aucun média hors corbeille par une étiquette, un
+lieu, un pays, un nom de fichier, une personne ou un mot d'un texte qui commence ainsi), l'ancien
+`LIKE` cherche le mot n'importe où dans les textes (`MediaTexts`) : « ture » trouve encore
+« facture », « fi » « WIFI » quand rien d'autre ne correspond. Le repli dépend d'une sous-requête
+d'une ligne au plus, boucle extérieure de sa jointure (`CROSS JOIN`) : vide dès qu'une autre voie
+trouve un média, et `media_text` n'est alors pas lue (`QueryPlanTest`). La clé sépare aussi les
+lettres et les chiffres collés d'un même mot (`RecognizedText.searchKey` : « #vacances2024 » →
+« vacances2024 vacances 2024 »), si bien que « 2024 » trouve « CAFE2024 », et « 1234 » « AF1234 »,
+comme avant ; la migration recalcule en Kotlin la clé des textes déjà lus, sans relire les photos
+(0,39 à 0,58 s pour 47 377 textes, dont 8 512 non vides), puis construit l'index (63 à 100 ms).
+
+Nombre de résultats et première page : « facture » 28 à 41 → 6 à 11,5 ms et 64 à 90 → 15 à 18 ms ;
+« fact », « wifi » 23 à 37 → 3,6 à 7,7 ms et 51 à 72 → 10 à 39 ms ; « chien », qu'aucun texte ne
+contient mais que des étiquettes trouvent (pas de repli), 38 à 69 → 12,5 à 27 ms et 96 à 184 → 40 à
+52 ms. Un terme que rien d'autre ne trouve (« ture ») garde le `LIKE` : 23 à 26 ms, comme avant.
+Coût : un lot de 16 textes lus s'écrit en 4,6 à 14 ms au lieu de 3,7 à 7,1 (déclencheurs de
+l'index), à côté de 2 à 8 s de reconnaissance.
+
+Résultats (`MediaTextSearchTest`, corpus de 40 textes de photos et de captures : tickets, factures,
+réseaux Wi-Fi, billets, panneaux, notifications, ordonnance, RIB) : les cas courants, mots entiers,
+débuts de mots, accents et majuscules (« FACTURÉ », « Été », « BRÛLÉE », « Œuf »), nombres
+(« 2024 », « 2024118 », « 0612345678 », « 14h30 », « AF1234 ») et mots collés à la ponctuation
+(« (facture) », « total: », « l'été », « e-mail », « contact@exemple.fr », « #plage »), trouvent les
+mêmes photos qu'avant. Change un mot ou un début de mot contenu aussi au milieu d'un mot d'un autre
+texte, quand quelque chose d'autre répond au terme : la photo où il n'est qu'au milieu n'est plus
+trouvée. Sur les 790 mots et débuts de mots du corpus, 73 changent, dont 7 de quatre caractères ou
+plus : « crème » ne trouve plus « demi-écrémé », « atte » (attestation) plus « batterie », « nive »
+(niveau) plus « anniversaire », « emai » (email) plus « demain », « 1234 » et « 3456 » plus un
+numéro qui les contient au milieu (« 06 12 34 56 78 ») ; les autres ont de un à trois caractères
+(« sur » dans « assurance », « fac » dans « surface »). La condition du repli porte sur toute la
+bibliothèque, pas sur les autres mots ni les filtres de la recherche : « fi » ne trouve pas
+« wifi » dès qu'un autre texte a un mot qui commence par « fi » ou qu'un nom de fichier le
+contient, même hors des résultats affichés.
+Tests : `MediaTextSearchTest` (cas courants comparés au `LIKE` d'avant, toutes les sous-chaînes
+des mots du corpus comparées au modèle « début de mot, sinon `LIKE` », repli selon les autres voies,
+index tenu à jour), `RecognizedTextTest`, `TextSearchTest`, `QueryPlanTest`, `MediaQueryBuilderTest`,
+`DatabaseMigrationsTest` (8 → 9 depuis `8.json`), `TimelineScrollLoadTest` (« fact », « wifi »,
+« ture », comparés à un comptage en Kotlin ; budgets 25 et 60 ms).
+
+### 5.15 Lieux dans la recherche par mot : les clés distinctes d'abord
+
+Chaque mot cherche aussi parmi les lieux (`(' ' || place_key) LIKE '% mot%'`), évalué sur chacune
+des 50 000 analyses (6 à 10 ms par mot) pour 30 clés distinctes. Correction (version 9) : la table
+`place_count` (clé → nombre d'analyses qui la portent, corbeille et médias absents compris : la
+recherche les écarte ensuite), tenue à jour comme `label_count` (`PlaceCountQueries.withPlaceCounts`
+dans la transaction de `AnalysisDao.upsert`, donc de chaque lot) et recomptée en entier par l'index
+de `place_key` (2 à 3 ms) quand beaucoup de lieux changent d'un coup : clés recalculées
+(`refreshPlaceKeys`), purge des analyses orphelines. Le mot est cherché parmi les clés de compte non
+nul, puis les médias des clés trouvées par l'index de `place_key` : lieu « malo » seul 5,8 à 10,5 →
+1,1 à 2,4 ms. Un mot désignant un lieu de la bibliothèque (contrainte de la recherche par le sens,
+`isPlaceWord`) lit la même table. Coût : un lot de l'analyse s'enregistre en 3,7 ms au lieu de 3,2
+(deux écritures de plus). Tests : `PlaceCountTest` (comptes égaux au recalcul complet après chaque
+type d'écriture, recherche comparée au `LIKE` sur chaque analyse), `PlaceSearchTest`,
+`QueryPlanTest`, `DatabaseMigrationsTest`, `TimelineScrollLoadTest` (comparé à un comptage en Kotlin).
+
+### 5.16 Première synchronisation : l'index des noms après, en arrière-plan
+
+Les mots des 50 000 noms (§ 5.11) ajoutaient 0,35 s (+ 40 %) à la première indexation, que
+l'utilisateur attend devant une timeline qui se remplit. Correction (version 9) : la première
+indexation (index vide) écrit les médias sans leurs mots (`MediaDao.upsertNamesLater`) et note chacun
+dans `media_name_pending` ; à la fin de la synchronisation, `MediaSyncManager.indexNames` les écrit
+en arrière-plan, par lots de 1 000 dans leur propre transaction (nom lu et écrit dans la même : un
+renommage entre-temps n'est pas écrasé). Ni la fin de la synchronisation ni la timeline, qui ne lit
+pas ces tables, ne l'attendent ; un passage interrompu reprend à la synchronisation suivante. D'ici
+là, les médias en attente sont candidats de la recherche par nom avec ceux de l'index, revérifiés par
+le même `LIKE` : la recherche reste exacte, au prix d'un `LIKE` sur les noms en attente.
+Synchronisation complète : 1,19 à 1,55 s → 0,98 à 1,43 s (médianes 1,39 et 1,0), puis 0,28 à 0,39 s
+d'index des noms, pendant lesquels la première page de la timeline se charge en 20 à 50 ms.
+Tests : `MediaSyncNamesTest` (première indexation sans les mots, recherche par nom exacte, média
+ajouté ensuite indexé avec son nom), `MediaNameSearchTest` (mêmes résultats que `LIKE` avant,
+pendant et après l'écriture des mots, renommage et retrait entre-temps), `MediaSyncLoadTest`.
+
+### 5.17 Garde-fou des comptes tenus à jour
+
+`label_count` et `place_count` ne sont justes que si toutes les écritures passent par les
+méthodes prévues (`withLabelCounts`, `withPlaceCounts`) : une écriture qui les contourne (une
+requête ajoutée plus tard, une restauration) les fausserait jusqu'à la réinstallation. Au début de
+chaque passage d'analyse, `AnalysisDao.checkCounts` compare le total de chacun aux lignes qu'il
+compte : étiquettes des médias de l'index hors corbeille (l'index de la clé primaire de `media_label`
+seul, sans regroupement : 20 ms, deux à trois fois moins qu'en partant des médias), analyses avec un
+lieu (l'index des clés seul, 2 ms) ; un écart fait recalculer la table (93 à 110 ms pour les deux).
+Contrôle mesuré : 22 à 32 ms, une fois par passage de six minutes au plus. Un écart qui se
+compenserait (une étiquette de trop pour l'une, de moins pour une autre, ou une clé de lieu changée
+sans ses comptes) passe inaperçu ; les mots des noms (`media_name`), sans compte, ne sont pas
+contrôlés. Tests : `CountCheckTest` (étiquettes, analyse et corbeille écrites sans les méthodes,
+lignes supprimées directement : recalcul au passage suivant, puis plus rien), `QueryPlanTest`,
+`AnalysisQueueLoadTest` (budget 100 ms).
+
 ---
 
 ## 6. Plans d'exécution surveillés
@@ -477,7 +589,16 @@ presque vide. Assertions :
   complet de `media_label` ; nombre de résultats depuis les médias du critère (clé primaire) ;
 - recherche par mot : noms de fichiers par l'index plein texte `media_name`, nombre de résultats
   sans parcours de `media`, pages par l'index des dates sans tri ; `media` dans l'ordre des
-  identifiants pour un texte que cet index ne sert pas (chiffre, séparateur) ;
+  identifiants pour un texte que cet index ne sert pas (chiffre, séparateur) ; texte reconnu par
+  l'index plein texte `media_text_fts`, `media_text` parcourue seulement sous la ligne du repli
+  (boucle extérieure de la jointure, vide quand une autre voie répond au terme) ;
+- lieux : clés distinctes de `place_count` parcourues, médias des clés trouvées par l'index de
+  `place_key`, jamais tout `media_analysis` (de même pour un mot de lieu de la recherche par le
+  sens) ; comptes d'un lot par la clé primaire des analyses, recalcul complet par l'index des
+  clés, sans tri ;
+- contrôle des comptes (début de chaque passage d'analyse) : étiquettes des médias visibles par
+  l'index de la clé primaire de `media_label` seul, sans regroupement ; analyses avec un lieu par
+  l'index des clés seul ;
 - étiquettes de l'onglet Recherche : nombres lus dans `label_count`, sans relire `media_label` ;
   couverture par l'index des étiquettes, sans trier toutes les photos d'une étiquette ; comptes
   d'une écriture (lot de l'analyse, synchronisation) depuis les étiquettes de ses médias (clé
@@ -492,19 +613,18 @@ protège le SQL de Focale, pas le choix de chaque version.
 
 ## 7. Coûts restants et pistes
 
-Les quatre pistes de la 1.10.0 sont traitées (§ 5.10 à 5.13). Restent :
+Les trois pistes de la 1.11.0 sont traitées (§ 5.14 à 5.16), avec un garde-fou des comptes
+(§ 5.17). Restent :
 
-- **Texte reconnu dans la recherche par mot** : chaque mot lit toute la table `media_text`
-  (`LIKE '%…%'` sur la clé normalisée de 47 000 lignes, 17 à 22 ms), avant la première page comme
-  pour le nombre de résultats : c'est désormais l'essentiel d'une recherche. Les suffixes de
-  chaque mot, comme pour les noms (§ 5.11), feraient un index trop gros (des dizaines de mots par
-  capture d'écran) ; FTS4 ne trouverait que des débuts de mots (« fi » dans « wifi » ne serait
-  plus trouvé), un changement de comportement à décider.
-- **Lieux dans la recherche par mot** : `(' ' || place_key) LIKE` sur les 50 000 lignes de
-  `media_analysis` (5 ms par mot) pour quelques dizaines de lieux distincts ; chercher d'abord
-  parmi les clés distinctes (une table des lieux) l'éviterait.
-- **Index des noms à la première synchronisation** : les mots des 50 000 noms ajoutent environ
-  0,35 s (+ 40 %) à l'indexation complète (§ 4.1), une fois.
+- **Repli du texte reconnu** : un mot que rien d'autre ne trouve (ni étiquette, ni lieu, ni nom,
+  ni début d'un mot d'un texte : une faute de frappe, un fragment comme « ture ») lit encore la
+  clé de chaque texte (`LIKE`, 23 à 26 ms), comme avant. Le vocabulaire de l'index (`fts4aux`, que
+  Room ne déclare pas) permettrait de chercher le fragment parmi les mots distincts.
+- **Lieux de l'onglet Recherche** (30 à 50 ms, au plus toutes les 5 s) : regroupement par lieu et
+  pays des 15 000 analyses géolocalisées, médias visibles seulement ; des comptes par lieu et pays
+  tenus comme `label_count` le ramèneraient à quelques millisecondes.
+- **Migration 8 → 9** : une fois, 0,4 à 0,6 s sur la JVM de bureau pour recalculer les clés de
+  47 000 textes et construire l'index du texte, au premier lancement de la mise à jour.
 
 ---
 
