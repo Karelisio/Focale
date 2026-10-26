@@ -10,7 +10,7 @@ cible, les choix techniques structurants et le découpage du développement.
 
 | Principe | Conséquence concrète |
 |---|---|
-| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. Les seules connexions réseau sont le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement, et la recherche quotidienne de mises à jour sur GitHub (désactivable) ; la diffusion vers une TV (DLNA, § 6.12) ne parle qu'aux adresses du réseau local. La variante `strict` retire toute permission réseau, `INTERNET` comprise. |
+| **Hors ligne, zéro donnée envoyée** | Aucun SDK d'analytics. La télémétrie de ML Kit (`datatransport`/CCT) est neutralisée dans le manifeste. Les seules connexions réseau sont le fond de carte OpenStreetMap, **désactivé par défaut** et activable explicitement, et la recherche quotidienne de mises à jour sur GitHub (désactivable) ; la diffusion vers une TV (DLNA, § 6.12) ne parle qu'aux adresses du réseau local (et, pour une TV qui se désigne par son nom, au résolveur DNS du réseau Wi-Fi). La variante `strict` retire toute permission réseau, `INTERNET` comprise. |
 | **Fluide avec 50 000+ médias** | MediaStore est indexé dans Room ; toutes les listes passent par Paging 3 (placeholders + sauts) ; les miniatures viennent du cache système de MediaStore (`loadThumbnail`) via un `Fetcher` Coil dédié. Tests de charge sur 50 000 médias, plans d'exécution surveillés, profil de référence : [PERFORMANCE.md](PERFORMANCE.md). |
 | **MediaStore reste la source de vérité** | Room n'est qu'un miroir (index) + les métadonnées propres à l'app (favoris, albums virtuels, étiquettes ML, empreintes, coffre). |
 | **Material You partout** | Couleurs dynamiques du fond d'écran, palette maison en repli, thème « couleur depuis la photo » dans la visionneuse et les albums. |
@@ -690,8 +690,12 @@ les éléments n'ont pas d'URI MediaStore, ne l'est jamais, ni servi ni présent
   arrière-plan, la présentation est masquée (observateur du cycle de vie : la composition, elle,
   est suspendue) et la vidéo mise en pause ; elle reparaît au retour.
 - **TV DLNA** (variante `standard`, `BuildConfig.TV_CAST_AVAILABLE`) :
+  - réseau (`LocalNetworks`, `LinkAddresses`) : Wi-Fi ou Ethernet, même sous VPN ; l'IPv4 privée
+    du téléphone, sinon (réseau IPv6 seul) ses IPv6 locales, unique locale (fc00::/7) d'abord puis
+    de lien local, à laquelle l'interface du réseau est donnée (index de `LinkProperties.interfaceName`) ;
   - découverte (`DlnaDiscovery`) : M-SEARCH `urn:schemas-upnp-org:device:MediaRenderer:1` envoyé
-    trois fois au groupe SSDP sous verrou multicast Wi-Fi, sans `USER-AGENT`, réponses écoutées
+    trois fois au groupe SSDP sous verrou multicast Wi-Fi (239.255.255.250, ou FF02::C de lien local
+    depuis l'adresse de lien local quand le réseau n'a pas d'IPv4), sans `USER-AGENT`, réponses écoutées
     4 s (`Ssdp`), puis description de chaque appareil (`DeviceDescription` : lecteur racine ou
     imbriqué offrant AVTransport, `URLBase` ou adresse de la description, RenderingControl s'il
     existe). Automatique à l'ouverture de la visionneuse ou du diaporama, au plus une fois par
@@ -702,9 +706,18 @@ les éléments n'ont pas d'URI MediaStore, ne l'est jamais, ni servi ni présent
     (`REL_TIME`), Stop, GetTransportInfo et GetPositionInfo, SetVolume/GetVolume. Les requêtes SOAP
     et les descriptions passent par `LanHttpClient`, client HTTP/1.1 minimal sur socket brute : la
     politique de sécurité réseau n'autorise pas le trafic en clair, et ce client n'accepte que des
-    adresses privées écrites en clair (`LanAddresses` : 10/8, 172.16/12, 192.168/16, lien local,
-    IPv6 locales), sans résolution DNS, par le réseau Wi-Fi même sous VPN (`Network.socketFactory`) ;
-  - serveur local (`MediaServer`) : démarré avec la diffusion, lié à l'adresse Wi-Fi sur un port
+    adresses privées (`LanAddresses` : 10/8, 172.16/12, 192.168/16, lien local, IPv6 locales) de la
+    famille d'une adresse du téléphone, par le réseau Wi-Fi même sous VPN (`Network.socketFactory`).
+    Une TV qui annonce un nom (« bravia.local », « tv-salon ») plutôt qu'une adresse : nom bien formé
+    (RFC 1123) résolu par le système sur ce réseau (`Network.getAllByName` : DNS du réseau, mDNS des
+    noms en « .local » quand Android le fait), 3 s au plus, résultat gardé une minute par client ;
+    seule une adresse locale obtenue est contactée (IPv4 d'abord), sans seconde résolution, et un nom
+    qui ne mène qu'ailleurs est refusé comme une adresse publique. La seule donnée qui sort alors
+    est la requête DNS, adressée au résolveur du réseau Wi-Fi. Une IPv6 de lien local (écrite sans
+    zone, ou avec celle de la TV, ignorée) reçoit l'interface du réseau ;
+  - serveur local (`MediaServer`) : démarré avec la diffusion, lié à l'adresse Wi-Fi de la famille
+    de celle de la TV (`LinkAddresses.serverFor` : IPv4, unique locale ou lien local ; pour un nom,
+    l'adresse principale) sur un port
     tiré par le système, il ne sert que le média publié, sous `/<jeton>/media.<ext>` (128 bits de
     `SecureRandom`, neuf à chaque média, comparé en temps constant), GET et HEAD, une plage `Range`,
     en-têtes DLNA, 8 transferts au plus ; clients hors réseau local refusés (403) ; arrêté (socket
@@ -732,7 +745,18 @@ les éléments n'ont pas d'URI MediaStore, ne l'est jamais, ni servi ni présent
     l'écran, garde le processus actif tant qu'une TV est servie, avec la notification « Diffusion
     sur … » et « Arrêter » ; fermer Focale depuis les applications récentes arrête la diffusion. Le
     diaporama continue d'avancer sur la TV écran éteint (sa boucle présente elle-même la photo
-    suivante, la composition étant suspendue).
+    suivante, la composition étant suspendue) ;
+  - touches de volume (`TvVolumeKeys`, `TvRemoteVolume`) : dès que le volume d'une TV qui a
+    RenderingControl est connu, une session média du framework en lecture distante
+    (`MediaSession.setPlaybackToRemote`, fournisseur de volume absolu de 0 à 50, pas de 2 sur
+    l'échelle de 0 à 100 de la TV ; état « en lecture » sans aucune action, que les boutons d'un
+    casque ne commandent pas) est confiée à `MainActivity` (`Activity.setMediaController`) : le
+    système lui passe les touches de volume (et les montre sur le curseur du volume du système), qui
+    deviennent des SetVolume, regroupés comme ceux du curseur de la feuille (150 ms). Hors de Focale,
+    la session active les reçoit quand le système le permet (selon l'appareil). Le volume de la TV
+    est relu toutes les 10 s (changé à la télécommande, la touche suivante part de lui), sauf dans
+    les 3 s qui suivent une demande. Sans RenderingControl, ou la diffusion finie : plus de session,
+    les touches règlent le téléphone.
 - **Interface** : bouton « Diffuser » dans la barre de la visionneuse et du diaporama, visible
   seulement si un écran externe ou une TV est là, pendant une recherche ou une diffusion
   (`CastState.available`) ; feuille (`CastSheet`) : diffusion en cours avec « Arrêter » et volume,

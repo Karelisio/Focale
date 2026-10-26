@@ -55,8 +55,9 @@ data class DiscoveryState(
 
 /**
  * Recherche des TV (lecteurs de médias UPnP) du réseau local, variante standard seulement :
- * M-SEARCH envoyé trois fois au groupe SSDP sous verrou multicast Wi-Fi, réponses écoutées
- * quelques secondes, puis description de chaque appareil lue sur le réseau local. Une recherche
+ * M-SEARCH envoyé trois fois au groupe SSDP sous verrou multicast Wi-Fi (IPv4, ou IPv6 de lien local
+ * sur un réseau sans IPv4), réponses écoutées quelques secondes, puis description de chaque appareil
+ * lue sur le réseau local (adresse en clair, ou nom résolu vers une adresse locale). Une recherche
  * remplace la liste : une TV éteinte depuis disparaît, sauf celle qui reçoit la diffusion.
  */
 @Singleton
@@ -124,14 +125,17 @@ class DlnaDiscovery @Inject constructor(
         try {
             runCatching { lock?.acquire() }
             MulticastSocket(null).use { socket ->
+                // Sans IPv4, recherche IPv6 depuis l'adresse de lien local, vers le groupe de lien local.
+                val addresses = link.addresses
+                val local = addresses.searchAddress
                 socket.reuseAddress = true
-                socket.bind(InetSocketAddress(link.address, 0))
+                socket.bind(InetSocketAddress(local, 0))
                 runCatching { link.network.bindSocket(socket) }
-                runCatching { NetworkInterface.getByInetAddress(link.address)?.let { socket.networkInterface = it } }
+                runCatching { NetworkInterface.getByInetAddress(local)?.let { socket.networkInterface = it } }
                 socket.timeToLive = MULTICAST_TTL
                 socket.soTimeout = RECEIVE_SLICE_MS
-                val request = Ssdp.searchRequest()
-                val group = InetSocketAddress(checkNotNull(LanAddresses.literal(Ssdp.ADDRESS)), Ssdp.PORT)
+                val request = Ssdp.searchRequest(ipv6 = addresses.ipv6Only)
+                val group = InetSocketAddress(addresses.searchGroup, Ssdp.PORT)
                 val buffer = ByteArray(DATAGRAM_SIZE)
                 val start = SystemClock.elapsedRealtime()
                 var sent = 0
@@ -152,7 +156,7 @@ class DlnaDiscovery @Inject constructor(
                     val message = Ssdp.parse(String(packet.data, packet.offset, packet.length, Charsets.UTF_8)) ?: continue
                     val location = message.location ?: continue
                     if (message.kind == SsdpMessage.Kind.BYEBYE || !message.isRenderer) continue
-                    if (!location.isLanUrl()) continue
+                    if (!location.isCandidateUrl()) continue
                     locations.putIfAbsent(message.udn ?: location, message)
                 }
             }
@@ -173,8 +177,13 @@ class DlnaDiscovery @Inject constructor(
         }
     }
 
-    private fun String.isLanUrl(): Boolean = runCatching {
-        URI(trim()).host?.let(LanAddresses::literal)?.let(LanAddresses::isLan) == true
+    /**
+     * Description à lire : adresse locale écrite en clair, ou nom d'hôte, que le client ne contacte
+     * que s'il mène au réseau local ([LanHttpClient]).
+     */
+    private fun String.isCandidateUrl(): Boolean = runCatching {
+        val host = URI(trim()).host ?: return@runCatching false
+        LanAddresses.literal(host)?.let(LanAddresses::isLan) ?: LanAddresses.isHostName(host)
     }.getOrDefault(false)
 
     private companion object {

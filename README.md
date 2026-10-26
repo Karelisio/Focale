@@ -121,10 +121,13 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   l'écran » du système), le téléphone gardant les commandes ; dans la variante `standard`, vers
   les TV du réseau local (DLNA/UPnP : Samsung, LG, Sony, Kodi…), servies par un petit serveur
   local démarré le temps de la diffusion (photo réduite en JPEG sans métadonnées, vidéo telle
-  quelle, lecture, pause, position et volume depuis le téléphone, notification « Arrêter » en
-  arrière-plan). Une vidéo que la TV refuse, ou qu'elle lâche en perdant la connexion, reprend
+  quelle, lecture, pause, position et volume depuis le téléphone, touches de volume du téléphone
+  comprises, notification « Arrêter » en arrière-plan). Les TV qui se désignent par leur nom
+  (« bravia.local ») sont trouvées aussi, tout comme celles d'un réseau sans IPv4 (IPv6 locales).
+  Une vidéo que la TV refuse, ou qu'elle lâche en perdant la connexion, reprend
   sur le téléphone à la même position, la diffusion continuant pour les médias suivants. Rien ne
-  sort du réseau local ; le coffre-fort n'est jamais diffusé.
+  sort du réseau local (hormis, pour un nom, la question au résolveur DNS du réseau) ; le
+  coffre-fort n'est jamais diffusé.
 - **Widget** « Souvenir » (Glance, couleurs Material You) : une photo du jour, renouvelée
   toutes les quatre heures, qui s'ouvre dans la visionneuse.
 - **Nouveautés** présentées au premier lancement après chaque mise à jour, tirées de

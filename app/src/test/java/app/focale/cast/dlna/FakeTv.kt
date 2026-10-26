@@ -37,7 +37,9 @@ internal class FakeTv(private val answer: ((TvRequest) -> String?)? = null) : Cl
                     val input = it.getInputStream().buffered()
                     val line = HttpWire.readLine(input).orEmpty()
                     val headers = HttpWire.readHeaders(input)
-                    val body = HttpWire.readBody(input, headers, 1 shl 20).decodeToString()
+                    // Requête sans corps annoncé (GET) : rien à lire, le client attend la réponse.
+                    val announced = "content-length" in headers || "transfer-encoding" in headers
+                    val body = if (announced) HttpWire.readBody(input, headers, 1 shl 20).decodeToString() else ""
                     val request = TvRequest(line, headers, body)
                     requests += request
                     val response = if (answer != null) answer(request) else responses.poll(5, TimeUnit.SECONDS)!!
@@ -96,12 +98,15 @@ internal class FakeTv(private val answer: ((TvRequest) -> String?)? = null) : Cl
  * et sa position avance d'une seconde à chaque interrogation pendant la lecture. [refuses] : média
  * refusé dès SetAVTransportURI (erreur 714) ; [neverPlays] : média accepté, que la TV ne lit jamais
  * (lecture demandée, elle reste arrêtée) ; [offline] : la TV ne répond plus (connexion coupée sans
- * réponse), le temps d'un passage à vide.
+ * réponse), le temps d'un passage à vide. [volume] : celui que donne GetVolume, que SetVolume
+ * change (ou la télécommande, en l'écrivant) ; [volumes] : volumes demandés, dans l'ordre.
  */
 internal class FakeRenderer : Closeable {
     @Volatile var refuses: (url: String) -> Boolean = { false }
     @Volatile var neverPlays: (url: String) -> Boolean = { false }
     @Volatile var offline = false
+    @Volatile var volume = 20
+    val volumes: MutableList<Int> = Collections.synchronizedList(ArrayList())
 
     @Volatile var uri: String? = null
         private set
@@ -159,8 +164,14 @@ internal class FakeRenderer : Closeable {
                 if (state == "PLAYING") positionMs += 1_000
                 ok("<Track>1</Track><TrackDuration>0:02:00</TrackDuration><RelTime>${UpnpTime.format(positionMs)}</RelTime>")
             }
-            "GetVolume" -> ok("<CurrentVolume>20</CurrentVolume>")
-            "SetVolume" -> ok("")
+            "GetVolume" -> ok("<CurrentVolume>$volume</CurrentVolume>")
+            "SetVolume" -> {
+                request.argument("DesiredVolume")?.toIntOrNull()?.let {
+                    volume = it
+                    volumes += it
+                }
+                ok("")
+            }
             else -> FakeTv.response("500 Internal Server Error", FakeTv.fault(401, "Invalid Action"))
         }
     }

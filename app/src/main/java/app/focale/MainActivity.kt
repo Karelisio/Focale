@@ -18,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import app.focale.cast.CastManager
 import app.focale.core.mediastore.ConsentRequester
 import app.focale.core.permissions.MediaAccessManager
 import app.focale.core.settings.SettingsRepository
@@ -53,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var updateRepository: UpdateRepository
     @Inject lateinit var vaultImports: VaultImports
     @Inject lateinit var vaultNotifications: VaultNotifications
+    @Inject lateinit var castManager: CastManager
 
     /** Ouvertures reçues après le lancement (widget, autre application), consommées par l'interface. */
     private val openRequests = MutableStateFlow<OpenRequest?>(null)
@@ -80,6 +82,11 @@ class MainActivity : AppCompatActivity() {
                     consentLauncher.launch(IntentSenderRequest.Builder(sender).build())
                 }
             }
+        }
+        // Diffusion vers une TV : les touches de volume règlent la TV (session média de la diffusion),
+        // le téléphone sinon.
+        lifecycleScope.launch {
+            castManager.volumeController.collect { mediaController = it }
         }
         // Confirmation d'une mise à jour, affichée dès que Focale est visible.
         lifecycleScope.launch {

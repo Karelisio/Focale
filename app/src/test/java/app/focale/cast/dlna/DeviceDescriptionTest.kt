@@ -134,5 +134,15 @@ class DeviceDescriptionTest {
         assertEquals("http://192.168.1.3:5000/c", DeviceDescription.resolve("http://192.168.1.2/", " http://192.168.1.3:5000/c\n"))
         assertNull(DeviceDescription.resolve("http://192.168.1.2/", "ftp://192.168.1.2/c"))
         assertNotNull(DeviceDescription.resolve("http://192.168.1.2/", "c?x=1"))
+        // TV désignée par son nom, ou par une IPv6 : les commandes suivent le même hôte (résolu au moment de les envoyer).
+        assertEquals("http://bravia.local:52323/upnp/control/AVTransport", DeviceDescription.resolve("http://bravia.local:52323/dmr.xml", "/upnp/control/AVTransport"))
+        assertEquals("http://[fe80::1234]:1400/MediaRenderer/AVTransport/Control", DeviceDescription.resolve("http://[fe80::1234]:1400/xml/device_description.xml", "/MediaRenderer/AVTransport/Control"))
+    }
+
+    @Test
+    fun `TV Sony désignée par son nom`() {
+        val tv = DeviceDescription.parse(fixture("sony_bravia.xml"), "http://bravia.local:52323/dmr.xml")!!
+        assertEquals("http://bravia.local:52323/upnp/control/AVTransport", tv.avTransport.controlUrl)
+        assertEquals("http://bravia.local:52323/upnp/control/RenderingControl", tv.renderingControl?.controlUrl)
     }
 }

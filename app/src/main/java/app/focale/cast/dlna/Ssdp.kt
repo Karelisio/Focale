@@ -27,19 +27,26 @@ internal data class SsdpMessage(
 /**
  * Découverte SSDP (UPnP Device Architecture 1.1, § 1) : requête M-SEARCH envoyée au groupe
  * multicast, réponses reçues en unicast. La requête ne dit rien de l'appareil qui cherche
- * (pas d'en-tête USER-AGENT, facultatif).
+ * (pas d'en-tête USER-AGENT, facultatif). En IPv4, le groupe 239.255.255.250 ; sur un réseau sans
+ * IPv4, le groupe IPv6 de lien local FF02::C (UDA 1.1, § 1.1.2).
  */
 internal object Ssdp {
     const val ADDRESS = "239.255.255.250"
+
+    /** Groupe SSDP IPv6 de lien local : le réseau Wi-Fi seulement, jamais routé. */
+    const val ADDRESS_V6 = "FF02::C"
     const val PORT = 1900
     const val MEDIA_RENDERER = "urn:schemas-upnp-org:device:MediaRenderer:1"
     const val MEDIA_RENDERER_PREFIX = "urn:schemas-upnp-org:device:MediaRenderer:"
     const val AV_TRANSPORT_PREFIX = "urn:schemas-upnp-org:service:AVTransport:"
 
-    /** Requête de recherche des lecteurs de médias ; [mx] : délai de réponse maximal (s). */
-    fun searchRequest(target: String = MEDIA_RENDERER, mx: Int = 2): ByteArray = buildString {
+    /**
+     * Requête de recherche des lecteurs de médias ; [mx] : délai de réponse maximal (s) ; [ipv6] :
+     * adressée au groupe IPv6.
+     */
+    fun searchRequest(target: String = MEDIA_RENDERER, mx: Int = 2, ipv6: Boolean = false): ByteArray = buildString {
         append("M-SEARCH * HTTP/1.1\r\n")
-        append("HOST: ").append(ADDRESS).append(':').append(PORT).append("\r\n")
+        append("HOST: ").append(if (ipv6) "[$ADDRESS_V6]" else ADDRESS).append(':').append(PORT).append("\r\n")
         append("MAN: \"ssdp:discover\"\r\n")
         append("MX: ").append(mx.coerceIn(1, 5)).append("\r\n")
         append("ST: ").append(target).append("\r\n")
