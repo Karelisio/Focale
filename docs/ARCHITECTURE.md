@@ -879,18 +879,42 @@ application ouvre les photos et proposer de choisir Focale.
   propriété de 9 octets est ajoutée à la fin de `ipco` et associée en dernier (appliquée après
   `clap` et `imir`, marquée essentielle) ; `meta` grandit, les tailles des boîtes qui la
   contiennent et les positions `iloc` des données qui la suivent sont décalées, et le fichier
-  est recopié depuis l'original dans un fichier temporaire, relu (orientation obtenue), puis
-  remplace l'original (`operations.overwrite`, avec copie de secours). Orientation EXIF de
+  est recopié depuis l'original dans un fichier temporaire, relu (`HeifRotation.verify` :
+  orientation de chaque image tournée, longueur, traîne et morceaux de la vidéo à leur place),
+  puis remplace l'original (`operations.overwrite`, avec copie de secours). Orientation EXIF de
   l'élément `Exif` et `tiff:Orientation` du XMP (`HeifXmp`, `XmpOrientation`) mis à la valeur
-  affichée, sur place : MediaStore les lit (ExifInterface). Toute structure inattendue renonce
-  et garde le réencodage d'avant : rotation suivie d'un `clap`, élément `tmap` (gainmap ISO
-  21496-1), `irot` en double, et, pour une `meta` qui grandit, boîte de premier niveau autre que
-  `mdat`, `free`, `skip` ou `mpvd` (un `moov` pointerait dans `mdat`), données après la dernière
-  boîte, donnée `iloc` dans la boîte ou position qui ne tient plus dans son champ. Le résultat
-  est revérifié avant écriture (affichage voulu de chaque image, mêmes données aux positions
-  décalées). Les options de la barre (`PhotoRotator.options`, suspendue) lisent cet en-tête en
-  arrière-plan : « Enregistrer la rotation » attend leur réponse. Fichiers de test réels
-  (libheif / x265 et FFmpeg / libaom) produits par `tools/heif/make_fixtures.py`.
+  affichée, sur place : MediaStore les lit (ExifInterface).
+  - Ce qui suit la boîte `meta` se décale d'un seul tenant : `mdat`, `free`, `skip`, `mpvd`
+    (vidéo d'une photo animée Samsung, fichier MP4 complet aux positions relatives) ; traîne
+    Samsung (`SamsungTrailer` : blocs « Image_UTC_Data », « MCC_Data », « MotionPhoto_Data »…,
+    répertoire `SEFH`, longueur et `SEFT` à la fin, chaque bloc désigné par sa distance avant le
+    répertoire), reconnue seulement si chaque entrée désigne un bloc de la traîne qui commence par
+    le même type et si les boîtes finissent exactement où elle commence ; `moov` d'une photo
+    animée ou d'une séquence d'images (`MovieChunks`), gardée telle quelle (vidéo ni réencodée ni
+    tournée) sauf ses positions `stco` / `co64` des morceaux rangés après `meta`, décalées comme
+    celles de `iloc` ; chaque morceau doit tomber dans un `mdat` du fichier, chaque référence de
+    données être dans le fichier (`dref` autonome), et rien dans `moov` ne doit désigner de position
+    absolue que le décalage ne suivrait pas (`saio`, `iloc`) ni annoncer de fragments (`mvex`, `moof`).
+  - Carte de gain ISO 21496-1 (`tmap`, HDR des iPhone sous iOS 18 et d'Android 16) : l'image
+    `tmap` (dérivée de l'image principale et de l'image de gain, `dimg`), que les lecteurs HDR
+    montrent à la place de l'image principale (groupe `altr`), tourne avec elle (ou, si l'image
+    `tmap` est l'image principale, son image de base) ; l'image de gain aussi quand elle porte la
+    même orientation que l'image de base (elle doit lui rester superposée), et reste telle quelle
+    quand elle n'en porte aucune (orientation portée par l'image dérivée, comme l'écrit libavif).
+  - Toute structure inattendue renonce et garde le réencodage d'avant : rotation suivie d'un
+    `clap`, `irot` en double, `tmap` sans ses deux images, dérivée d'une autre image ou dont
+    l'image de gain est orientée autrement que l'image de base, et, pour une `meta` qui grandit,
+    boîte de premier niveau autre que celles ci-dessus, seconde `ftyp` (fichier ajouté à la suite,
+    aux positions relatives à son début), deux `moov`, données après la dernière boîte qui ne sont
+    pas une traîne Samsung reconnue, donnée `iloc` dans la boîte ou position qui ne tient plus
+    dans son champ. Le résultat est revérifié avant écriture (affichage voulu de chaque image,
+    mêmes données aux positions décalées). Les options de la barre (`PhotoRotator.options`,
+    suspendue) lisent cet en-tête en arrière-plan : « Enregistrer la rotation » attend leur
+    réponse. Fichiers de test réels (libheif / x265 et FFmpeg / libaom, libx265) produits par
+    `tools/heif/make_fixtures.py`, dont les structures des Galaxy (traîne avec la vidéo de la
+    photo animée), d'une photo animée à `moov` et des cartes de gain des iPhone, reproduites
+    autour d'un HEIC de libheif ; chaque fichier tourné se relit avec libheif (orientation de
+    l'image) et FFmpeg (mêmes images de la vidéo).
 - Autres formats (PNG, dont Android ignore l'orientation EXIF ; HEIF et AVIF à la structure
   inattendue) : rendu de l'éditeur, en copie ou à la place (jamais un JPEG à la place d'un
   HEIF). Clé mémoire Coil des images pleine taille liée à `date_modified`.

@@ -33,7 +33,9 @@ import kotlinx.coroutines.withContext
  * HEIF et AVIF : Android se fie aux propriétés `irot` / `imir` du conteneur, pas à l'EXIF.
  * Sans perte aussi quand la structure du fichier le permet ([HeifRotation]) : l'angle de `irot`
  * est réécrit sur place, ou la propriété ajoutée (la boîte `meta` grandit, le fichier est alors
- * récrit par un fichier temporaire, depuis l'original), EXIF et XMP mis d'accord. Sinon, et pour
+ * récrit par un fichier temporaire, depuis l'original, et relu avant de remplacer l'original :
+ * traîne Samsung, vidéo d'une photo animée et carte de gain HDR comprises), EXIF et XMP mis
+ * d'accord. Sinon, et pour
  * les autres formats (PNG, dont Android ignore l'orientation EXIF…), la photo passe par le rendu
  * de l'éditeur, rotation seule, en copie ou à la place de l'original selon les mêmes règles que
  * lui.
@@ -110,10 +112,9 @@ class PhotoRotator @Inject constructor(
         try {
             resolver.openInputStream(source)?.use { input -> temp.outputStream().use { plan.copy(input, it) } }
                 ?: error("Lecture impossible")
-            val written = RandomAccessFile(temp, "r").use { access ->
-                HeifRotation.orientation(access.channel::readAt, access.length())
-            }
-            check(written == plan.orientation) { "Orientation écrite : $written" }
+            // Relu : orientation de chaque image tournée, traîne Samsung et vidéo d'une photo animée à leur place.
+            val written = RandomAccessFile(temp, "r").use { access -> plan.verify(access.channel::readAt, access.length()) }
+            check(written) { "Fichier récrit inattendu" }
             return operations.overwrite(item) { output -> temp.inputStream().use { it.copyTo(output) } }
         } finally {
             temp.delete()

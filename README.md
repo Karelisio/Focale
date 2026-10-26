@@ -22,7 +22,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   en HDR (Android 14+), rotation à deux doigts (enregistrée sans perte dans l'orientation
   EXIF des JPEG et WebP, et dans leur orientation XMP que lisent Lightroom et d'autres
   logiciels ; dans la propriété `irot` des HEIF / HEIC et AVIF, sans réencodage, EXIF et XMP
-  mis d'accord), panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
+  mis d'accord, photos animées, traîne des Galaxy et carte de gain HDR des iPhone comprises),
+  panneau d'infos EXIF / localisation, texte de la photo sélectionnable et
   copiable. Photos 360° (métadonnées GPano des JPEG, WebP et HEIF, sphères complètes ou
   partielles) en vue immersive OpenGL : glisser pour regarder autour, pincer pour le champ,
   « Bouger le téléphone » (capteur de rotation), retour à la vue initiale du fichier ; vidéos 360°

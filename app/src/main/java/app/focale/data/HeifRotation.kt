@@ -23,15 +23,26 @@ import kotlin.math.min
  * - Absente : une propriété est ajoutée à la fin de `ipco` et associée en dernier, donc
  *   appliquée après les autres transformations (recadrage `clap`, miroir `imir`). La boîte `meta`
  *   grandit de quelques octets : les positions des données qui la suivent (`iloc`) sont
- *   décalées d'autant et le fichier est récrit en entier ([copy]).
+ *   décalées d'autant et le fichier est récrit en entier ([copy]). Ce qui suit la boîte se décale
+ *   d'un seul tenant : données (`mdat`), vidéo d'une photo animée Samsung (`mpvd`), traîne Samsung
+ *   ([SamsungTrailer], positions relatives à son répertoire), et `moov` d'une photo animée ou d'une
+ *   séquence, dont seules les positions des morceaux (`stco` / `co64`, [MovieChunks]) sont
+ *   décalées : la vidéo n'est ni réencodée ni tournée.
+ *
+ * Carte de gain ISO 21496-1 (`tmap`, image dérivée de l'image principale et de l'image de gain,
+ * HDR des iPhone et d'Android 16) : l'image `tmap`, que lisent les lecteurs HDR à la place de
+ * l'image principale, tourne avec elle ; l'image de gain aussi, si elle porte la transformation de
+ * l'image de base (elle doit lui rester superposée), et reste telle quelle si elle n'en porte
+ * aucune (l'image dérivée seule est orientée, comme l'écrivent libavif et la norme).
  *
  * L'orientation EXIF de l'élément `Exif` et le `tiff:Orientation` du XMP ([HeifXmp],
  * [XmpOrientation]), s'ils existent, prennent la valeur de l'orientation affichée, réécrite sur
  * place : Android en tire l'orientation de MediaStore (ExifInterface), et les deux disent ensuite
  * la même chose que `irot` / `imir`. Toute structure inattendue (rotation suivie d'un recadrage,
- * carte de gain `tmap`, boîte de premier niveau inconnue à décaler, position hors de portée…)
- * fait renoncer ([plan] rend null) : l'appelant garde alors le réencodage. Le résultat est relu
- * avant d'être rendu : orientation obtenue et emplacements des données vérifiés.
+ * carte de gain orientée autrement que son image de base, boîte de premier niveau inconnue à
+ * décaler, traîne inconnue, position hors de portée…) fait renoncer ([plan] rend null) :
+ * l'appelant garde alors le réencodage. Le résultat est relu avant d'être rendu : orientation
+ * obtenue et emplacements des données vérifiés ; le fichier récrit l'est encore ([verify]).
  *
  * @property orientation orientation EXIF de l'image affichée après rotation.
  * @property hasMetadata le fichier porte un élément EXIF ou XMP : une récriture complète doit
@@ -45,12 +56,35 @@ internal class HeifRotation private constructor(
     private val metaEnd: Long,
     private val grownMeta: ByteArray?,
     private val patches: List<Patch>,
+    /** Ce que doit montrer le fichier écrit, relu par [verify]. */
+    private val expected: Expected,
 ) {
     /** Quelques octets remplacés, rien ne bouge : [write] ; sinon le fichier est récrit par [copy]. */
     val inPlace: Boolean get() = grownMeta == null
 
     /** Octets [bytes] à la position [offset] du fichier d'origine. */
     private class Patch(val offset: Long, val bytes: ByteArray)
+
+    /**
+     * Fichier attendu : [length] octets, orientation de chaque image tournée ([displays]), traîne
+     * Samsung à la même distance de la fin ([trailerStart]), positions des morceaux de `moov` ([chunks]).
+     */
+    private class Expected(val length: Long, val displays: Map<Long, Int>, val trailerStart: Long?, val chunks: List<Long>?)
+
+    /**
+     * Relit le fichier écrit ([read], [length] octets) : vrai si chaque image tournée s'y affiche
+     * comme prévu et que traîne et vidéo y sont là où elles doivent être.
+     */
+    fun verify(read: (offset: Long, length: Int) -> ByteArray?, length: Long): Boolean = runCatching {
+        if (length != expected.length) return false
+        val container = Container.read(read, length) ?: return false
+        val meta = HeifMeta.parse(container.meta) ?: return false
+        if (expected.displays.any { (id, exif) -> meta.display(id)?.exif != exif }) return false
+        if (container.trailerStart != expected.trailerStart) return false
+        val moov = container.boxes.filter { it.type == "moov" }
+        val chunks = moov.singleOrNull()?.let { MovieChunks.read(read, it, container)?.map(MovieChunks.Entry::value) ?: return false }
+        moov.size <= 1 && (expected.chunks == null || chunks == expected.chunks)
+    }.getOrDefault(false)
 
     /** Modification sur place ([inPlace]), sans tronquer le fichier. */
     fun write(channel: FileChannel) {
@@ -109,6 +143,13 @@ internal class HeifRotation private constructor(
         private val FRAMING = setOf("clap", "iscl")
 
         /**
+         * Propriétés qui orientent une image (ISO/IEC 23008-12, § 6.5.10 et 6.5.12) ; un recadrage
+         * `clap`, que les encodeurs ajoutent à toute image dont la taille n'est pas un multiple du
+         * bloc de codage, ne l'oriente pas.
+         */
+        private val ORIENTING = setOf("irot", "imir")
+
+        /**
          * Rotation de [quarterTurns] quarts de tour horaires du fichier lu par [read] ([length]
          * octets à [offset], null au-delà de la fin), long de [length] octets ; null si elle ne
          * peut pas se faire sûrement sans réencodage.
@@ -131,11 +172,12 @@ internal class HeifRotation private constructor(
             val container = Container.read(read, length) ?: return null
             val meta = HeifMeta.parse(container.meta) ?: return null
             if (meta.handler != "pict" || meta.types[meta.primary] == null) return null
-            // Carte de gain ISO 21496-1 : image dérivée à orienter comme l'image de base, non gérée.
-            if (meta.types.values.any { it == "tmap" }) return null
+            // Cartes de gain ISO 21496-1 : images qui tournent avec l'image principale.
+            val toneMapped = toneMapped(meta) ?: return null
 
-            val thumbnails = meta.references.filter { it.type == "thmb" && meta.primary in it.to }.map { it.from }
-            val targets = (listOf(meta.primary) + thumbnails).distinct().filter { it in meta.types }
+            val images = (listOf(meta.primary) + toneMapped).distinct()
+            val thumbnails = meta.references.filter { it.type == "thmb" && it.to.any(images::contains) }.map { it.from }
+            val targets = (images + thumbnails).distinct().filter { it in meta.types }
             val followers = meta.references.filter { it.type == "auxl" && it.to.any(targets::contains) }.map { it.from }.toSet()
 
             // Pour chaque image : angle de sa propriété irot (existante, ou à ajouter) qui tourne son affichage.
@@ -206,15 +248,23 @@ internal class HeifRotation private constructor(
                 }
             }
 
+            val displays = wanted.mapValues { it.value.exif }
             if (newAngles.isEmpty()) {
                 val updated = meta.bytes.copyOf().apply { inMeta.forEach { (at, bytes) -> bytes.copyInto(this, at) } }
                 if (!verify(HeifMeta.parse(updated) ?: return null, wanted)) return null
                 val patches = inMeta.map { (at, bytes) -> Patch(container.metaStart + at, bytes) } + outside
-                return HeifRotation(orientation, hasMetadata, length, container.metaStart, container.metaEnd, null, patches)
+                val expected = Expected(length, displays, container.trailerStart, chunks = null)
+                return HeifRotation(orientation, hasMetadata, length, container.metaStart, container.metaEnd, null, patches, expected)
             }
 
-            // La boîte meta grandit : seules des boîtes sans position absolue peuvent être décalées.
-            if (!container.clean || container.types.any { it != "ftyp" && it != "meta" && it !in SHIFTABLE }) return null
+            // La boîte meta grandit : seules des boîtes sans position absolue, ou une `moov` dont les
+            // positions se décalent avec elles, peuvent suivre ; une seule `ftyp` (un second fichier
+            // ajouté à la suite aurait ses propres positions, relatives à son début).
+            if (!container.clean || container.types.count { it == "ftyp" } != 1) return null
+            if (container.types.any { it != "ftyp" && it != "meta" && it != "moov" && it !in SHIFTABLE }) return null
+            val movies = container.boxes.filter { it.type == "moov" }
+            if (movies.size > 1) return null
+            val chunks = movies.singleOrNull()?.let { MovieChunks.read(read, it, container) ?: return null }
             val width = if (meta.ipmaFlags and 1 != 0) 2 else 1
             val insertions = ArrayList<Pair<Int, ByteArray>>()
             insertions += meta.ipco.end to newAngles.fold(ByteArray(0)) { bytes, angle -> bytes + irot(angle) }
@@ -234,12 +284,48 @@ internal class HeifRotation private constructor(
                 inMeta += box.sizeField.position to (encode(box.size + growth, box.sizeField.width) ?: return null)
             }
             locationPatches(meta, container, delta.toLong(), inMeta) ?: return null
+            // Morceaux de la vidéo rangés après la boîte : décalés comme les données des images.
+            val shiftedChunks = chunks?.map { chunk -> if (chunk.value >= container.metaEnd) chunk.value + delta else chunk.value }
+            chunks?.zip(shiftedChunks.orEmpty())?.forEach { (chunk, shifted) ->
+                if (shifted != chunk.value) outside += Patch(chunk.position, encode(shifted, chunk.width) ?: return null)
+            }
+            if (outside.any { it.offset < container.metaEnd && it.offset + it.bytes.size > container.metaStart }) return null
 
             val grown = meta.bytes.copyOf().apply { inMeta.forEach { (at, bytes) -> bytes.copyInto(this, at) } }
                 .let { bytes -> insert(bytes, insertions) }
             val parsed = HeifMeta.parse(grown) ?: return null
             if (!verify(parsed, wanted) || !sameData(meta, parsed, container, delta.toLong())) return null
-            return HeifRotation(orientation, hasMetadata, length, container.metaStart, container.metaEnd, grown, outside)
+            val expected = Expected(length + delta, displays, container.trailerStart?.plus(delta), shiftedChunks)
+            return HeifRotation(orientation, hasMetadata, length, container.metaStart, container.metaEnd, grown, outside, expected)
+        }
+
+        /**
+         * Images qui tournent avec l'image principale à cause des cartes de gain `tmap` (ISO 21496-1) :
+         * chaque image `tmap` dérivée de l'image principale (ou, si c'est elle l'image principale, son
+         * image de base, montrée par les lecteurs sans HDR), et l'image de gain si elle porte la
+         * transformation de l'image de base. Null si la structure est inattendue : `tmap` sans ses
+         * deux images, d'une autre image que l'image principale, image de gain orientée autrement.
+         */
+        private fun toneMapped(meta: HeifMeta): List<Long>? {
+            val found = ArrayList<Long>()
+            for ((tmap, type) in meta.types) {
+                if (type != "tmap") continue
+                val inputs = meta.references.filter { it.type == "dimg" && it.from == tmap }.flatMap { it.to }
+                if (inputs.size != 2 || inputs.any { it !in meta.types }) return null
+                val (base, gain) = inputs
+                found += when (meta.primary) {
+                    base -> tmap
+                    tmap -> base
+                    else -> return null
+                }
+                val orienting = meta.chain(gain)?.filter { it.property.type in ORIENTING } ?: return null
+                if (orienting.isNotEmpty()) {
+                    // Superposée à l'image de base : elle doit le rester.
+                    if (meta.display(gain) != meta.display(base)) return null
+                    found += gain
+                }
+            }
+            return found
         }
 
         /** Orientation EXIF et XMP mises à [orientation] ; null si un élément est mal formé. */
@@ -394,20 +480,37 @@ private class Association(val index: Int, val essential: Boolean, val position: 
 
 /**
  * Boîtes de premier niveau du fichier et boîte `meta`, lue entière (quelques kilo-octets).
- * [clean] : les boîtes se suivent jusqu'à la fin exacte du fichier.
+ * [clean] : les boîtes se suivent jusqu'à la fin exacte du fichier, ou jusqu'à sa traîne Samsung
+ * ([trailerStart], [SamsungTrailer]).
  */
-private class Container(val types: List<String>, val clean: Boolean, val metaStart: Long, val meta: ByteArray) {
+private class Container(
+    val boxes: List<TopBox>,
+    val clean: Boolean,
+    val metaStart: Long,
+    val meta: ByteArray,
+    val trailerStart: Long?,
+) {
     val metaEnd: Long get() = metaStart + meta.size
+    val types: List<String> get() = boxes.map { it.type }
+
+    /** Boîte de premier niveau : type, position, taille, longueur de l'en-tête. */
+    class TopBox(val type: String, val start: Long, val size: Long, val header: Int) {
+        val content: Long get() = start + header
+        val end: Long get() = start + size
+    }
 
     companion object {
         fun read(read: (Long, Int) -> ByteArray?, length: Long): Container? {
-            val types = ArrayList<String>()
+            val boxes = ArrayList<TopBox>()
             var metaStart = -1L
             var metaSize = 0L
             var position = 0L
             var clean = false
-            while (types.size < MAX_TOP_BOXES) {
-                if (position == length) {
+            // Traîne Samsung : les boîtes s'arrêtent là où elle commence.
+            val trailer = SamsungTrailer.start(read, length)
+            val end = trailer ?: length
+            while (boxes.size < MAX_TOP_BOXES) {
+                if (position == end) {
                     clean = true
                     break
                 }
@@ -415,28 +518,157 @@ private class Container(val types: List<String>, val clean: Boolean, val metaSta
                 val size32 = header.u32(0)
                 val size = when (size32) {
                     1L -> if (header.size >= 16) header.u64(8) else break
-                    0L -> length - position
+                    0L -> end - position
                     else -> size32
                 }
                 val headerLength = if (size32 == 1L) 16 else 8
-                if (size < headerLength || position + size > length) break
+                if (size < headerLength || position + size > end) break
                 val type = String(header, 4, 4, Charsets.ISO_8859_1)
-                if (types.isEmpty() && type != "ftyp") return null
+                if (boxes.isEmpty() && type != "ftyp") return null
                 if (type == "meta") {
                     if (metaStart >= 0) return null
                     metaStart = position
                     metaSize = size
                 }
-                types += type
+                boxes += TopBox(type, position, size, headerLength)
                 position += size
             }
             if (metaStart < 0 || metaSize > MAX_META) return null
             val meta = read(metaStart, metaSize.toInt()) ?: return null
-            return Container(types, clean, metaStart, meta)
+            return Container(boxes, clean, metaStart, meta, trailer)
         }
 
         private const val MAX_TOP_BOXES = 64
         private const val MAX_META = 8L shl 20
+    }
+}
+
+/**
+ * Traîne Samsung (« SEF »), ajoutée après les boîtes par les appareils photo Galaxy : blocs de
+ * données (horodatage, pays, mode de prise de vue, vidéo d'une photo animée…), puis leur
+ * répertoire `SEFH`, sa longueur et la signature `SEFT` qui finit le fichier ; entiers
+ * petit-boutistes. Chaque entrée du répertoire (type, distance de son bloc avant `SEFH`, taille)
+ * désigne son bloc par rapport au répertoire : la traîne ne contient aucune position absolue et
+ * peut être décalée d'un seul tenant.
+ */
+private object SamsungTrailer {
+    private const val MAX_DIRECTORY = 64 * 1024
+
+    /**
+     * Début de la traîne du fichier ([read], [length] octets) : premier de ses blocs, que les blocs
+     * et le répertoire occupent jusqu'à la fin ; null sans traîne, ou si l'une de ses entrées ne
+     * désigne pas un bloc de la traîne qui commence comme elle.
+     */
+    fun start(read: (Long, Int) -> ByteArray?, length: Long): Long? {
+        if (length < 8) return null
+        val tail = read(length - 8, 8) ?: return null
+        if (String(tail, 4, 4, Charsets.ISO_8859_1) != "SEFT") return null
+        val size = tail.u32le(0)
+        val directory = length - 8 - size
+        if (size < 12 || size > MAX_DIRECTORY || directory < 0) return null
+        val bytes = read(directory, size.toInt()) ?: return null
+        if (String(bytes, 0, 4, Charsets.ISO_8859_1) != "SEFH") return null
+        val count = bytes.u32le(8)
+        if (count > (size - 12) / 12) return null
+        var start = directory
+        for (index in 0 until count.toInt()) {
+            val entry = 12 + 12 * index
+            val distance = bytes.u32le(entry + 4)
+            val blockSize = bytes.u32le(entry + 8)
+            val block = directory - distance
+            if (distance <= 0 || block < 0 || blockSize < 8 || block + blockSize > directory) return null
+            // Un bloc reprend le marqueur et le type de son entrée.
+            val head = read(block, 4) ?: return null
+            if ((0 until 4).any { head[it] != bytes[entry + it] }) return null
+            start = minOf(start, block)
+        }
+        return start
+    }
+}
+
+/**
+ * Positions des morceaux d'une boîte `moov` (pistes d'une photo animée ou d'une séquence d'images,
+ * `stco` / `co64`) : positions absolues dans le fichier, à décaler si les données bougent. La boîte
+ * elle-même ne change pas de taille ; rien d'autre n'y est récrit.
+ */
+private object MovieChunks {
+    /** Boîtes qui en contiennent d'autres sur le chemin des tables de morceaux et des références de données. */
+    private val CONTAINERS = setOf("trak", "mdia", "minf", "stbl", "dinf")
+
+    /**
+     * Boîtes qui désignent des données par une position absolue que ce décalage ne suivrait pas, ou
+     * annoncent des fragments : cherchées partout dans `moov` (même dans une `meta` de `udta`), le
+     * moindre doute faisant renoncer.
+     */
+    private val ABSOLUTE = listOf("saio", "iloc", "mvex", "moof").map { it.toByteArray(Charsets.ISO_8859_1) }
+
+    private const val MAX_MOOV = 8L shl 20
+
+    /** Position, dans le fichier, d'une entrée de table et sa valeur. */
+    class Entry(val position: Long, val width: Int, val value: Long)
+
+    /**
+     * Entrées des tables de [moov] ; null si la boîte se lit mal, désigne des données hors du fichier
+     * (`dref` non autonome) ou ailleurs que dans une boîte `mdat` de [container].
+     */
+    fun read(read: (Long, Int) -> ByteArray?, moov: Container.TopBox, container: Container): List<Entry>? {
+        if (moov.size > MAX_MOOV) return null
+        val bytes = read(moov.start, moov.size.toInt()) ?: return null
+        if (ABSOLUTE.any { type -> (0..bytes.size - 4).any { at -> (0 until 4).all { bytes[at + it] == type[it] } } }) return null
+        val entries = ArrayList<Entry>()
+        if (!walk(bytes, moov.header, bytes.size, moov.start, entries)) return null
+        val data = container.boxes.filter { it.type == "mdat" }
+        val inData = entries.all { entry -> data.any { entry.value >= it.content && entry.value < it.end } }
+        return entries.takeIf { inData }
+    }
+
+    private fun walk(bytes: ByteArray, from: Int, to: Int, origin: Long, entries: MutableList<Entry>): Boolean {
+        var position = from
+        while (position < to) {
+            if (position + 8 > to) return false
+            val size32 = bytes.u32(position)
+            val header = if (size32 == 1L) 16 else 8
+            val size = when (size32) {
+                1L -> if (position + 16 <= to) bytes.u64(position + 8) else return false
+                0L -> (to - position).toLong()
+                else -> size32
+            }
+            if (size < header || position + size > to) return false
+            val type = String(bytes, position + 4, 4, Charsets.ISO_8859_1)
+            val content = position + header
+            val end = (position + size).toInt()
+            when (type) {
+                in CONTAINERS -> if (!walk(bytes, content, end, origin, entries)) return false
+                "dref" -> if (!selfContained(bytes, content, end)) return false
+                "stco", "co64" -> {
+                    val width = if (type == "stco") 4 else 8
+                    if (content + 8 > end) return false
+                    val count = bytes.u32(content + 4)
+                    if (count > (end - content - 8) / width) return false
+                    for (index in 0 until count.toInt()) {
+                        val at = content + 8 + index * width
+                        val value = if (width == 4) bytes.u32(at) else bytes.u64(at).also { if (it < 0) return false }
+                        entries += Entry(origin + at, width, value)
+                    }
+                }
+            }
+            position = end
+        }
+        return true
+    }
+
+    /** Références de données (`url ` / `urn `) toutes marquées « dans ce fichier » (drapeau 1). */
+    private fun selfContained(bytes: ByteArray, content: Int, end: Int): Boolean {
+        if (content + 8 > end) return false
+        var position = content + 8
+        repeat(bytes.u32(content + 4).toInt()) {
+            if (position + 12 > end) return false
+            val size = bytes.u32(position)
+            if (size < 12 || position + size > end) return false
+            if (bytes[position + 11].u8() and 1 == 0) return false
+            position += size.toInt()
+        }
+        return true
     }
 }
 
@@ -719,3 +951,8 @@ private fun ByteArray.u32(index: Int): Long =
         (this[index + 2].u8().toLong() shl 8) or this[index + 3].u8().toLong()
 
 private fun ByteArray.u64(index: Int): Long = (u32(index) shl 32) or u32(index + 4)
+
+/** Entier petit-boutiste de 32 bits (traîne Samsung). */
+private fun ByteArray.u32le(index: Int): Long =
+    this[index].u8().toLong() or (this[index + 1].u8().toLong() shl 8) or
+        (this[index + 2].u8().toLong() shl 16) or (this[index + 3].u8().toLong() shl 24)
