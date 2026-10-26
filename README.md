@@ -85,7 +85,8 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   Transformer). Collages de 2 à 9 photos depuis la sélection multiple (vidéos ignorées) :
   plusieurs dispositions par nombre de photos (grilles, une grande et des petites, mosaïques
   décalées, moulinet), format 1:1, 4:5, 3:4, 9:16 ou 16:9, espacement, coins arrondis, fond blanc,
-  noir ou aux couleurs Material You ; chaque photo se cadre au doigt et s'agrandit en pinçant, un
+  noir ou aux couleurs Material You ; chaque photo se cadre au doigt et s'agrandit en pinçant (nette
+  même très agrandie : la partie visible est alors décodée à la résolution de l'écran), un
   appui long l'échange avec une autre case ; nouveau JPEG de 4 096 px dans `Pictures/Focale`, ouvert
   dans la visionneuse ou partagé aussitôt, Ultra HDR si des photos le sont (Android 14+ : gainmap
   composée case par case, cases SDR au gain neutre).

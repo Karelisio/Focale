@@ -12,6 +12,7 @@ import android.graphics.Shader
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withClip
 import app.focale.core.image.GainmapParams
+import app.focale.edit.ExifOrientation
 import java.io.Closeable
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -173,6 +174,59 @@ object CollageRenderer {
         val shown = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
         if (shown !== decoded) decoded.recycle()
         return shown
+    }
+
+    /**
+     * Détail de [source] pour une case agrandie ([CollageDetail]) : zone de [request] de l'image
+     * affichée, orientation appliquée, à la taille demandée, jamais plus fine que la photo. La zone
+     * stockée est lue réduite par le plus grand facteur qui garde un pixel décodé par pixel du détail,
+     * sans dépasser [maxDecoded] pixels décodés (plutôt un peu moins fin). Rend aussi la zone vraiment
+     * couverte, en fraction de l'image affichée (bornes de la lecture arrondies au pixel stocké).
+     */
+    fun detail(source: CollageSource, request: DetailRequest, maxDecoded: Int = BAND_PIXELS): Pair<Bitmap, CellRect> {
+        val orientation = ImageOrientation(source.width, source.height, source.orientation)
+        val displayWidth = orientation.displayWidth
+        val displayHeight = orientation.displayHeight
+        val wanted = request.region
+        val shown = CellRect(wanted.left * displayWidth, wanted.top * displayHeight, wanted.right * displayWidth, wanted.bottom * displayHeight)
+        val (width, height) = CollageDetail.size(request, displayWidth, displayHeight)
+        val stored = orientation.toStored(shown)
+        val left = floor(stored.left).toInt().coerceIn(0, source.width - 1)
+        val top = floor(stored.top).toInt().coerceIn(0, source.height - 1)
+        val region = Rect(
+            left,
+            top,
+            ceil(stored.right).toInt().coerceIn(left + 1, source.width),
+            ceil(stored.bottom).toInt().coerceIn(top + 1, source.height),
+        )
+        val turned = ExifOrientation.quarterTurns(source.orientation) % 2 == 1
+        val across = if (turned) region.height() else region.width()
+        var sample = sampleSize(width / across.toFloat())
+        while ((region.width() / sample).toLong() * (region.height() / sample) > maxDecoded) sample *= 2
+        val decoded = source.decode(region, sample)
+        // Zone stockée que couvre vraiment le décodage, puis sa place dans l'image affichée.
+        val covered = orientation.toDisplay(
+            CellRect(
+                region.left.toFloat(),
+                region.top.toFloat(),
+                min(source.width, region.left + decoded.width * sample).toFloat(),
+                min(source.height, region.top + decoded.height * sample).toFloat(),
+            ),
+        )
+        val oriented = ImageOrientation(decoded.width, decoded.height, source.orientation)
+        val matrix = Matrix().apply {
+            setValues(oriented.toDisplay + floatArrayOf(0f, 0f, 1f))
+            postScale(width / oriented.displayWidth.toFloat(), height / oriented.displayHeight.toFloat())
+        }
+        val bitmap = if (matrix.isIdentity) decoded else Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+        if (bitmap !== decoded) decoded.recycle()
+        val normalized = CellRect(
+            covered.left / displayWidth,
+            covered.top / displayHeight,
+            covered.right / displayWidth,
+            covered.bottom / displayHeight,
+        )
+        return bitmap to normalized
     }
 
     /**

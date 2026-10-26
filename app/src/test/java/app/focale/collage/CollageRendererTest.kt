@@ -211,6 +211,47 @@ class CollageRendererTest {
         assertEquals(GREEN, preview.getPixel(160, 240))
     }
 
+    @Test
+    fun `détail d'une case agrandie, zone de l'image affichée, orientation appliquée, à la taille demandée`() {
+        // Photo stockée de côté (orientation 6) : affichée 2 000 × 3 000, rouge en haut à droite.
+        val stored = quarters(3000, 2000)
+        val request = DetailRequest(CellRect(0.55f, 0.05f, 0.95f, 0.45f), width = 400, height = 600)
+        val (detail, covered) = CollageRenderer.detail(BitmapSource(stored, 6, owned = false), request)
+        assertEquals(400, detail.width)
+        assertEquals(600, detail.height)
+        for (y in listOf(5, 300, 595)) for (x in listOf(5, 200, 395)) assertEquals(Color.RED, detail.getPixel(x, y))
+        // Zone couverte : celle demandée, au pixel stocké près.
+        assertEquals(0.55f, covered.left, 1f / 2000)
+        assertEquals(0.95f, covered.right, 1f / 2000)
+        assertEquals(0.05f, covered.top, 1f / 3000)
+        assertEquals(0.45f, covered.bottom, 1f / 3000)
+    }
+
+    @Test
+    fun `détail d'une photo de 50 Mpx, réduit au plus juste, jamais plus fin que la photo ni au-delà du décodage permis`() {
+        val decodes = ArrayList<Pair<Rect, Int>>()
+        val source = LargeSource(Color.MAGENTA, decodes)
+        // Dixième de la photo (816 × 612 px) demandé à 2 000 × 1 500 : la photo n'en a pas tant.
+        val fine = CollageRenderer.detail(source, DetailRequest(CellRect(0.4f, 0.4f, 0.5f, 0.5f), 2_000, 1_500)).first
+        assertEquals(816, fine.width)
+        assertEquals(612, fine.height)
+        assertEquals(1, decodes.single().second)
+        // Moitié de la photo à 1 000 × 750 : réduite par 4, au moins un pixel décodé par pixel du détail.
+        decodes.clear()
+        val half = CollageRenderer.detail(source, DetailRequest(CellRect(0f, 0f, 0.5f, 0.5f), 1_000, 750)).first
+        assertEquals(1_000, half.width)
+        assertEquals(750, half.height)
+        val (region, sample) = decodes.single()
+        assertEquals(4, sample)
+        assertTrue(region.width() / sample >= 1_000)
+        // Décodage borné : moins fin plutôt que plus de pixels décodés.
+        decodes.clear()
+        CollageRenderer.detail(source, DetailRequest(CellRect(0f, 0f, 1f, 1f), 2_000, 1_500), maxDecoded = 250_000)
+        val (whole, coarse) = decodes.single()
+        assertTrue((whole.width() / coarse).toLong() * (whole.height() / coarse) <= 250_000)
+        assertEquals(16, coarse)
+    }
+
     /**
      * Photo de 50 Mpx simulée : chaque zone demandée est un aplat de la taille réduite demandée,
      * sans jamais allouer l'image entière.

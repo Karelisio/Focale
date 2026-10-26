@@ -8,7 +8,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
+import app.focale.collage.CollageDetail
 import app.focale.collage.CollageLayouts
+import app.focale.collage.DetailRequest
 import app.focale.core.model.MediaItem
 import app.focale.data.CollageMaker
 import app.focale.data.CollageResult
@@ -19,7 +21,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -63,6 +67,13 @@ class CollageViewModel @Inject constructor(
     private val _previews = MutableStateFlow<Map<Long, ImageBitmap>>(emptyMap())
     val previews: StateFlow<Map<Long, ImageBitmap>> = _previews.asStateFlow()
 
+    /** Détails des cases agrandies ([CollageDetail]), par photo. */
+    private val _details = MutableStateFlow<Map<Long, CollageDetailImage>>(emptyMap())
+    val details: StateFlow<Map<Long, CollageDetailImage>> = _details.asStateFlow()
+
+    /** Zones à détailler que demande l'écran, à chaque changement de cadrage ou de disposition. */
+    private val detailRequests = MutableStateFlow<Map<Long, DetailRequest>>(emptyMap())
+
     private val _saving = MutableStateFlow(false)
     val saving: StateFlow<Boolean> = _saving.asStateFlow()
 
@@ -77,6 +88,37 @@ class CollageViewModel @Inject constructor(
             _items.value = photos.associateBy { it.id }
             _editor.value = CollageEditor(photos.map { it.id })
             loadPreviews(photos)
+        }
+        viewModelScope.launch { detailRequests.collectLatest(::loadDetails) }
+    }
+
+    /** Zones à détailler de l'écran ([CollageDetail.request]) : décodées une fois les gestes arrêtés. */
+    fun requestDetails(requests: Map<Long, DetailRequest>) {
+        detailRequests.value = requests
+    }
+
+    /**
+     * Détails demandés, un à un, hors du fil principal, après [CollageDetail.DELAY_MS] sans nouvelle
+     * demande (un geste en cours les renouvelle sans cesse) ; une case revenue à son aperçu perd le
+     * sien aussitôt. Un détail encore juste reste jusqu'à ce que le suivant le remplace.
+     */
+    private suspend fun loadDetails(requests: Map<Long, DetailRequest>) {
+        _details.update { current -> current.filterKeys(requests::containsKey) }
+        delay(CollageDetail.DELAY_MS)
+        for ((photo, request) in requests) {
+            if (_details.value[photo]?.request == request) continue
+            val item = _items.value[photo] ?: continue
+            val detail = try {
+                maker.loadDetail(item, request)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                // Mémoire ou photo illisible : l'aperçu reste.
+                Log.w(TAG, "Détail impossible : ${item.displayName}", error)
+                null
+            } ?: continue
+            val (bitmap, region) = detail
+            _details.update { it + (photo to CollageDetailImage(request, region, bitmap.asImageBitmap())) }
         }
     }
 

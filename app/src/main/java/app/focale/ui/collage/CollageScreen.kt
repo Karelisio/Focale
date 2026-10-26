@@ -54,6 +54,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.focale.R
 import app.focale.collage.CollageLayouts
+import app.focale.collage.DetailRequest
 import app.focale.core.model.MediaItem
 
 /**
@@ -67,6 +68,7 @@ fun CollageScreen(onClose: () -> Unit, onSaved: (MediaItem) -> Unit, viewModel: 
     val editor by viewModel.editor.collectAsStateWithLifecycle()
     val items by viewModel.items.collectAsStateWithLifecycle()
     val previews by viewModel.previews.collectAsStateWithLifecycle()
+    val details by viewModel.details.collectAsStateWithLifecycle()
     val saving by viewModel.saving.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val truncatedMessage = pluralStringResource(R.plurals.collage_truncated, CollageLayouts.MAX_PHOTOS, CollageLayouts.MAX_PHOTOS)
@@ -105,6 +107,8 @@ fun CollageScreen(onClose: () -> Unit, onSaved: (MediaItem) -> Unit, viewModel: 
                 editor = current,
                 items = items,
                 previews = previews,
+                details = details,
+                onDetails = viewModel::requestDetails,
                 saving = saving,
                 onClose = onClose,
                 onSave = viewModel::save,
@@ -129,6 +133,8 @@ internal fun CollageContent(
     onSave: (share: Boolean) -> Unit,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     initialTool: CollageTool = CollageTool.LAYOUT,
+    details: Map<Long, CollageDetailImage> = emptyMap(),
+    onDetails: (Map<Long, DetailRequest>) -> Unit = {},
 ) {
     val state by editor.state.collectAsStateWithLifecycle()
     val canUndo by editor.canUndo.collectAsStateWithLifecycle()
@@ -193,6 +199,8 @@ internal fun CollageContent(
                         editor.zoomStep(cell, factor, cellSize.width, cellSize.height, imageSize.width, imageSize.height)
                     },
                     onResetFrame = editor::resetFrame,
+                    details = details,
+                    onDetails = onDetails,
                     modifier = Modifier.size(width, height),
                 )
             }

@@ -13,12 +13,15 @@ import android.os.Build
 import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import app.focale.collage.BitmapSource
+import app.focale.collage.CellRect
+import app.focale.collage.CollageDetail
 import app.focale.collage.CollageGainLayer
 import app.focale.collage.CollageGainmap
 import app.focale.collage.CollageRenderer
 import app.focale.collage.CollageSource
 import app.focale.collage.CollageState
 import app.focale.collage.DecodedRegion
+import app.focale.collage.DetailRequest
 import app.focale.core.di.IoDispatcher
 import app.focale.core.image.GainmapParams
 import app.focale.core.image.UltraHdr
@@ -70,6 +73,16 @@ class CollageMaker @Inject constructor(
     /** Aperçu de [item], orientation appliquée, grand côté ≤ [maxSide]. */
     suspend fun loadPreview(item: MediaItem, maxSide: Int): Bitmap = withContext(io) {
         open(item).use { CollageRenderer.preview(it, maxSide) }
+    }
+
+    /**
+     * Détail de [item] pour sa case agrandie ([CollageDetail], [CollageRenderer.detail]) : l'image et
+     * la zone qu'elle couvre. Null pour un format sans décodeur de zones : il faudrait décoder la
+     * photo entière, bien au-delà de la mémoire prévue pour les détails ; l'aperçu reste.
+     */
+    suspend fun loadDetail(item: MediaItem, request: DetailRequest): Pair<Bitmap, CellRect>? = withContext(io) {
+        val decoder = runCatching { resolver.openInputStream(item.uri)?.use(::regionDecoder) }.getOrNull() ?: return@withContext null
+        RegionSource(decoder, orientationOf(item), gainmap = null).use { CollageRenderer.detail(it, request) }
     }
 
     /**

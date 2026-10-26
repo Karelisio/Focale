@@ -1147,6 +1147,17 @@ application ouvre les photos et proposer de choisir Focale.
   (`ImageOrientation`, quarts de tour et miroirs ; ignorée pour PNG, GIF et BMP, comme Android), repli
   sur `ImageDecoder` réduit à 16 Mpx pour les autres formats. Aperçus de 1 280 px (960 au-delà de
   quatre photos), deux décodés à la fois : le cadrage réglé à l'écran est celui du collage enregistré.
+- Détail des cases agrandies (`CollageDetail`, `CollageRenderer.detail`, `CollageMaker.loadDetail`) :
+  une case dont l'aperçu est étiré à plus de 1,25 pixel de l'écran par pixel demande le détail de sa
+  partie visible, plus un quart de marge de chaque côté (un petit glisser reste net), à la résolution
+  de l'écran. Mémoire bornée : 4 Mpx (16 Mo, une bande de l'export) pour toutes les cases, partagés
+  selon leur surface ; jamais plus fin que la photo ; lecture réduite par le plus grand facteur qui
+  garde un pixel décodé par pixel du détail, 4 Mpx décodés au plus (plutôt un peu moins fin). Demandé
+  à chaque changement de cadrage, décodé hors du fil principal 300 ms après le dernier (un geste en
+  cours ne décode rien), case par case ; posé sur l'aperçu à la zone qu'il couvre vraiment (bornes
+  arrondies au pixel stocké), il suit le glisser jusqu'au détail suivant, et disparaît quand la case
+  revient à son aperçu. Formats sans décodeur de zones : l'aperçu seul (il faudrait décoder la photo
+  entière).
 - Export : JPEG qualité 95, 4 096 px sur le grand côté (4 096 × 4 096, 3 277 × 4 096, 3 072 × 4 096,
   2 304 × 4 096, 4 096 × 2 304). Pour chaque case, seule la zone stockée visible (plus 3 pixels décodés
   de marge pour le filtrage) est lue, réduite par la plus grande puissance de 2 qui garde au moins un
