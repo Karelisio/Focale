@@ -175,6 +175,75 @@ class BlurToolTest {
     }
 
     @Test
+    fun `le pinceau peint aussi depuis la zone sélectionnée, sans la déplacer`() {
+        tool.add(BlurArea.Box(BlurShape.RECTANGLE, 0.5f, 0.5f, 0.2f, 0.2f))
+        val box = zones.single()
+        tool.select(box.id)
+        show()
+        compose.onNodeWithContentDescription("Brush").performClick()
+        compose.onNodeWithTag("apercu").performTouchInput { swipe(Offset(200f, 200f), Offset(280f, 260f), durationMillis = 300) }
+        compose.waitForIdle()
+        assertEquals("zone sélectionnée laissée en place", box, zones.first())
+        val brush = zones.last().area as BlurArea.Brush
+        assertEquals(2, zones.size)
+        assertEquals(0.5f, brush.x(0), 1e-3f)
+        assertEquals(0.9f, brush.x(brush.pointCount - 1), 1e-3f)
+        // Une étape : le trait.
+        history.undo()
+        assertEquals(listOf(box), zones)
+    }
+
+    /** Appui long en [from] (le doigt immobile au-delà du délai), puis glisser jusqu'à [to]. */
+    private fun longPressDrag(from: Offset, to: Offset?) {
+        compose.onNodeWithTag("apercu").performTouchInput {
+            down(from)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            if (to != null) {
+                for (step in 1..5) moveTo(from + (to - from) * (step / 5f))
+            }
+            up()
+        }
+        compose.waitForIdle()
+    }
+
+    @Test
+    fun `avec le pinceau, un appui long sur une zone puis un glisser la déplace, en une étape`() {
+        tool.add(BlurArea.Box(BlurShape.RECTANGLE, 0.5f, 0.5f, 0.2f, 0.2f))
+        show()
+        compose.onNodeWithContentDescription("Brush").performClick()
+        longPressDrag(Offset(200f, 200f), Offset(240f, 170f))
+        val moved = zones.single()
+        assertEquals(moved.id, tool.selected.value)
+        assertEquals(0.7f, (moved.area as BlurArea.Box).x, 1e-3f)
+        assertEquals(0.4f, (moved.area as BlurArea.Box).y, 1e-3f)
+        history.undo()
+        assertEquals(0.5f, (zones.single().area as BlurArea.Box).x, 1e-6f)
+        history.undo()
+        assertTrue(zones.isEmpty())
+    }
+
+    @Test
+    fun `un appui long sans glisser sélectionne la zone, sans étape d'historique, avec tous les outils`() {
+        tool.add(BlurArea.Box(BlurShape.ELLIPSE, 0.5f, 0.5f, 0.2f, 0.2f))
+        val zone = zones.single()
+        show()
+        compose.onNodeWithContentDescription("Brush").performClick()
+        longPressDrag(Offset(200f, 200f), to = null)
+        assertEquals(zone.id, tool.selected.value)
+        assertEquals(listOf(zone), zones)
+        // Rectangle : un appui long emmène aussi une zone qui n'était pas sélectionnée.
+        tool.select(null)
+        compose.onNodeWithContentDescription("Rectangle").performClick()
+        longPressDrag(Offset(200f, 200f), Offset(160f, 230f))
+        assertEquals(0.3f, (zones.single().area as BlurArea.Box).x, 1e-3f)
+        assertEquals(0.6f, (zones.single().area as BlurArea.Box).y, 1e-3f)
+        history.undo()
+        assertEquals(zone, zones.single())
+        history.undo()
+        assertTrue("seules l'ajout et le déplacement sont des étapes", zones.isEmpty())
+    }
+
+    @Test
     fun `un appui hors des zones désélectionne, un petit glisser ne trace rien`() {
         tool.add(BlurArea.Box(BlurShape.RECTANGLE, 0.5f, 0.5f, 0.2f, 0.2f))
         tool.select(zones.single().id)

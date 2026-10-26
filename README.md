@@ -76,8 +76,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   rectangle, ellipse, gomme), texte (plusieurs lignes, affiché sur la photo à mesure qu'on le
   tape, réglages compris, la saisie restant au-dessus du clavier ; déplacé au doigt, agrandi et
   tourné à deux doigts ; couleur, taille, fond encadré ou contour, gras), zones floutées pour
-  cacher un visage ou une plaque (rectangle, ellipse ou pinceau ; flou fort ou mosaïque,
-  irréversibles ; « Visages » floute ceux que détecte ML Kit) ; annuler / rétablir, et « Tout
+  cacher un visage ou une plaque (rectangle, ellipse ou pinceau, qui peint aussi par-dessus une
+  zone ; un appui long puis un glisser déplace une zone ; flou fort ou mosaïque, irréversibles ;
+  « Visages » floute ceux que détecte ML Kit) ; annuler / rétablir, et « Tout
   annuler » qui rend l'original d'un coup (confirmation au-delà de quelques modifications, lui
   aussi annulable) ; enregistrement en copie ou à la place de
   l'original. Vidéos : coupe du début et de la fin, son coupé, enregistrées en copie (Media3

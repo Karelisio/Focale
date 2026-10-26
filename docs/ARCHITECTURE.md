@@ -1057,9 +1057,13 @@ application ouvre les photos et proposer de choisir Focale.
   l'export pleine résolution ont la même mise en page.
 - Flou (`BlurRegion`, `BlurController`, `BlurOverlay`, `BlurPanel`) : rectangle ou ellipse du
   point de départ au doigt, ou trait de pinceau (épaisseur en dp à l'écran convertie en
-  fraction de l'image) ; un appui sélectionne une zone, un glisser parti de la zone
-  sélectionnée la déplace (une zone nouvelle n'est pas sélectionnée : un second trait peut
-  partir d'elle) ; style « Flou » ou « Pixels » et intensité pour la zone sélectionnée et les
+  fraction de l'image) ; un appui sélectionne une zone ; avec le rectangle et l'ellipse, un glisser
+  parti de la zone sélectionnée la déplace (une zone nouvelle n'est pas sélectionnée : un second
+  trait peut partir d'elle), alors qu'avec le pinceau un glisser peint toujours, même depuis la zone
+  sélectionnée. Avec tous les outils, un appui long sur une zone (doigt immobile jusqu'au délai du
+  système, retour haptique, comme l'échange des photos d'un collage) la sélectionne, et le glisser
+  qui suit la déplace, en une étape d'historique (aucune si le doigt ne bouge pas) ; style « Flou »
+  ou « Pixels » et intensité pour la zone sélectionnée et les
   suivantes. Les zones sont attachées à la photo (`BlurArea` : repère du cadre avant
   redressement, inclinaison propre) : contrairement aux traits, elles pivotent avec le
   redressement, et ce qu'elles cachent reste caché à tout angle ; un cadre tracé sur une photo
