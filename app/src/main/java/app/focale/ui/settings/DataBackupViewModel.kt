@@ -14,6 +14,7 @@ import app.focale.backup.DataBackupSummary
 import app.focale.backup.DataCategory
 import app.focale.backup.DataExportResult
 import app.focale.backup.DataInspectResult
+import app.focale.backup.DataOpenResult
 import app.focale.backup.DataRestoreReport
 import app.focale.backup.DataRestoreResult
 import app.focale.backup.InspectedBackup
@@ -22,7 +23,9 @@ import app.focale.core.util.UiText
 import app.focale.ui.backup.AutoBackupSettingsViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,8 +87,11 @@ class DataBackupViewModel @Inject constructor(
     /** Mot de passe choisi, en attente de l'emplacement du fichier. */
     private var pendingPassword: CharArray? = null
 
-    /** Sauvegarde choisie, en attente de son mot de passe. */
-    private var pendingSource: Uri? = null
+    /**
+     * Copie locale de la sauvegarde choisie ([DataBackupRepository.open]), faite pendant la saisie du
+     * mot de passe : le document n'est lu qu'une fois, même après un mot de passe faux.
+     */
+    private var copy: Deferred<DataOpenResult>? = null
 
     /** Sauvegarde vérifiée, en attente de la confirmation de sa restauration. */
     private var inspected: InspectedBackup? = null
@@ -129,23 +135,43 @@ class DataBackupViewModel @Inject constructor(
 
     // ── Restauration ────────────────────────────────────────────────────────────────
 
+    /**
+     * Sauvegarde choisie : sa copie locale commence aussitôt, le mot de passe se tape pendant ce
+     * temps. Un fichier qui n'en est pas une (refusé dès son en-tête) est signalé sans attendre.
+     */
     fun onBackupChosen(source: Uri?) {
         if (source == null || _flow.value != DataBackupFlow.Idle) return
-        pendingSource = source
+        forgetBackup()
+        val pending = viewModelScope.async { backups.open(source) }
+        copy = pending
         _flow.value = DataBackupFlow.BackupPassword()
+        viewModelScope.launch {
+            val opened = runCatching { pending.await() }.getOrNull() as? DataOpenResult.Failed ?: return@launch
+            val current = _flow.value
+            if (copy === pending && current is DataBackupFlow.BackupPassword && !current.checking) {
+                forgetCopy()
+                _flow.value = failure(opened.reason)
+            }
+        }
     }
 
-    /** Mot de passe saisi : la sauvegarde est vérifiée de bout en bout, puis résumée. */
+    /** Mot de passe saisi : la copie de la sauvegarde, une fois faite, est vérifiée de bout en bout, puis résumée. */
     fun inspect(password: CharArray) {
-        val source = pendingSource
+        val pending = copy
         val current = _flow.value
-        if (source == null || current !is DataBackupFlow.BackupPassword || current.checking) {
+        if (pending == null || current !is DataBackupFlow.BackupPassword || current.checking) {
             password.fill('\u0000')
             return
         }
         launchOperation(
             initial = DataBackupFlow.BackupPassword(checking = true),
-            operation = { _ -> backups.inspect(source, password, ::isCancelRequested) },
+            operation = { _ ->
+                when (val opened = pending.await()) {
+                    is DataOpenResult.Ready -> backups.inspect(opened.backup, password, ::isCancelRequested)
+                    is DataOpenResult.Failed -> DataInspectResult.Failed(opened.reason).also { password.fill('\u0000') }
+                    DataOpenResult.Cancelled -> DataInspectResult.Cancelled.also { password.fill('\u0000') }
+                }
+            },
             outcome = ::inspectOutcome,
         )
     }
@@ -224,10 +250,19 @@ class DataBackupViewModel @Inject constructor(
         _flow.update { current -> (current as? DataBackupFlow.Running)?.copy(progress = progress) ?: current }
     }
 
+    /** Sauvegarde choisie oubliée : copie locale arrêtée ou supprimée, clés effacées. */
     private fun forgetBackup() {
-        pendingSource = null
+        forgetCopy()
         inspected?.close()
         inspected = null
+    }
+
+    /** Copie en cours arrêtée (le dépôt supprime ce qu'elle a écrit), ou copie faite supprimée. */
+    private fun forgetCopy() {
+        val pending = copy ?: return
+        copy = null
+        pending.cancel()
+        if (pending.isCompleted && !pending.isCancelled) (pending.getCompleted() as? DataOpenResult.Ready)?.backup?.close()
     }
 
     private fun exportOutcome(result: DataExportResult): DataBackupFlow = when (result) {
@@ -254,18 +289,23 @@ class DataBackupViewModel @Inject constructor(
         )
     }
 
-    private fun inspectOutcome(result: DataInspectResult): DataBackupFlow {
-        // Mot de passe faux : la sauvegarde reste choisie pour un nouvel essai.
-        if (result != DataInspectResult.WrongPassword) pendingSource = null
-        return when (result) {
-            DataInspectResult.WrongPassword -> DataBackupFlow.BackupPassword(wrong = true)
-            is DataInspectResult.Ready -> {
-                inspected?.close()
-                inspected = result.backup
-                DataBackupFlow.Summary(result.backup.summary)
-            }
-            DataInspectResult.Cancelled -> DataBackupFlow.Idle
-            is DataInspectResult.Failed -> failure(result.reason)
+    private fun inspectOutcome(result: DataInspectResult): DataBackupFlow = when (result) {
+        // Mot de passe faux : la copie reste là pour un nouvel essai.
+        DataInspectResult.WrongPassword -> DataBackupFlow.BackupPassword(wrong = true)
+        is DataInspectResult.Ready -> {
+            // La copie appartient désormais à la sauvegarde vérifiée.
+            copy = null
+            inspected?.close()
+            inspected = result.backup
+            DataBackupFlow.Summary(result.backup.summary)
+        }
+        DataInspectResult.Cancelled -> {
+            forgetCopy()
+            DataBackupFlow.Idle
+        }
+        is DataInspectResult.Failed -> {
+            forgetCopy()
+            failure(result.reason)
         }
     }
 

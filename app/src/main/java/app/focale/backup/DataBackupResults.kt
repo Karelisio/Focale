@@ -3,6 +3,7 @@ package app.focale.backup
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import java.io.Closeable
+import java.io.File
 
 // Résultats de la sauvegarde des données (DataBackupRepository) : résumé d'une sauvegarde vérifiée,
 // issues de la sauvegarde, de la vérification et de la restauration, bilan.
@@ -72,16 +73,42 @@ data class DataBackupSummary(
 }
 
 /**
- * Sauvegarde vérifiée de bout en bout ([DataBackupRepository.inspect]) : son résumé, et les clés
- * qui la rouvrent sans redemander le mot de passe, à effacer ([close]) une fois la restauration
- * faite ou abandonnée.
+ * Sauvegarde choisie, copiée telle quelle (toujours chiffrée) dans le cache privé de l'application
+ * ([DataBackupRepository.open]) : vérifiée puis restaurée depuis cette copie, sans relire le
+ * document. Supprimée à la fermeture ([close]), que la restauration ait eu lieu ou non.
+ */
+class StagedBackup internal constructor(val source: Uri, private val staged: BackupCopies.StagedFile) : Closeable {
+    internal val file: File get() = staged.file
+
+    override fun close() = staged.close()
+}
+
+/** Copie locale d'une sauvegarde choisie. */
+sealed interface DataOpenResult {
+    /** Copiée, prête à vérifier ; à refermer si elle ne passe pas à [InspectedBackup]. */
+    class Ready(val backup: StagedBackup) : DataOpenResult
+
+    data object Cancelled : DataOpenResult
+
+    data class Failed(val reason: DataBackupFailure) : DataOpenResult
+}
+
+/**
+ * Sauvegarde vérifiée de bout en bout ([DataBackupRepository.inspect]) : sa copie locale, son
+ * résumé, et les clés qui la rouvrent sans redemander le mot de passe, à effacer ([close], qui
+ * supprime aussi la copie) une fois la restauration faite ou abandonnée.
  */
 class InspectedBackup internal constructor(
-    val source: Uri,
+    val copy: StagedBackup,
     val summary: DataBackupSummary,
     internal val keys: ArchiveKeys,
 ) : Closeable {
-    override fun close() = keys.close()
+    val source: Uri get() = copy.source
+
+    override fun close() {
+        keys.close()
+        copy.close()
+    }
 }
 
 sealed interface DataExportResult {

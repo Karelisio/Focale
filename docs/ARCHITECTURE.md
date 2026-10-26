@@ -629,7 +629,18 @@ sauvegarde, chiffrée par un mot de passe, emporte les données de l'application
   la date de prise de vue ; à défaut (dossier déplacé), par nom, taille et date. Une date décalée
   d'un fuseau horaire (multiple d'un quart d'heure, moins de 24 h) compte comme égale. Un média du
   téléphone ne sert qu'une fois ; ceux qui manquent sont comptés et annoncés au bilan.
-- **Restauration** (`DataRestore`) : l'archive est d'abord vérifiée de bout en bout (mot de passe,
+- **Copie locale** (`DataBackupRepository.open`, `BackupCopies`) : le document choisi (souvent chez un
+  fournisseur en ligne, lent à relire) n'est lu qu'une fois, dès qu'il est choisi, pendant que le
+  mot de passe se tape : copié tel quel, donc toujours chiffré, dans le cache privé
+  (`cache/restore/<uuid>.focale`), son en-tête vérifié aux premiers octets (un fichier étranger ou une
+  sauvegarde du coffre est signalé aussitôt, sans être copié plus loin). Vérification (un mot de
+  passe faux se réessaie sur la copie) et restauration lisent la copie ; elle est supprimée dès
+  qu'elle ne sert plus (`StagedBackup.close`, avec `InspectedBackup` : bilan, échec, annulation,
+  résumé ou dialogue refermé, écran quitté ; une copie écartée par une annulation tardive, à la
+  copie suivante), et au démarrage celles qu'un processus arrêté aurait laissées (`AppInitializer`) ;
+  une copie en service n'est jamais supprimée. La restauration du coffre (§ 6.6) lisait déjà son
+  archive une seule fois (vérification, rechiffrement et fin authentifiée en un passage) : inchangée.
+- **Restauration** (`DataRestore`) : la copie est d'abord vérifiée de bout en bout (mot de passe,
   intégrité, fin) et résumée (date, favoris, albums, personnes, dossiers masqués ; personnes du
   téléphone qui seront remplacées) ; confirmée, elle est relue et appliquée en une seule
   transaction, validée une fois sa fin vérifiée : annulée, tronquée ou modifiée entre-temps, rien ne

@@ -145,7 +145,7 @@ class DataBackupLoadTest {
         )
         val backups = DataBackupRepository(
             context.contentResolver, database, settings, PeopleEditions(), { emptyMap() }, {}, Dispatchers.IO,
-            iterations = 1_000, appVersion = "1.9.0", clock = { 1_761_000_000_000 },
+            iterations = 1_000, appVersion = "1.9.0", clock = { 1_761_000_000_000 }, copies = File(folder.root, "$name-copies"),
         )
 
         /**

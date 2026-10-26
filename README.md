@@ -105,7 +105,9 @@ Galerie photo Android **100 % hors ligne**, en Kotlin et Jetpack Compose, habill
   part sont retrouvées par leur dossier et leur nom ; manuelle ou automatique (chaque jour ou
   chaque semaine, dans un dossier choisi, les 3 dernières gardées). À la restauration, une case
   par catégorie (favoris, albums, personnes, dossiers masqués, réglages, historique, dates
-  d'origine) pour n'en reprendre qu'une partie. Rien ne part dans la sauvegarde Google.
+  d'origine) pour n'en reprendre qu'une partie ; le fichier choisi (Drive ou autre) n'est lu
+  qu'une fois, copié chiffré dans le cache de Focale le temps de la restauration. Rien ne part dans
+  la sauvegarde Google.
 - **Vie privée** : option de partage sans EXIF ni localisation (photos nettoyées
   sans recompression, vidéos remultiplexées).
 - **Souvenirs** « il y a X ans » en tête de la timeline (carrousel Material 3), à partir

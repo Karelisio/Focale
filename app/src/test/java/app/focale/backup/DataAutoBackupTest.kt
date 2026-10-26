@@ -323,7 +323,7 @@ class DataAutoBackupTest {
         var now = noon(2026, 10, 1)
         val backups = DataBackupRepository(
             context.contentResolver, database, settings, PeopleEditions(), { emptyMap() }, {}, Dispatchers.IO,
-            iterations = 1_000, appVersion = "1.9.0", clock = { now },
+            iterations = 1_000, appVersion = "1.9.0", clock = { now }, copies = File(folder.root, "$name-copies"),
         )
         val autoPrefs = DataAutoBackupPrefs(store)
 
