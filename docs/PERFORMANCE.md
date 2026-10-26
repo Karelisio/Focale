@@ -218,6 +218,7 @@ autre téléphone : mêmes fichiers sous d'autres `_ID`, un dossier d'album sur 
 |---|---|---|
 | Sauvegarde : 114 174 enregistrements, archive de 11,7 Mio | 7,8 s | 2,0 s (1,9 à 2,2) |
 | Vérification de l'archive : mot de passe, intégrité, résumé | — | 0,3 s |
+| Vérification depuis la copie locale : copie du document comprise, une seule lecture | — | 0,4 s |
 | Restauration : 43 490 médias retrouvés, 20 000 visages | 3,0 s | 2,3 s (2,2 à 2,5) |
 | Mémoire retenue pendant la sauvegarde | — | 5 Mio |
 | Mémoire retenue pendant la restauration | — | 14 à 17 Mio |

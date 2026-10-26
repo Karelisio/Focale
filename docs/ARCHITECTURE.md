@@ -620,7 +620,7 @@ sauvegarde, chiffrée par un mot de passe, emporte les données de l'application
 - **En flux** : la sauvegarde lit l'index par tranches, dans l'ordre des clés primaires, sans
   transaction (ce qu'elle n'a pas vu est laissé de côté ou détaché : l'archive reste cohérente) ;
   la restauration ne garde en mémoire que les clés des médias et des lots de 500 visages. 50 000
-  médias et 20 000 visages : archive de 12 Mio, sauvegardée en 2 s, vérifiée en 0,3 s, restaurée
+  médias et 20 000 visages : archive de 12 Mio, sauvegardée en 2 s, copiée et vérifiée en 0,4 s, restaurée
   en 2,3 s, moins de 20 Mio de mémoire retenue (`DataBackupLoadTest`, [PERFORMANCE.md](PERFORMANCE.md) § 4.6).
 - **Appariement des médias** (`MediaMatcher`) : les `_ID` changent d'un téléphone à l'autre. L'index
   est d'abord synchronisé avec MediaStore (`MediaSyncManager.syncNow`, attendue jusqu'au bout),
